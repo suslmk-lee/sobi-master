@@ -1,79 +1,99 @@
-# 소비마스터 (sobi)
+# sobi-master
 
-가족 가계부 데스크톱 앱 (Go + Wails v2 + React/TS + Supabase/Postgres).
+**English** | [한국어](README.ko.md)
 
-카드사/은행 CSV 내역을 가져오거나 수동으로 등록하고, 한 번 분류해 두면
-"가맹점명 + 금액 구간" 핑거프린트 규칙으로 다음 달부터 자동 분류된다.
-예: LG유플러스 자동결제 3건(금액만 다름)을 각각 아빠/아이/인터넷으로
-한 번 라벨링하면 이후 매달 자동으로 누구 요금인지 구분된다.
+A family budget desktop app built with Go + Wails v2 + React/TS + Supabase (Postgres).
 
-## 실행
+Import card/bank CSV statements or register transactions manually. Once you label a
+transaction, a "merchant + amount range" fingerprint rule classifies the same recurring
+charge automatically from the next month on. For example, three LG U+ auto-payments that
+differ only in amount can be labeled once as Dad / Kid / Internet — after that, the app
+tells you whose bill each charge is, every month, automatically.
+
+## Features
+
+- **Dashboard** — monthly income/expense/transfer summary with month-over-month deltas,
+  6-month trend chart, daily spending + cumulative line, category/member donut charts,
+  top merchants, per-card performance widgets
+- **Transactions** — manual entry (cash, dues, gifts), month filter, unclassified-only
+  view, edit via modal
+- **Cards** — register cards with issuer, billing day, performance period and spending
+  target; track whether the target is met in the current period; per-card breakdown by
+  merchant and category; custom chip colors
+- **Import** — CSV statements from Korean card companies/banks, automatic column
+  detection (date/merchant/amount/deposit/withdrawal keywords), EUC-KR encoding support,
+  duplicate skipping
+- **Auto-classification** — fingerprint rules (merchant + amount ±8%) learned every time
+  you classify a transaction; manage/delete rules in Settings
+
+## Running
 
 ```sh
-wails dev      # 개발 모드 (핫 리로드)
-wails build    # 배포 빌드 → build/bin/sobi.app (Windows 에서 빌드하면 .exe)
+wails dev      # development mode (hot reload)
+wails build    # production build → build/bin/sobi.app (.exe when built on Windows)
 ```
 
-## 설정 파일 (config.json) — 필수
+## Configuration (config.json) — required
 
-앱이 Supabase 에 접속하려면 설정 파일이 있어야 한다. 파일이 없으면
-첫 실행 때 빈 템플릿이 자동 생성되므로 그 파일을 열어 채우면 된다.
+The app needs a Supabase connection string. On first launch an empty template file is
+created — open it and fill in the value.
 
-### 경로
+### Path
 
-| OS      | 경로                                                  |
+| OS      | Path                                                  |
 |---------|-------------------------------------------------------|
 | macOS   | `~/Library/Application Support/sobi/config.json`       |
-| Windows | `%AppData%\sobi\config.json` (보통 `C:\Users\<사용자명>\AppData\Roaming\sobi\config.json`) |
+| Windows | `%AppData%\sobi\config.json` (usually `C:\Users\<name>\AppData\Roaming\sobi\config.json`) |
 | Linux   | `~/.config/sobi/config.json`                            |
 
-### 내용
+### Content
 
 ```json
 {
-  "database_url": "postgresql://postgres.xxxxxxxxxxxx:비밀번호@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres"
+  "database_url": "postgresql://postgres.xxxxxxxxxxxx:PASSWORD@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres"
 }
 ```
 
-- `database_url` 은 Supabase 대시보드 → 상단 **Connect** 버튼 → **Session pooler** URI 를 복사해서 넣는다.
-  (Direct connection 은 IPv6 전용이라 일반 가정망에서는 Session pooler 권장.
-  Transaction pooler(6543 포트)를 넣어도 앱이 자동으로 호환 모드로 동작한다.)
-- `[YOUR-PASSWORD]` 부분을 실제 DB 비밀번호로 바꾼다.
-  비밀번호에 `* : @ / !` 같은 특수문자가 있어도 그대로 붙여넣으면 된다 (앱이 자동 인코딩).
-- Windows 메모장으로 저장해도 된다 (UTF-8 BOM 허용).
+- Get the URI from the Supabase dashboard → **Connect** → **Session pooler**.
+  (Direct connection is IPv6-only; Session pooler is recommended for home networks.
+  Transaction pooler on port 6543 also works — the app switches to a compatible mode
+  automatically.)
+- Replace `[YOUR-PASSWORD]` with the actual DB password. Special characters such as
+  `* : @ / !` can be pasted as-is — the app URL-encodes them automatically.
+- Saving with Windows Notepad is fine (UTF-8 BOM is tolerated).
 
-같은 `database_url` 을 다른 PC 의 config.json 에 넣으면 같은 가계부를 공유한다.
+Put the same `database_url` into config.json on another PC to share the same ledger.
 
-### 데이터 이전
+### Data migration
 
-앱이 접속했을 때 Supabase 가 비어 있고, 같은 폴더에 이전 버전의 로컬 DB
-(`sobi.db`)가 있으면 모든 데이터를 자동으로 Supabase 로 옮긴다. (로컬 파일은 백업용으로 남는다)
+On connect, if Supabase is empty and a legacy local DB (`sobi.db`) exists in the same
+folder, all data is migrated to Supabase automatically (the local file is kept as a backup).
 
-## 로그 파일 (sobi.log)
+## Log file (sobi.log)
 
-DB 연결 실패, 등록/수정 오류 등 모든 백엔드 오류가 기록된다.
-문제가 생기면 이 파일을 먼저 확인한다. (직접 만들 필요 없음 — 앱이 자동 생성)
+All backend errors (connection failures, insert/update errors) are logged here.
+Check this file first when something goes wrong — the app creates it automatically.
 
-| OS      | 경로                                              |
+| OS      | Path                                              |
 |---------|----------------------------------------------------|
 | macOS   | `~/Library/Application Support/sobi/sobi.log`       |
 | Windows | `%AppData%\sobi\sobi.log`                            |
 | Linux   | `~/.config/sobi/sobi.log`                            |
 
-연결에 실패해도 앱은 종료되지 않고 화면 상단에 오류 배너가 뜨며,
-설정을 고친 뒤 "다시 연결" 버튼을 누르면 재시작 없이 복구된다.
+If the connection fails the app does not quit; an error banner appears at the top and
+the "reconnect" button recovers without a restart once the config is fixed.
 
-## 구조
+## Project layout
 
-- `app.go` — Wails 바인딩 (프론트엔드에서 호출하는 API, 연결 재시도/로깅)
-- `internal/store` — Supabase(Postgres) 스키마/쿼리, 설정/로그 경로, SQLite 마이그레이션
-- `internal/classifier` — 자동 분류 규칙 학습/매칭 (금액 허용오차 ±8%)
-- `internal/importer` — 카드사/은행 CSV 파서 (헤더 키워드 자동 인식, EUC-KR 지원)
-- `frontend/src/pages` — 대시보드 / 거래내역(수동 등록 포함) / 카드 / 가져오기 / 설정
+- `app.go` — Wails bindings (API called from the frontend, reconnect/logging)
+- `internal/store` — Supabase (Postgres) schema/queries, config/log paths, SQLite migration
+- `internal/classifier` — auto-classification rule learning/matching (±8% amount tolerance)
+- `internal/importer` — card/bank CSV parser (header keyword detection, EUC-KR support)
+- `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Import / Settings
 
-## 테스트
+## Tests
 
-DB 테스트는 Postgres 가 필요하다 (없으면 자동 건너뜀):
+DB tests need Postgres (skipped automatically when unavailable):
 
 ```sh
 docker run -d --rm --name sobi-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sobi -p 55432:5432 postgres:16-alpine
@@ -81,9 +101,12 @@ TEST_DATABASE_URL='postgres://postgres:test@localhost:55432/sobi?sslmode=disable
 docker stop sobi-test-pg
 ```
 
-## 개념
+## Concepts
 
-- **귀속자(member)**: 돈이 누구를 위해 쓰였는가 (아빠/엄마/아이/공동)
-- **카테고리(category)**: 용도. kind 가 수입/지출/이체를 구분 (급여·통신비·대출상환·회비·투자이체 등)
-- **결제수단(payment method)**: 어느 카드/현금/계좌로 나갔는가. 카드는 카드 탭에서 결제일/실적기간/실적한도 관리
-- **규칙(rule)**: 분류를 확정할 때마다 자동 학습. 설정 탭에서 확인/삭제
+- **Member**: who the money was spent for (Dad / Mom / Kid / Shared)
+- **Category**: purpose; `kind` distinguishes income/expense/transfer
+  (salary, telecom, loan repayment, dues, investment transfer, …)
+- **Payment method**: which card/cash/bank account it went through; cards carry
+  billing day / performance period / target managed in the Cards tab
+- **Rule**: learned automatically whenever you confirm a classification;
+  review/delete in the Settings tab
