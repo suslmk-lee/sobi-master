@@ -1,0 +1,25 @@
+# 빌드 산출물
+build/bin/
+
+# 프론트엔드
+node_modules/
+frontend/dist/
+# go:embed 가 디렉토리를 요구하므로 placeholder 는 유지
+!frontend/dist/gitkeep
+frontend/wailsjs/
+
+# Go 테스트 산출물
+*.test
+*.out
+
+# 로컬 설정/데이터 (Supabase 연결 문자열·DB·로그는 커밋 금지)
+config.json
+sobi.db
+sobi.log
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
