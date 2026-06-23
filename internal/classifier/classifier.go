@@ -25,6 +25,22 @@ func normalize(s string) string {
 	return strings.Join(strings.Fields(s), "")
 }
 
+// Normalize 는 가맹점명 정규화 함수의 외부 공개판(고정비 매칭 등에 사용).
+func Normalize(s string) string { return normalize(s) }
+
+// RuleMatches 는 규칙이 (가맹점, 금액)에 들어맞는지 본다. Match 와 동일한 기준.
+func RuleMatches(r store.Rule, merchant string, amount int64) bool {
+	nm := normalize(merchant)
+	nr := normalize(r.Merchant)
+	if nm == "" || nr == "" {
+		return false
+	}
+	if !strings.Contains(nm, nr) && !strings.Contains(nr, nm) {
+		return false
+	}
+	return amount >= r.AmountMin && amount <= r.AmountMax
+}
+
 // Match 는 거래(가맹점, 금액)에 들어맞는 규칙을 찾는다.
 // 가맹점명은 정규화 후 부분 일치, 금액은 [amountMin, amountMax] 구간 일치.
 // 여러 규칙이 맞으면 금액 구간이 가장 좁은(=가장 구체적인) 규칙을 고른다.

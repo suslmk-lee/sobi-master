@@ -8,15 +8,17 @@ import { Refs, thisMonth } from "./lib";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import CardsPage from "./pages/CardsPage";
+import StatsPage from "./pages/StatsPage";
 import ImportPage from "./pages/ImportPage";
 import SettingsPage from "./pages/SettingsPage";
 
-type Tab = "dashboard" | "transactions" | "cards" | "import" | "settings";
+type Tab = "dashboard" | "transactions" | "cards" | "stats" | "import" | "settings";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "dashboard", label: "대시보드" },
   { key: "transactions", label: "거래내역" },
   { key: "cards", label: "카드" },
+  { key: "stats", label: "통계" },
   { key: "import", label: "가져오기" },
   { key: "settings", label: "설정" },
 ];
@@ -25,6 +27,14 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [month, setMonth] = useState(thisMonth());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(
+    () => (localStorage.getItem("sobi-theme") as "light" | "dark") || "light"
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("sobi-theme", theme);
+  }, [theme]);
   const [refs, setRefs] = useState<Refs>({
     members: [],
     categories: [],
@@ -65,6 +75,13 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <button
+          className="theme-toggle"
+          title={theme === "dark" ? "라이트 모드" : "다크 모드"}
+          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        >
+          {theme === "dark" ? "☀️" : "🌙"}
+        </button>
       </header>
       {dbError && (
         <div className="card banner-error">
@@ -99,6 +116,7 @@ export default function App() {
           />
         )}
         {tab === "cards" && <CardsPage reloadRefs={loadRefs} />}
+        {tab === "stats" && <StatsPage month={month} setMonth={setMonth} />}
         {tab === "import" && <ImportPage refs={refs} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}
       </main>

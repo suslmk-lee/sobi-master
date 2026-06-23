@@ -45,7 +45,7 @@ func TestMigrateFromSQLite(t *testing.T) {
 	}
 
 	// 조인 조회가 정상 동작하는지 (FK 보존 확인)
-	txs, err := st.ListTransactions("", false)
+	txs, err := st.ListTransactions(TxFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

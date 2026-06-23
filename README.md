@@ -12,19 +12,33 @@ tells you whose bill each charge is, every month, automatically.
 
 ## Features
 
-- **Dashboard** — monthly income/expense/transfer summary with month-over-month deltas,
-  6-month trend chart, daily spending + cumulative line, category/member donut charts,
+- **Dashboard** — monthly income/expense/transfer summary with month-over-month deltas, an
+  alert panel (budget overruns, card-target risk, unclassified backlog), 6-month trend chart,
+  daily spending + cumulative line, per-category budget gauges, category/member donut charts,
   top merchants, per-card performance widgets
-- **Transactions** — manual entry (cash, dues, gifts), month filter, unclassified-only
-  view, edit via modal
+- **Transactions** — manual entry (cash, dues, gifts); search by merchant/memo plus
+  amount/period/category/member/payment-method filters and sorting; edit via modal;
+  multi-select bulk re-classify/delete with one-click undo; "apply rules to unclassified"
+  to retroactively classify; CSV export of the current view (Excel-friendly, UTF-8 BOM)
 - **Cards** — register cards with issuer, billing day, performance period and spending
   target; track whether the target is met in the current period; per-card breakdown by
   merchant and category; custom chip colors
+- **Statistics** (dedicated tab) — daily / cumulative spending by card, member, or category
+  (dimension + mode toggles); this-month vs. previous-month cumulative comparison at the same
+  day; weekday spending averages; 6-month category trend; per-card category composition
+  (stacked bars); per-member analysis (category composition, 6-month trend, and a summary
+  card per member with total, share, top category/merchant and month-over-month change);
+  card performance pace toward target; recurring/fixed-cost tracker (which monthly charges
+  have or haven't posted yet); yearly summary with year-over-year deltas
+- **Budget** — set a recurring monthly budget per category, with optional per-month overrides;
+  the dashboard shows usage gauges and raises alerts on overruns
 - **Import** — CSV statements from Korean card companies/banks, automatic column
   detection (date/merchant/amount/deposit/withdrawal keywords), EUC-KR encoding support,
   duplicate skipping
-- **Auto-classification** — fingerprint rules (merchant + amount ±8%) learned every time
-  you classify a transaction; manage/delete rules in Settings
+- **Auto-classification** — a fingerprint rule (merchant + amount ±8%) is learned whenever you
+  classify a transaction. On manual entry and import a matching rule takes priority over form
+  defaults and classifies automatically. Add/edit/delete rules manually in Settings
+- **Dark mode** — toggle in the header, remembered across launches
 
 ## Running
 
@@ -85,11 +99,13 @@ the "reconnect" button recovers without a restart once the config is fixed.
 
 ## Project layout
 
-- `app.go` — Wails bindings (API called from the frontend, reconnect/logging)
-- `internal/store` — Supabase (Postgres) schema/queries, config/log paths, SQLite migration
+- `app.go` — Wails bindings (API called from the frontend, reconnect/logging, aggregate
+  dashboard endpoint, CSV export, alerts, recurring/budget helpers)
+- `internal/store` — Supabase (Postgres) schema/queries; analytics & statistics (`analytics.go`,
+  `stats.go`); budgets (`budget.go`); config/log paths; SQLite migration
 - `internal/classifier` — auto-classification rule learning/matching (±8% amount tolerance)
 - `internal/importer` — card/bank CSV parser (header keyword detection, EUC-KR support)
-- `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Import / Settings
+- `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Statistics / Import / Settings
 
 ## Tests
 
@@ -108,5 +124,8 @@ docker stop sobi-test-pg
   (salary, telecom, loan repayment, dues, investment transfer, …)
 - **Payment method**: which card/cash/bank account it went through; cards carry
   billing day / performance period / target managed in the Cards tab
-- **Rule**: learned automatically whenever you confirm a classification;
-  review/delete in the Settings tab
+- **Budget**: an optional monthly spending limit per category; set a recurring default and
+  override specific months in Settings; the dashboard tracks usage and flags overruns
+- **Rule**: learned automatically whenever you confirm a classification; on a match it takes
+  priority over manual-entry defaults; review/add/edit/delete in the Settings tab. A rule that
+  recurs across months also drives the Statistics tab's fixed-cost tracker

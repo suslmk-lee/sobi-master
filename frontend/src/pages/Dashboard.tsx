@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  GetCardStatuses,
-  GetDailyExpenses,
-  GetMonthlySummary,
-  GetMonthlyTrend,
-  GetTopMerchants,
-  ListPaymentMethods,
-} from "../../wailsjs/go/main/App";
-import { store } from "../../wailsjs/go/models";
+import { GetDashboard } from "../../wailsjs/go/main/App";
+import { main, store } from "../../wailsjs/go/models";
 import { won } from "../lib";
 import Bars from "../Bars";
 import { DailyChart, Donut, TrendChart } from "../charts";
@@ -43,6 +36,8 @@ export default function Dashboard({
   const [daily, setDaily] = useState<store.DayPoint[]>([]);
   const [top, setTop] = useState<store.NamedAmount[]>([]);
   const [cards, setCards] = useState<store.CardStatus[]>([]);
+  const [alerts, setAlerts] = useState<main.Alert[]>([]);
+  const [budgets, setBudgets] = useState<store.BudgetStatus[]>([]);
   // 결제수단 이름 → 표시 색 (지정 색 우선, 없으면 자동 색)
   const [pmColors, setPmColors] = useState<Record<string, string>>({});
 
@@ -51,25 +46,17 @@ export default function Dashboard({
   const load = useCallback(async () => {
     try {
       const [y, m] = month.split("-").map(Number);
-      const py = m === 1 ? y - 1 : y;
-      const pm = m === 1 ? 12 : m - 1;
-      const [s, p, t, d, tm, cs, pms] = await Promise.all([
-        GetMonthlySummary(y, m),
-        GetMonthlySummary(py, pm),
-        GetMonthlyTrend(y, m, 6),
-        GetDailyExpenses(y, m),
-        GetTopMerchants(y, m, 10),
-        GetCardStatuses(),
-        ListPaymentMethods(),
-      ]);
-      setSum(s);
-      setPrev(p);
-      setTrend(t);
-      setDaily(d);
-      setTop(tm);
-      setCards(cs);
+      const dash = await GetDashboard(y, m);
+      setSum(dash.summary);
+      setPrev(dash.prev);
+      setTrend(dash.trend);
+      setDaily(dash.daily);
+      setTop(dash.top);
+      setCards(dash.cards);
+      setAlerts(dash.alerts);
+      setBudgets(dash.budgets);
       const colors: Record<string, string> = {};
-      for (const pm2 of pms) {
+      for (const pm2 of dash.paymentMethods) {
         colors[pm2.name] = pm2.color || autoColor(pm2.name);
       }
       setPmColors(colors);
@@ -107,6 +94,17 @@ export default function Dashboard({
         )}
       </div>
 
+      {alerts.length > 0 && (
+        <div className="alerts">
+          {alerts.map((a, i) => (
+            <div className={`alert ${a.level}`} key={i}>
+              <strong>{a.title}</strong>
+              <span className="muted small">{a.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="stat-grid">
         <div className="card stat">
           <span className="muted">수입</span>
@@ -134,6 +132,36 @@ export default function Dashboard({
         <h3>최근 6개월 수입·지출 추이</h3>
         <TrendChart points={trend} />
       </div>
+
+      {budgets.length > 0 && (
+        <div className="card">
+          <h3>예산 현황 ({Number(month.slice(5))}월)</h3>
+          <div className="budget-status">
+            {budgets.map((b) => {
+              const pct = Math.min(100, b.pct);
+              return (
+                <div className="budget-stat" key={b.categoryId}>
+                  <div className="budget-stat-head">
+                    <span>{b.category}</span>
+                    <span className={b.over ? "expense" : "muted"}>
+                      {won(b.spent)} / {won(b.amount)} ({b.pct}%)
+                    </span>
+                  </div>
+                  <div className="bar-track">
+                    <div
+                      className={`bar-fill ${b.over ? "over" : b.pct >= 80 ? "near" : "achieved"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className={`small ${b.over ? "expense" : "muted"}`}>
+                    {b.over ? `${won(-b.remaining)} 초과` : `${won(b.remaining)} 남음`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="dash-grid">
         <div className="card">

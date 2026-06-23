@@ -148,23 +148,70 @@ func (s *Store) scanTx(rows *sql.Rows) (Transaction, error) {
 	return t, nil
 }
 
-// ListTransactions 는 month("YYYY-MM", 빈 문자열이면 전체) 기준으로 조회한다.
-// unclassifiedOnly 가 true 면 귀속자 또는 카테고리가 빈 거래만 반환.
-func (s *Store) ListTransactions(month string, unclassifiedOnly bool) ([]Transaction, error) {
+// ListTransactions 는 필터 조건으로 거래를 조회한다.
+// From/To 가 있으면 날짜 범위로, 없으면 Month("YYYY-MM") 로 거른다. 빈 값/0 은 미적용.
+func (s *Store) ListTransactions(f TxFilter) ([]Transaction, error) {
 	q := txSelect
 	args := []interface{}{}
 	conds := []string{}
-	if month != "" {
+	if f.From != "" || f.To != "" {
+		if f.From != "" {
+			conds = append(conds, `t.date >= ?`)
+			args = append(args, f.From)
+		}
+		if f.To != "" {
+			conds = append(conds, `t.date <= ?`)
+			args = append(args, f.To)
+		}
+	} else if f.Month != "" {
 		conds = append(conds, `t.date LIKE ?`)
-		args = append(args, month+"%")
+		args = append(args, f.Month+"%")
 	}
-	if unclassifiedOnly {
+	if f.UnclassifiedOnly {
 		conds = append(conds, `(t.member_id IS NULL OR t.category_id IS NULL)`)
+	}
+	if f.Query != "" {
+		conds = append(conds, `(t.merchant ILIKE ? OR t.memo ILIKE ?)`)
+		like := "%" + likeEscape(f.Query) + "%"
+		args = append(args, like, like)
+	}
+	if f.AmountMin > 0 {
+		conds = append(conds, `t.amount >= ?`)
+		args = append(args, f.AmountMin)
+	}
+	if f.AmountMax > 0 {
+		conds = append(conds, `t.amount <= ?`)
+		args = append(args, f.AmountMax)
+	}
+	if f.Direction != "" {
+		conds = append(conds, `t.direction = ?`)
+		args = append(args, f.Direction)
+	}
+	if f.MemberID > 0 {
+		conds = append(conds, `t.member_id = ?`)
+		args = append(args, f.MemberID)
+	}
+	if f.CategoryID > 0 {
+		conds = append(conds, `t.category_id = ?`)
+		args = append(args, f.CategoryID)
+	}
+	if f.PaymentMethodID > 0 {
+		conds = append(conds, `t.payment_method_id = ?`)
+		args = append(args, f.PaymentMethodID)
 	}
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}
-	q += ` ORDER BY t.date DESC, t.id DESC`
+	switch f.Sort {
+	case "date_asc":
+		q += ` ORDER BY t.date ASC, t.id ASC`
+	case "amount_desc":
+		q += ` ORDER BY t.amount DESC, t.date DESC`
+	case "amount_asc":
+		q += ` ORDER BY t.amount ASC, t.date DESC`
+	default:
+		q += ` ORDER BY t.date DESC, t.id DESC`
+	}
 	rows, err := s.query(q, args...)
 	if err != nil {
 		return nil, err
@@ -209,6 +256,29 @@ WHERE id=?`,
 func (s *Store) DeleteTransaction(id int64) error {
 	_, err := s.exec(`DELETE FROM transactions WHERE id=?`, id)
 	return err
+}
+
+// GetTransaction 은 단건 조회(일괄 삭제 취소용 백업에 사용).
+func (s *Store) GetTransaction(id int64) (Transaction, error) {
+	rows, err := s.query(txSelect+" WHERE t.id=?", id)
+	if err != nil {
+		return Transaction{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return Transaction{}, ErrNotFound
+	}
+	return s.scanTx(rows)
+}
+
+// DeleteTransactions 는 여러 거래를 한 번에 삭제한다.
+func (s *Store) DeleteTransactions(ids []int64) error {
+	for _, id := range ids {
+		if _, err := s.exec(`DELETE FROM transactions WHERE id=?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // HasTransaction 은 import 중복 방지용: 같은 날짜+금액+가맹점+방향 거래가 이미 있는지 본다.

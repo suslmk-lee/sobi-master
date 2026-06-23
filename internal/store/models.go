@@ -84,6 +84,22 @@ type NamedAmount struct {
 	Amount int64  `json:"amount"`
 }
 
+// TxFilter 는 거래 조회 필터. 빈 값/0 은 해당 조건 미적용을 뜻한다.
+type TxFilter struct {
+	Month            string `json:"month"` // "YYYY-MM" (From/To 가 있으면 무시)
+	From             string `json:"from"`  // "YYYY-MM-DD"
+	To               string `json:"to"`
+	UnclassifiedOnly bool   `json:"unclassifiedOnly"`
+	Query            string `json:"query"` // 가맹점/메모 부분 일치
+	AmountMin        int64  `json:"amountMin"`
+	AmountMax        int64  `json:"amountMax"`
+	Direction        string `json:"direction"` // income|expense|transfer
+	MemberID         int64  `json:"memberId"`
+	CategoryID       int64  `json:"categoryId"`
+	PaymentMethodID  int64  `json:"paymentMethodId"`
+	Sort             string `json:"sort"` // date_desc(기본)|date_asc|amount_desc|amount_asc
+}
+
 // MonthlySummary 는 대시보드 한 달치 집계.
 type MonthlySummary struct {
 	Year              int           `json:"year"`
