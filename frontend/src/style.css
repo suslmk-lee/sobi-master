@@ -22,6 +22,8 @@
   --minicard-bg: rgba(255, 255, 255, 0.5);
   --seg-active: #fff;
   --track: rgba(90, 100, 150, 0.12);
+  --placeholder: rgba(42, 47, 69, 0.4);
+  --option-bg: #ffffff;
 }
 
 :root[data-theme="dark"] {
@@ -43,6 +45,8 @@
   --minicard-bg: rgba(255, 255, 255, 0.04);
   --seg-active: rgba(255, 255, 255, 0.16);
   --track: rgba(255, 255, 255, 0.1);
+  --placeholder: rgba(231, 233, 243, 0.45);
+  --option-bg: #262a3c;
 }
 
 html,
@@ -344,7 +348,13 @@ select {
 }
 
 input::placeholder {
-  color: rgba(42, 47, 69, 0.35);
+  color: var(--placeholder);
+}
+
+/* 드롭다운 펼침 목록: 반투명 배경에 밝은 글씨가 묻히지 않도록 불투명 배경 지정 */
+option {
+  background-color: var(--option-bg);
+  color: var(--text);
 }
 
 button {
