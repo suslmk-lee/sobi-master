@@ -49,6 +49,8 @@ export default function App() {
         ListCategories(),
         ListPaymentMethods(),
       ]);
+      // 카테고리는 글자순(가나다)으로 정렬해 모든 드롭다운/목록에서 동일하게 보이게 한다
+      categories.sort((a, b) => a.name.localeCompare(b.name, "ko"));
       setRefs({ members, categories, paymentMethods });
       setDbError("");
     } catch (e: any) {
