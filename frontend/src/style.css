@@ -1083,3 +1083,51 @@ label.field input {
   font-size: 17px;
   font-weight: 700;
 }
+
+/* ---- 내용(가맹점) 자동완성 ---- */
+
+.autocomplete {
+  position: relative;
+  flex: 1;
+  min-width: 140px;
+}
+
+.autocomplete input {
+  width: 100%;
+}
+
+.ac-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--modal-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(50, 55, 90, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.ac-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.ac-list li:hover {
+  background: rgba(91, 130, 240, 0.16);
+}
+
+.ac-merchant {
+  font-size: 13px;
+}

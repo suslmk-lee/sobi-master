@@ -157,6 +157,18 @@ func (a *App) ListTransactions(filter store.TxFilter) ([]store.Transaction, erro
 	return a.st.ListTransactions(filter)
 }
 
+// GetMerchantSuggestions 는 수동 등록 내용 칸 자동완성용: query 를 포함하는 과거 가맹점과
+// 그 가맹점의 최근 거래 정보(메모/귀속자/카테고리/결제수단/구분)를 최근순으로 돌려준다.
+func (a *App) GetMerchantSuggestions(query string) ([]store.MerchantSuggestion, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(query) == "" {
+		return []store.MerchantSuggestion{}, nil
+	}
+	return a.st.MerchantSuggestions(query, 8)
+}
+
 // AddTransaction 은 수동 등록. 학습된 규칙(가맹점+금액)이 있으면 규칙이 우선하여
 // 폼 기본값(기본 귀속자 등)을 덮어쓰고 자동 분류한다. 이미 있는 규칙이므로 다시
 // 학습하지 않아 규칙이 오염되지 않는다. 규칙이 없을 때는 폼 값 그대로 저장하고,

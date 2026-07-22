@@ -281,6 +281,43 @@ func (s *Store) DeleteTransactions(ids []int64) error {
 	return nil
 }
 
+// MerchantSuggestions 는 query 를 포함하는 과거 가맹점들을, 각 가맹점의 가장 최근
+// 거래(메모/귀속자/카테고리/결제수단/구분)와 함께 최근순으로 돌려준다(자동완성용).
+func (s *Store) MerchantSuggestions(query string, limit int) ([]MerchantSuggestion, error) {
+	if limit < 1 {
+		limit = 8
+	}
+	like := "%" + likeEscape(query) + "%"
+	rows, err := s.query(`
+SELECT sub.merchant, sub.memo, sub.direction, sub.member_id, sub.category_id, sub.payment_method_id
+FROM (
+	SELECT DISTINCT ON (merchant)
+	       merchant, memo, direction, member_id, category_id, payment_method_id, date, id
+	FROM transactions
+	WHERE merchant ILIKE ? AND merchant <> ''
+	ORDER BY merchant, date DESC, id DESC
+) sub
+ORDER BY sub.date DESC, sub.id DESC
+LIMIT ?`, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MerchantSuggestion{}
+	for rows.Next() {
+		var m MerchantSuggestion
+		var mid, cid, pid sql.NullInt64
+		if err := rows.Scan(&m.Merchant, &m.Memo, &m.Direction, &mid, &cid, &pid); err != nil {
+			return nil, err
+		}
+		m.MemberID = scanNullableID(mid)
+		m.CategoryID = scanNullableID(cid)
+		m.PaymentMethodID = scanNullableID(pid)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // HasTransaction 은 import 중복 방지용: 같은 날짜+금액+가맹점+방향 거래가 이미 있는지 본다.
 func (s *Store) HasTransaction(date string, amount int64, merchant, direction string) (bool, error) {
 	var n int

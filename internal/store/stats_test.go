@@ -284,4 +284,16 @@ func TestStatsQueries(t *testing.T) {
 	if ds == nil || ds.Values[5] != 220000 || ds.Values[4] != 30000 {
 		t.Errorf("귀속자 추이 오류: %+v", mt.Series)
 	}
+
+	// 10) 가맹점 자동완성: "가맹" 검색 → "가맹점"의 최근 거래(6/10, 식비/아빠) 반환
+	sg, err := st.MerchantSuggestions("가맹", 8)
+	if err != nil {
+		t.Fatalf("MerchantSuggestions: %v", err)
+	}
+	if len(sg) != 1 || sg[0].Merchant != "가맹점" {
+		t.Fatalf("자동완성 결과 오류: %+v", sg)
+	}
+	if sg[0].CategoryID == nil || *sg[0].CategoryID != food || sg[0].MemberID == nil || *sg[0].MemberID != dad {
+		t.Errorf("자동완성 최근값(식비/아빠) 오류: %+v", sg[0])
+	}
 }

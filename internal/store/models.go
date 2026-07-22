@@ -84,6 +84,17 @@ type NamedAmount struct {
 	Amount int64  `json:"amount"`
 }
 
+// MerchantSuggestion 은 수동 등록 자동완성용: 과거 거래의 가맹점과, 그 가맹점에
+// 가장 최근 쓰였던 메모/귀속자/카테고리/결제수단/구분.
+type MerchantSuggestion struct {
+	Merchant        string `json:"merchant"`
+	Memo            string `json:"memo"`
+	Direction       string `json:"direction"`
+	MemberID        *int64 `json:"memberId"`
+	CategoryID      *int64 `json:"categoryId"`
+	PaymentMethodID *int64 `json:"paymentMethodId"`
+}
+
 // TxFilter 는 거래 조회 필터. 빈 값/0 은 해당 조건 미적용을 뜻한다.
 type TxFilter struct {
 	Month            string `json:"month"` // "YYYY-MM" (From/To 가 있으면 무시)

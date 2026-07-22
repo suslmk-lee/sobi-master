@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   AddTransaction,
   ApplyRulesToUnclassified,
@@ -8,6 +8,7 @@ import {
   ClassifyTransaction,
   DeleteTransaction,
   ExportCSV,
+  GetMerchantSuggestions,
   ListTransactions,
   UndoDelete,
 } from "../../wailsjs/go/main/App";
@@ -32,6 +33,11 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
   const [f, setF] = useState({ ...EMPTY_FORM });
   const [err, setErr] = useState("");
 
+  // 내용(가맹점) 자동완성
+  const [sug, setSug] = useState<store.MerchantSuggestion[]>([]);
+  const [showSug, setShowSug] = useState(false);
+  const sugTimer = useRef<ReturnType<typeof setTimeout>>();
+
   // 귀속자 목록이 로드되면 "아빠"를 기본 선택해 둔다.
   const dadId = refs.members.find((m) => m.name === "아빠")?.id;
   useEffect(() => {
@@ -39,6 +45,51 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
       setF((prev) => (prev.memberId ? prev : { ...prev, memberId: String(dadId) }));
     }
   }, [dadId]);
+
+  // 내용 입력 시 과거 가맹점 자동완성을 250ms 디바운스로 조회
+  const onMerchant = (v: string) => {
+    setF((prev) => ({ ...prev, merchant: v }));
+    clearTimeout(sugTimer.current);
+    if (v.trim().length < 1) {
+      setSug([]);
+      setShowSug(false);
+      return;
+    }
+    sugTimer.current = setTimeout(async () => {
+      try {
+        const list = await GetMerchantSuggestions(v.trim());
+        setSug(list);
+        setShowSug(list.length > 0);
+      } catch {
+        setSug([]);
+        setShowSug(false);
+      }
+    }, 250);
+  };
+
+  // 자동완성 선택 시: 그 가맹점의 최근 거래 기준으로 메모·구분·귀속자·카테고리·결제수단 채움
+  const pickSug = (s: store.MerchantSuggestion) => {
+    setF((prev) => ({
+      ...prev,
+      merchant: s.merchant,
+      memo: s.memo,
+      direction: s.direction || prev.direction,
+      memberId: s.memberId ? String(s.memberId) : prev.memberId,
+      categoryId: s.categoryId ? String(s.categoryId) : "",
+      paymentMethodId: s.paymentMethodId ? String(s.paymentMethodId) : "",
+    }));
+    setShowSug(false);
+  };
+
+  // 자동완성 항목의 부가 설명(카테고리 · 귀속자 · 결제수단)
+  const sugMeta = (s: store.MerchantSuggestion) =>
+    [
+      refs.categories.find((c) => c.id === s.categoryId)?.name,
+      refs.members.find((m) => m.id === s.memberId)?.name,
+      refs.paymentMethods.find((p) => p.id === s.paymentMethodId)?.name,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -65,6 +116,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
       );
       // 금액만 바꿔 연속 입력하는 경우가 많아 금액만 비우고 나머지는 유지한다
       setF({ ...f, amount: "" });
+      setShowSug(false);
       onAdded();
     } catch (e: any) {
       setErr(String(e));
@@ -97,12 +149,27 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           value={f.amount}
           onChange={(e) => setF({ ...f, amount: formatAmount(e.target.value) })}
         />
-        <input
-          type="text"
-          placeholder="내용 / 가맹점 (예: 동창회 회비)"
-          value={f.merchant}
-          onChange={(e) => setF({ ...f, merchant: e.target.value })}
-        />
+        <div className="autocomplete">
+          <input
+            type="text"
+            placeholder="내용 / 가맹점 (예: 동창회 회비)"
+            value={f.merchant}
+            onChange={(e) => onMerchant(e.target.value)}
+            onFocus={() => sug.length > 0 && setShowSug(true)}
+            onBlur={() => setTimeout(() => setShowSug(false), 150)}
+            autoComplete="off"
+          />
+          {showSug && (
+            <ul className="ac-list">
+              {sug.map((s, i) => (
+                <li key={i} onMouseDown={() => pickSug(s)}>
+                  <span className="ac-merchant">{s.merchant}</span>
+                  {sugMeta(s) && <span className="ac-meta muted small">{sugMeta(s)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       <div className="form-row">
         <select
