@@ -73,6 +73,14 @@ wails build    # 배포 빌드 → build/bin/sobi.app (Windows 에서 빌드하�
 앱이 접속했을 때 Supabase 가 비어 있고, 같은 폴더에 이전 버전의 로컬 DB
 (`sobi.db`)가 있으면 모든 데이터를 자동으로 Supabase 로 옮긴다. (로컬 파일은 백업용으로 남는다)
 
+### 로컬 백업
+
+운영 데이터베이스는 Supabase 그대로지만, 앱이 정기적으로 로컬 SQLite 파일에도 스냅샷을
+백업한다 — 시작 직후·실행 중 6시간마다·종료 시. 최근 7개를 보관하고 오래된 것은 지운다.
+**설정 → 로컬 백업**에서 "지금 백업"으로 수동 실행도 가능하다. 파일은
+`<설정 디렉토리>/backups/sobi_YYYYMMDD_HHMMSS.db` (Windows 는 `%AppData%\sobi\backups\`)에
+쌓이며, 그 자체로 열람·복원 가능한 온전한 DB 다.
+
 ## 로그 파일 (sobi.log)
 
 DB 연결 실패, 등록/수정 오류 등 모든 백엔드 오류가 기록된다.

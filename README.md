@@ -83,6 +83,14 @@ Put the same `database_url` into config.json on another PC to share the same led
 On connect, if Supabase is empty and a legacy local DB (`sobi.db`) exists in the same
 folder, all data is migrated to Supabase automatically (the local file is kept as a backup).
 
+### Local backups
+
+Supabase stays the operational database, but the app also takes periodic local snapshots to
+a self-contained SQLite file — shortly after startup, every 6 hours while running, and on
+shutdown. The 7 most recent snapshots are kept (older ones pruned). You can also trigger one
+manually from **Settings → 로컬 백업**. Files live in `<config dir>/backups/sobi_YYYYMMDD_HHMMSS.db`
+(e.g. `%AppData%\sobi\backups\` on Windows) and are full, openable DBs you can restore from.
+
 ## Log file (sobi.log)
 
 All backend errors (connection failures, insert/update errors) are logged here.

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +27,16 @@ type App struct {
 	cl  *classifier.Classifier
 	// lastDeleted 는 일괄/단건 삭제 직후 복원(Undo)을 위한 백업.
 	lastDeleted []store.Transaction
+	// backupMu 는 로컬 백업을 한 번에 하나만 수행하도록 직렬화한다.
+	backupMu   sync.Mutex
+	backupDone chan struct{}
 }
+
+// backupInterval 는 앱 실행 중 자동 로컬 백업 주기.
+const backupInterval = 6 * time.Hour
+
+// backupKeep 는 보관할 백업 파일 개수(오래된 것부터 삭제).
+const backupKeep = 7
 
 func NewApp() *App {
 	return &App{}
@@ -44,6 +55,35 @@ func (a *App) startup(ctx context.Context) {
 		// 종료하지 않는다 — 화면에 오류가 표시되고 다음 호출에서 자동 재시도된다
 		log.Printf("시작 시 DB 연결 실패: %v", err)
 	}
+	a.startBackupLoop()
+}
+
+// startBackupLoop 은 시작 직후 한 번, 이후 backupInterval 마다 로컬 백업을 수행한다.
+func (a *App) startBackupLoop() {
+	a.backupDone = make(chan struct{})
+	go func() {
+		// 시작 직후 UI 를 막지 않도록 잠깐 뒤에 첫 백업
+		select {
+		case <-time.After(5 * time.Second):
+		case <-a.backupDone:
+			return
+		}
+		if _, err := a.doBackup(); err != nil {
+			logIf("자동 백업(시작)", err)
+		}
+		t := time.NewTicker(backupInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				if _, err := a.doBackup(); err != nil {
+					logIf("자동 백업(주기)", err)
+				}
+			case <-a.backupDone:
+				return
+			}
+		}
+	}()
 }
 
 // ensure 는 DB 연결을 보장한다. 시작 시 실패했어도 호출 시마다 다시 시도하므로
@@ -64,10 +104,21 @@ func (a *App) ensure() error {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	// 백업 루프를 멈추고, 종료 전 마지막 스냅샷을 남긴다.
+	if a.backupDone != nil {
+		close(a.backupDone)
+	}
+	if _, err := a.doBackup(); err != nil {
+		logIf("자동 백업(종료)", err)
+	}
+	// backupMu 를 잡아 진행 중 백업이 끝난 뒤 연결을 닫는다(백업 중 Close 방지).
+	a.backupMu.Lock()
+	defer a.backupMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.st != nil {
 		a.st.Close()
+		a.st = nil
 	}
 }
 
@@ -75,6 +126,104 @@ func logIf(op string, err error) {
 	if err != nil {
 		log.Printf("%s: %v", op, err)
 	}
+}
+
+// ---- 로컬 백업 ----
+
+// BackupInfo 는 로컬 백업 한 건의 요약(경로/시각/크기/테이블별 행 수).
+type BackupInfo struct {
+	Path   string         `json:"path"`
+	Time   string         `json:"time"` // 파일 수정 시각 "2006-01-02 15:04:05"
+	SizeKB int64          `json:"sizeKB"`
+	Counts map[string]int `json:"counts"`
+}
+
+func backupInfoOf(path string, counts map[string]int) BackupInfo {
+	info := BackupInfo{Path: path, Counts: counts}
+	if fi, err := os.Stat(path); err == nil {
+		info.Time = fi.ModTime().Format("2006-01-02 15:04:05")
+		info.SizeKB = fi.Size() / 1024
+	}
+	return info
+}
+
+// doBackup 은 현재 연결된 DB 를 로컬 SQLite 로 스냅샷 백업한다(직렬화, 재연결하지 않음).
+// 연결이 없으면 건너뛴다. 종료/주기/수동 백업이 공유한다.
+func (a *App) doBackup() (BackupInfo, error) {
+	a.backupMu.Lock()
+	defer a.backupMu.Unlock()
+	a.mu.Lock()
+	st := a.st
+	a.mu.Unlock()
+	if st == nil {
+		return BackupInfo{}, fmt.Errorf("DB 미연결 — 백업을 건너뜁니다")
+	}
+	dir, err := store.BackupDir()
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	p := filepath.Join(dir, "sobi_"+time.Now().Format("20060102_150405")+".db")
+	counts, err := st.BackupToSQLite(p)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	a.pruneBackups(dir, backupKeep)
+	log.Printf("로컬 백업 완료: %s (%v)", p, counts)
+	return backupInfoOf(p, counts), nil
+}
+
+// pruneBackups 는 백업 파일이 keep 개를 넘으면 오래된 것부터 지운다.
+// 파일명이 타임스탬프라 사전순 정렬 = 시간순.
+func (a *App) pruneBackups(dir string, keep int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	names := []string{}
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, "sobi_") && strings.HasSuffix(n, ".db") {
+			names = append(names, n)
+		}
+	}
+	if len(names) <= keep {
+		return
+	}
+	sort.Strings(names)
+	for _, n := range names[:len(names)-keep] {
+		_ = os.Remove(filepath.Join(dir, n))
+	}
+}
+
+// BackupNow 는 사용자가 즉시 백업을 요청할 때 호출된다(필요 시 연결부터 시도).
+func (a *App) BackupNow() (BackupInfo, error) {
+	if err := a.ensure(); err != nil {
+		return BackupInfo{}, err
+	}
+	return a.doBackup()
+}
+
+// GetLastBackup 은 가장 최근 백업 파일의 정보를 돌려준다(없으면 Path 빈 값).
+func (a *App) GetLastBackup() (BackupInfo, error) {
+	dir, err := store.BackupDir()
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	latest := ""
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, "sobi_") && strings.HasSuffix(n, ".db") && n > latest {
+			latest = n
+		}
+	}
+	if latest == "" {
+		return BackupInfo{}, nil
+	}
+	return backupInfoOf(filepath.Join(dir, latest), nil), nil
 }
 
 // ---- 귀속자 / 카테고리 / 결제수단 ----

@@ -54,6 +54,19 @@ func LegacySQLitePath() (string, error) {
 	return filepath.Join(dir, "sobi.db"), nil
 }
 
+// BackupDir 는 로컬 SQLite 백업 파일들이 쌓이는 디렉토리 (<설정 디렉토리>/backups).
+func BackupDir() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	bdir := filepath.Join(dir, "backups")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		return "", err
+	}
+	return bdir, nil
+}
+
 // LoadConfig 는 설정 파일을 읽는다. 파일이 없으면 빈 템플릿을 만들어 두고
 // 사용자가 채워 넣도록 안내하는 에러를 돌려준다.
 func LoadConfig() (Config, error) {

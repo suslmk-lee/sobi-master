@@ -1102,6 +1102,17 @@ label.field input {
   font-weight: 700;
 }
 
+.backup-status {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0 10px;
+}
+
+.backup-path {
+  word-break: break-all;
+}
+
 /* ---- 카테고리 상세 분석 ---- */
 
 .cat-summary {
