@@ -148,6 +148,36 @@ func (s *Store) scanTx(rows *sql.Rows) (Transaction, error) {
 	return t, nil
 }
 
+// sortColumn 은 정렬 키("<컬럼>_<asc|desc>")를 안전한 정렬식으로 매핑한다.
+// isDate 는 날짜 정렬 여부(보조 정렬 방식이 달라진다). 화이트리스트만 허용해 주입 위험 없음.
+// 이름 컬럼은 NULL(미분류/미지정)을 항상 뒤로 보낸다.
+func sortColumn(sort string) (orderExpr, dir string, isDate bool) {
+	dir = "DESC"
+	key := sort
+	if strings.HasSuffix(sort, "_asc") {
+		dir = "ASC"
+		key = strings.TrimSuffix(sort, "_asc")
+	} else if strings.HasSuffix(sort, "_desc") {
+		key = strings.TrimSuffix(sort, "_desc")
+	}
+	switch key {
+	case "amount":
+		return "t.amount " + dir, dir, false
+	case "direction":
+		return "t.direction " + dir, dir, false
+	case "merchant":
+		return "t.merchant " + dir, dir, false
+	case "member":
+		return "m.name " + dir + " NULLS LAST", dir, false
+	case "category":
+		return "c.name " + dir + " NULLS LAST", dir, false
+	case "payment":
+		return "p.name " + dir + " NULLS LAST", dir, false
+	default:
+		return "t.date " + dir, dir, true
+	}
+}
+
 // ListTransactions 는 필터 조건으로 거래를 조회한다.
 // From/To 가 있으면 날짜 범위로, 없으면 Month("YYYY-MM") 로 거른다. 빈 값/0 은 미적용.
 func (s *Store) ListTransactions(f TxFilter) ([]Transaction, error) {
@@ -202,15 +232,13 @@ func (s *Store) ListTransactions(f TxFilter) ([]Transaction, error) {
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}
-	switch f.Sort {
-	case "date_asc":
-		q += ` ORDER BY t.date ASC, t.id ASC`
-	case "amount_desc":
-		q += ` ORDER BY t.amount DESC, t.date DESC`
-	case "amount_asc":
-		q += ` ORDER BY t.amount ASC, t.date DESC`
-	default:
-		q += ` ORDER BY t.date DESC, t.id DESC`
+	// 정렬: "<컬럼>_<asc|desc>". 미분류(NULL) 이름은 항상 뒤로 보낸다.
+	orderExpr, dir, isDate := sortColumn(f.Sort)
+	q += " ORDER BY " + orderExpr
+	if isDate {
+		q += ", t.id " + dir
+	} else { // 동일 값일 때 최신 거래가 먼저 오도록 보조 정렬
+		q += ", t.date DESC, t.id DESC"
 	}
 	rows, err := s.query(q, args...)
 	if err != nil {

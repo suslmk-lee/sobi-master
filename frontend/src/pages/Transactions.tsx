@@ -367,6 +367,34 @@ function EditModal({
   );
 }
 
+// 클릭 정렬 헤더. 현재 정렬 컬럼이면 방향 화살표(▲/▼)를 표시한다.
+function SortTh({
+  col,
+  sort,
+  onSort,
+  num,
+  children,
+}: {
+  col: string;
+  sort: string;
+  onSort: (col: string) => void;
+  num?: boolean;
+  children: React.ReactNode;
+}) {
+  const active = sort === `${col}_asc` || sort === `${col}_desc`;
+  const arrow = !active ? "" : sort.endsWith("_asc") ? " ▲" : " ▼";
+  return (
+    <th
+      className={`sortable ${num ? "num" : ""} ${active ? "sorted" : ""}`}
+      onClick={() => onSort(col)}
+      title="클릭하여 정렬"
+    >
+      {children}
+      <span className="sort-arrow">{arrow}</span>
+    </th>
+  );
+}
+
 export default function Transactions({
   refs,
   month,
@@ -446,6 +474,11 @@ export default function Transactions({
     setAmountMax("");
     setSort("date_desc");
     setUnclassifiedOnly(false);
+  };
+
+  // 헤더 클릭: 같은 컬럼이면 방향 토글, 다른 컬럼이면 그 컬럼 내림차순부터.
+  const toggleSort = (col: string) => {
+    setSort((cur) => (cur === `${col}_desc` ? `${col}_asc` : `${col}_desc`));
   };
 
   const remove = async (t: store.Transaction) => {
@@ -554,12 +587,6 @@ export default function Transactions({
           value={amountMax}
           onChange={(e) => setAmountMax(formatAmount(e.target.value))}
         />
-        <select value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="date_desc">최신순</option>
-          <option value="date_asc">오래된순</option>
-          <option value="amount_desc">금액↓</option>
-          <option value="amount_asc">금액↑</option>
-        </select>
         <label className="check">
           <input
             type="checkbox"
@@ -617,13 +644,13 @@ export default function Transactions({
             <th className="chk">
               <input type="checkbox" checked={allChecked} onChange={toggleAll} />
             </th>
-            <th>날짜</th>
-            <th>내용</th>
-            <th className="num">금액</th>
-            <th>구분</th>
-            <th>귀속자</th>
-            <th>카테고리</th>
-            <th>결제수단</th>
+            <SortTh col="date" sort={sort} onSort={toggleSort}>날짜</SortTh>
+            <SortTh col="merchant" sort={sort} onSort={toggleSort}>내용</SortTh>
+            <SortTh col="amount" sort={sort} onSort={toggleSort} num>금액</SortTh>
+            <SortTh col="direction" sort={sort} onSort={toggleSort}>구분</SortTh>
+            <SortTh col="member" sort={sort} onSort={toggleSort}>귀속자</SortTh>
+            <SortTh col="category" sort={sort} onSort={toggleSort}>카테고리</SortTh>
+            <SortTh col="payment" sort={sort} onSort={toggleSort}>결제수단</SortTh>
             <th></th>
           </tr>
         </thead>
