@@ -221,18 +221,18 @@ type CardCategory struct {
 	Categories []NamedAmount `json:"categories"` // 금액 내림차순
 }
 
-// groupCategoryBreakdown 은 해당 월의 지출을 한 차원(nameExpr/colorExpr/join)별로,
-// 그 안에서 카테고리별로 집계한다. 그룹은 총액 내림차순, 각 카테고리도 금액 내림차순.
-// nameExpr/colorExpr/join 은 호출부의 고정 문자열뿐이라 주입 위험 없음.
-func (s *Store) groupCategoryBreakdown(year, month int, nameExpr, colorExpr, join string) ([]CardCategory, error) {
+// groupBreakdown 은 해당 월의 지출을 그룹 차원(gName/gColor/gJoin)별로 묶고,
+// 각 그룹 안을 세그먼트 차원(segName/segJoin)으로 나눠 집계한다.
+// 그룹은 총액 내림차순, 각 세그먼트도 금액 내림차순. 표현식은 호출부의 고정 문자열뿐이라 주입 위험 없음.
+func (s *Store) groupBreakdown(year, month int, gName, gColor, gJoin, segName, segJoin string) ([]CardCategory, error) {
 	prefix := fmt.Sprintf("%04d-%02d", year, month) + "%"
 	q := fmt.Sprintf(`
-SELECT %s, %s, COALESCE(c.name,'(미분류)'), SUM(t.amount)
+SELECT %s, %s, %s, SUM(t.amount)
 FROM transactions t
 %s
-LEFT JOIN categories c ON c.id = t.category_id
+%s
 WHERE t.date LIKE ? AND t.direction='expense'
-GROUP BY 1, 2, 3`, nameExpr, colorExpr, join)
+GROUP BY 1, 2, 3`, gName, gColor, segName, gJoin, segJoin)
 	rows, err := s.query(q, prefix)
 	if err != nil {
 		return nil, err
@@ -242,14 +242,14 @@ GROUP BY 1, 2, 3`, nameExpr, colorExpr, join)
 	type acc struct {
 		color string
 		total int64
-		cats  []NamedAmount
+		segs  []NamedAmount
 	}
 	order := []string{}
 	byGroup := map[string]*acc{}
 	for rows.Next() {
-		var name, color, cat string
+		var name, color, seg string
 		var amt int64
-		if err := rows.Scan(&name, &color, &cat, &amt); err != nil {
+		if err := rows.Scan(&name, &color, &seg, &amt); err != nil {
 			return nil, err
 		}
 		a := byGroup[name]
@@ -262,7 +262,7 @@ GROUP BY 1, 2, 3`, nameExpr, colorExpr, join)
 			a.color = color
 		}
 		a.total += amt
-		a.cats = append(a.cats, NamedAmount{Name: cat, Kind: "expense", Amount: amt})
+		a.segs = append(a.segs, NamedAmount{Name: seg, Kind: "expense", Amount: amt})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -271,13 +271,13 @@ GROUP BY 1, 2, 3`, nameExpr, colorExpr, join)
 	out := make([]CardCategory, 0, len(byGroup))
 	for _, name := range order {
 		a := byGroup[name]
-		sort.Slice(a.cats, func(i, j int) bool {
-			if a.cats[i].Amount != a.cats[j].Amount {
-				return a.cats[i].Amount > a.cats[j].Amount
+		sort.Slice(a.segs, func(i, j int) bool {
+			if a.segs[i].Amount != a.segs[j].Amount {
+				return a.segs[i].Amount > a.segs[j].Amount
 			}
-			return a.cats[i].Name < a.cats[j].Name
+			return a.segs[i].Name < a.segs[j].Name
 		})
-		out = append(out, CardCategory{Card: name, Color: a.color, Total: a.total, Categories: a.cats})
+		out = append(out, CardCategory{Card: name, Color: a.color, Total: a.total, Categories: a.segs})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Total != out[j].Total {
@@ -288,18 +288,28 @@ GROUP BY 1, 2, 3`, nameExpr, colorExpr, join)
 	return out, nil
 }
 
+const (
+	joinCategory = "LEFT JOIN categories c ON c.id = t.category_id"
+	joinMember   = "LEFT JOIN members m ON m.id = t.member_id"
+	joinPayment  = "LEFT JOIN payment_methods pm ON pm.id = t.payment_method_id"
+	nameCategory = "COALESCE(c.name,'(미분류)')"
+	nameMember   = "COALESCE(m.name,'(미지정)')"
+	namePayment  = "COALESCE(pm.name,'(미지정)')"
+)
+
 // CardCategoryBreakdown 은 해당 월의 지출을 결제수단별 카테고리 구성으로 집계한다.
 func (s *Store) CardCategoryBreakdown(year, month int) ([]CardCategory, error) {
-	return s.groupCategoryBreakdown(year, month,
-		"COALESCE(pm.name,'(미지정)')", "COALESCE(pm.color,'')",
-		"LEFT JOIN payment_methods pm ON pm.id = t.payment_method_id")
+	return s.groupBreakdown(year, month, namePayment, "COALESCE(pm.color,'')", joinPayment, nameCategory, joinCategory)
 }
 
 // MemberCategoryBreakdown 은 해당 월의 지출을 귀속자별 카테고리 구성으로 집계한다.
 func (s *Store) MemberCategoryBreakdown(year, month int) ([]CardCategory, error) {
-	return s.groupCategoryBreakdown(year, month,
-		"COALESCE(m.name,'(미지정)')", "''",
-		"LEFT JOIN members m ON m.id = t.member_id")
+	return s.groupBreakdown(year, month, nameMember, "''", joinMember, nameCategory, joinCategory)
+}
+
+// CategoryMemberBreakdown 은 해당 월의 지출을 카테고리별 귀속자 구성으로 집계한다.
+func (s *Store) CategoryMemberBreakdown(year, month int) ([]CardCategory, error) {
+	return s.groupBreakdown(year, month, nameCategory, "''", joinCategory, nameMember, joinMember)
 }
 
 // CardPace 는 카드 한 장의 현재 실적기간 누적 사용 추이(목표 대비 페이스).
@@ -525,7 +535,8 @@ type CategoryTrend struct {
 }
 
 // seriesTrend 는 최근 n개월의 한 차원(nameExpr/join)별 월별 지출 추이를 돌려준다.
-func (s *Store) seriesTrend(year, month, n int, nameExpr, join string) (CategoryTrend, error) {
+// topN>0 이면 상위 topN + "기타"로 묶고, 0이면 전체 시리즈를 총액순으로 돌려준다.
+func (s *Store) seriesTrend(year, month, n int, nameExpr, join string, topN int) (CategoryTrend, error) {
 	if n < 1 {
 		n = 6
 	}
@@ -587,20 +598,27 @@ GROUP BY 1, 2`, nameExpr, join)
 		}
 		return series[i].Name < series[j].Name
 	})
-	out.Series = topNSeries(series, 6, n)
+	if topN > 0 {
+		out.Series = topNSeries(series, topN, n)
+	} else {
+		out.Series = series
+	}
 	return out, nil
 }
 
 // CategoryTrend 는 상위 6개 카테고리 + 기타의 최근 n개월 월별 지출 추이.
 func (s *Store) CategoryTrend(year, month, n int) (CategoryTrend, error) {
-	return s.seriesTrend(year, month, n,
-		"COALESCE(c.name,'(미분류)')", "LEFT JOIN categories c ON c.id = t.category_id")
+	return s.seriesTrend(year, month, n, nameCategory, joinCategory, 6)
 }
 
 // MemberTrend 는 귀속자별 최근 n개월 월별 지출 추이.
 func (s *Store) MemberTrend(year, month, n int) (CategoryTrend, error) {
-	return s.seriesTrend(year, month, n,
-		"COALESCE(m.name,'(미지정)')", "LEFT JOIN members m ON m.id = t.member_id")
+	return s.seriesTrend(year, month, n, nameMember, joinMember, 6)
+}
+
+// CategoryMatrix 는 히트맵용: 전체 카테고리(묶음 없음)의 최근 n개월 월별 지출 추이.
+func (s *Store) CategoryMatrix(year, month, n int) (CategoryTrend, error) {
+	return s.seriesTrend(year, month, n, nameCategory, joinCategory, 0)
 }
 
 // MemberStat 은 귀속자 한 명의 해당 월 지출 요약.
@@ -707,4 +725,201 @@ GROUP BY 1, 2`, prefix)
 		out = append(out, st)
 	}
 	return out, nil
+}
+
+// scanNamed 는 (이름, 금액) 두 컬럼을 반환하는 쿼리 결과를 NamedAmount 목록으로 읽는다.
+func (s *Store) scanNamed(query string, args ...interface{}) ([]NamedAmount, error) {
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []NamedAmount{}
+	for rows.Next() {
+		na := NamedAmount{Kind: "expense"}
+		if err := rows.Scan(&na.Name, &na.Amount); err != nil {
+			return nil, err
+		}
+		out = append(out, na)
+	}
+	return out, rows.Err()
+}
+
+// CategoryDetail 은 카테고리 한 개의 상세 분석(드릴다운).
+type CategoryDetail struct {
+	CategoryID   int64         `json:"categoryId"`
+	Category     string        `json:"category"`
+	Label        string        `json:"label"`     // 기간 표시("8월", "최근 30일", "7월")
+	PrevLabel    string        `json:"prevLabel"` // 비교 기간 표시("전월", "이전 30일")
+	Total        int64         `json:"total"`     // 기간 지출
+	Prev         int64         `json:"prev"`      // 비교 기간 지출
+	Share        int           `json:"share"`     // 기간 총지출 대비 비중(%)
+	Budget       int64         `json:"budget"`    // 유효 예산(월 기간만, 없으면 0)
+	BudgetPct    int           `json:"budgetPct"` // 예산 사용률(%)
+	Over         bool          `json:"over"`      // 예산 초과
+	ByMember     []NamedAmount `json:"byMember"`
+	ByPayment    []NamedAmount `json:"byPayment"`
+	TopMerchants []NamedAmount `json:"topMerchants"`
+	Months       []string      `json:"months"` // 추이 라벨(오래된→최신)
+	Trend        []int64       `json:"trend"`  // 카테고리 월별 지출(length=len(Months))
+}
+
+func firstOfMonth(y, m int) time.Time { return time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC) }
+func lastOfMonth(y, m int) time.Time  { return firstOfMonth(y, m).AddDate(0, 1, -1) }
+func prevMonthOf(y, m int) (int, int) {
+	if m == 1 {
+		return y - 1, 12
+	}
+	return y, m - 1
+}
+
+// CategoryDetail 은 카테고리 하나를 골라 기간(period: month|prev|recent30) 기준으로
+// 총액·비중·이전 기간/예산 대비, 귀속자·결제수단·가맹점 분해, 최근 n개월 추이를 돌려준다.
+// 예산은 달력상 한 달과 일치하는 기간(month/prev)에만 적용한다. n<1 이면 6.
+func (s *Store) CategoryDetail(year, month int, categoryID int64, period string, today time.Time, n int) (CategoryDetail, error) {
+	if n < 1 {
+		n = 6
+	}
+	d := CategoryDetail{CategoryID: categoryID, ByMember: []NamedAmount{}, ByPayment: []NamedAmount{}, TopMerchants: []NamedAmount{}}
+
+	// 기간 범위 결정
+	var from, to, prevFrom, prevTo time.Time
+	var budgetMonth string // "YYYY-MM" (예산 적용 달) 또는 "" (미적용)
+	var anchorY, anchorM int
+	switch period {
+	case "recent30":
+		to = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+		from = to.AddDate(0, 0, -29)
+		prevTo = from.AddDate(0, 0, -1)
+		prevFrom = prevTo.AddDate(0, 0, -29)
+		d.Label, d.PrevLabel = "최근 30일", "이전 30일"
+		anchorY, anchorM = to.Year(), int(to.Month())
+	case "prev":
+		py, pm := prevMonthOf(year, month)
+		from, to = firstOfMonth(py, pm), lastOfMonth(py, pm)
+		ppy, ppm := prevMonthOf(py, pm)
+		prevFrom, prevTo = firstOfMonth(ppy, ppm), lastOfMonth(ppy, ppm)
+		d.Label, d.PrevLabel = fmt.Sprintf("%d월", pm), "전월"
+		budgetMonth = fmt.Sprintf("%04d-%02d", py, pm)
+		anchorY, anchorM = py, pm
+	default: // month
+		from, to = firstOfMonth(year, month), lastOfMonth(year, month)
+		py, pm := prevMonthOf(year, month)
+		prevFrom, prevTo = firstOfMonth(py, pm), lastOfMonth(py, pm)
+		d.Label, d.PrevLabel = fmt.Sprintf("%d월", month), "전월"
+		budgetMonth = fmt.Sprintf("%04d-%02d", year, month)
+		anchorY, anchorM = year, month
+	}
+	fromS, toS := from.Format("2006-01-02"), to.Format("2006-01-02")
+	pFromS, pToS := prevFrom.Format("2006-01-02"), prevTo.Format("2006-01-02")
+
+	if err := s.queryRow(`SELECT name FROM categories WHERE id=?`, categoryID).Scan(&d.Category); err != nil {
+		return d, err
+	}
+
+	// 기간 / 이전 기간 합계
+	if err := s.queryRow(`
+SELECT COALESCE(SUM(amount),0) FROM transactions
+WHERE category_id=? AND direction='expense' AND date >= ? AND date <= ?`,
+		categoryID, fromS, toS).Scan(&d.Total); err != nil {
+		return d, err
+	}
+	if err := s.queryRow(`
+SELECT COALESCE(SUM(amount),0) FROM transactions
+WHERE category_id=? AND direction='expense' AND date >= ? AND date <= ?`,
+		categoryID, pFromS, pToS).Scan(&d.Prev); err != nil {
+		return d, err
+	}
+
+	// 기간 총 지출 대비 비중
+	var grand int64
+	if err := s.queryRow(`
+SELECT COALESCE(SUM(amount),0) FROM transactions
+WHERE direction='expense' AND date >= ? AND date <= ?`, fromS, toS).Scan(&grand); err != nil {
+		return d, err
+	}
+	if grand > 0 {
+		d.Share = int(d.Total * 100 / grand)
+	}
+
+	// 유효 예산(월 기간만): 월 전용 우선, 없으면 매월 기본
+	if budgetMonth != "" {
+		rows, err := s.query(`SELECT ym, amount FROM budgets WHERE category_id=? AND (ym=? OR ym=?)`,
+			categoryID, budgetDefault, budgetMonth)
+		if err != nil {
+			return d, err
+		}
+		for rows.Next() {
+			var ym string
+			var amt int64
+			if err := rows.Scan(&ym, &amt); err != nil {
+				rows.Close()
+				return d, err
+			}
+			if ym == budgetMonth || d.Budget == 0 {
+				d.Budget = amt
+			}
+		}
+		rows.Close()
+		if d.Budget > 0 {
+			d.BudgetPct = int(d.Total * 100 / d.Budget)
+			d.Over = d.Total > d.Budget
+		}
+	}
+
+	// 귀속자별 / 결제수단별 / 상위 가맹점 (기간 범위)
+	var err error
+	if d.ByMember, err = s.scanNamed(`
+SELECT `+nameMember+`, SUM(t.amount)
+FROM transactions t `+joinMember+`
+WHERE t.category_id=? AND t.direction='expense' AND t.date >= ? AND t.date <= ?
+GROUP BY 1 ORDER BY SUM(t.amount) DESC`, categoryID, fromS, toS); err != nil {
+		return d, err
+	}
+	if d.ByPayment, err = s.scanNamed(`
+SELECT `+namePayment+`, SUM(t.amount)
+FROM transactions t `+joinPayment+`
+WHERE t.category_id=? AND t.direction='expense' AND t.date >= ? AND t.date <= ?
+GROUP BY 1 ORDER BY SUM(t.amount) DESC`, categoryID, fromS, toS); err != nil {
+		return d, err
+	}
+	if d.TopMerchants, err = s.scanNamed(`
+SELECT CASE WHEN t.merchant='' THEN '(내용 없음)' ELSE t.merchant END, SUM(t.amount)
+FROM transactions t
+WHERE t.category_id=? AND t.direction='expense' AND t.date >= ? AND t.date <= ?
+GROUP BY 1 ORDER BY SUM(t.amount) DESC LIMIT 10`, categoryID, fromS, toS); err != nil {
+		return d, err
+	}
+
+	// 최근 n개월 추이 (기간 종료가 속한 달을 기준으로)
+	months := make([]string, n)
+	idx := map[string]int{}
+	tt := firstOfMonth(anchorY, anchorM)
+	for i := n - 1; i >= 0; i-- {
+		key := tt.Format("2006-01")
+		months[i] = key
+		idx[key] = i
+		tt = tt.AddDate(0, -1, 0)
+	}
+	d.Months = months
+	d.Trend = make([]int64, n)
+	trows, err := s.query(`
+SELECT substr(date,1,7), SUM(amount) FROM transactions
+WHERE category_id=? AND direction='expense' AND substr(date,1,7) >= ? AND substr(date,1,7) <= ?
+GROUP BY 1`, categoryID, months[0], months[n-1])
+	if err != nil {
+		return d, err
+	}
+	defer trows.Close()
+	for trows.Next() {
+		var ym string
+		var amt int64
+		if err := trows.Scan(&ym, &amt); err != nil {
+			return d, err
+		}
+		if i, ok := idx[ym]; ok {
+			d.Trend[i] = amt
+		}
+	}
+	return d, trows.Err()
 }

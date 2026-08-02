@@ -118,7 +118,7 @@ export default function App() {
           />
         )}
         {tab === "cards" && <CardsPage reloadRefs={loadRefs} />}
-        {tab === "stats" && <StatsPage month={month} setMonth={setMonth} />}
+        {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "import" && <ImportPage refs={refs} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}
       </main>

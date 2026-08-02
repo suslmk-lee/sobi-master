@@ -580,6 +580,30 @@ func (a *App) GetMemberStats(year, month int) ([]store.MemberStat, error) {
 	return a.st.MemberStats(year, month)
 }
 
+// GetCategoryMemberBreakdown 은 해당 월의 카테고리별 귀속자 지출 구성.
+func (a *App) GetCategoryMemberBreakdown(year, month int) ([]store.CardCategory, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.CategoryMemberBreakdown(year, month)
+}
+
+// GetCategoryMatrix 는 카테고리×월 히트맵용: 전체 카테고리의 최근 n개월 월별 지출.
+func (a *App) GetCategoryMatrix(year, month, n int) (store.CategoryTrend, error) {
+	if err := a.ensure(); err != nil {
+		return store.CategoryTrend{}, err
+	}
+	return a.st.CategoryMatrix(year, month, n)
+}
+
+// GetCategoryDetail 은 카테고리 한 개의 상세 분석. period 는 month|prev|recent30.
+func (a *App) GetCategoryDetail(year, month int, categoryID int64, period string) (store.CategoryDetail, error) {
+	if err := a.ensure(); err != nil {
+		return store.CategoryDetail{}, err
+	}
+	return a.st.CategoryDetail(year, month, categoryID, period, time.Now(), 6)
+}
+
 // GetYearSummary 는 연간 보기(12개월 추이 + 전년 대비 + 카테고리).
 func (a *App) GetYearSummary(year int) (store.YearSummary, error) {
 	if err := a.ensure(); err != nil {

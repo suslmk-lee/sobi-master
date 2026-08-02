@@ -388,3 +388,53 @@ export function PaceSparkline({ pace }: { pace: store.CardPace }) {
     </svg>
   );
 }
+
+// 카테고리×월 히트맵. 각 행=카테고리, 열=월, 셀 색 진하기=금액(행 기준 상대). 셀에 마우스 올리면 툴팁.
+export function Heatmap({
+  rows,
+  months,
+}: {
+  rows: store.Series[];
+  months: string[];
+}) {
+  if (rows.length === 0) return <p className="muted">데이터 없음</p>;
+  const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
+  // 전체 최댓값 기준으로 진하기를 정한다(카테고리 간 크기 비교가 되도록)
+  const max = Math.max(1, ...rows.flatMap((r) => r.values));
+
+  return (
+    <div className="heatmap-wrap">
+      <table className="heatmap">
+        <thead>
+          <tr>
+            <th className="hm-corner"></th>
+            {months.map((m) => (
+              <th key={m}>{monthLabel(m)}</th>
+            ))}
+            <th className="hm-total">합계</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.name}>
+              <th className="hm-name" title={r.name}>{r.name}</th>
+              {r.values.map((v, i) => {
+                const a = v === 0 ? 0 : 0.12 + 0.78 * (v / max);
+                return (
+                  <td
+                    key={i}
+                    style={{ background: `rgba(91,130,240,${a})` }}
+                    title={`${r.name} · ${monthLabel(months[i])} · ${won(v)}`}
+                  >
+                    {v > 0 ? compact(v) : ""}
+                  </td>
+                );
+              })}
+              <td className="hm-total">{compact(r.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

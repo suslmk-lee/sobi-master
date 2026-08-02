@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   GetCardCategoryBreakdown,
   GetCardPaces,
+  GetCategoryDetail,
+  GetCategoryMatrix,
+  GetCategoryMemberBreakdown,
   GetCategoryTrend,
   GetCumulativeCompare,
   GetDailyByDimension,
@@ -13,9 +16,9 @@ import {
   GetYearSummary,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
-import { won } from "../lib";
+import { Refs, won } from "../lib";
 import Bars from "../Bars";
-import { LineChart, LineSeries, PaceSparkline, StackedBars, TrendChart } from "../charts";
+import { Heatmap, LineChart, LineSeries, PaceSparkline, StackedBars, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
 import { Sk } from "../Skeleton";
 
@@ -73,9 +76,11 @@ function Seg<T extends string>({
 }
 
 export default function StatsPage({
+  refs,
   month,
   setMonth,
 }: {
+  refs: Refs;
   month: string;
   setMonth: (m: string) => void;
 }) {
@@ -93,6 +98,14 @@ export default function StatsPage({
   const [memberCat, setMemberCat] = useState<store.CardCategory[]>([]);
   const [memberTrend, setMemberTrend] = useState<store.CategoryTrend | null>(null);
   const [memberStats, setMemberStats] = useState<store.MemberStat[]>([]);
+  const [catMember, setCatMember] = useState<store.CardCategory[]>([]);
+  const [matrix, setMatrix] = useState<store.CategoryTrend | null>(null);
+
+  // 카테고리 상세 드릴다운 (선택 카테고리·기간에 따라 별도 조회)
+  const expenseCats = refs.categories.filter((c) => c.kind === "expense");
+  const [catId, setCatId] = useState<number>(0);
+  const [catPeriod, setCatPeriod] = useState<"month" | "recent30" | "prev">("month");
+  const [detail, setDetail] = useState<store.CategoryDetail | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -101,7 +114,7 @@ export default function StatsPage({
     setLoading(true);
     try {
       const [y, m] = month.split("-").map(Number);
-      const [pmD, memD, catD, cmp, wd, ct, cc, pc, rec, yr, mcat, mtr, mst] =
+      const [pmD, memD, catD, cmp, wd, ct, cc, pc, rec, yr, mcat, mtr, mst, cmem, mtx] =
         await Promise.all([
           GetDailyByDimension(y, m, "paymentMethod"),
           GetDailyByDimension(y, m, "member"),
@@ -116,6 +129,8 @@ export default function StatsPage({
           GetMemberCategoryBreakdown(y, m),
           GetMemberTrend(y, m, 6),
           GetMemberStats(y, m),
+          GetCategoryMemberBreakdown(y, m),
+          GetCategoryMatrix(y, m, 6),
         ]);
       setDimData({ paymentMethod: pmD, member: memD, category: catD });
       setCompare(cmp);
@@ -128,6 +143,8 @@ export default function StatsPage({
       setMemberCat(mcat);
       setMemberTrend(mtr);
       setMemberStats(mst);
+      setCatMember(cmem);
+      setMatrix(mtx);
       setErr("");
     } catch (e: any) {
       setErr(String(e));
@@ -139,6 +156,20 @@ export default function StatsPage({
   useEffect(() => {
     load();
   }, [load]);
+
+  // 카테고리 미선택 시 첫 지출 카테고리를 기본 선택
+  useEffect(() => {
+    if (catId === 0 && expenseCats.length > 0) setCatId(expenseCats[0].id);
+  }, [catId, expenseCats]);
+
+  // 선택 카테고리 상세 조회 (월/카테고리/기간 변경 시)
+  useEffect(() => {
+    if (catId === 0) return;
+    const [y, m] = month.split("-").map(Number);
+    GetCategoryDetail(y, m, catId, catPeriod)
+      .then(setDetail)
+      .catch(() => setDetail(null));
+  }, [month, catId, catPeriod]);
 
   if (err)
     return (
@@ -184,6 +215,14 @@ export default function StatsPage({
     values: s.values,
   }));
   const memberLabels = (memberTrend?.months ?? []).map(monthLabel);
+
+  // 카테고리 상세: 월별 추이 단일 시리즈
+  const detailTrend: LineSeries[] = detail
+    ? [{ name: detail.category, color: "#5b82f0", values: detail.trend }]
+    : [];
+  const detailLabels = (detail?.months ?? []).map(monthLabel);
+  const detailPrevDelta =
+    detail && detail.prev ? Math.round(((detail.total - detail.prev) / detail.prev) * 100) : 0;
 
   return (
     <div>
@@ -265,6 +304,88 @@ export default function StatsPage({
         ) : (
           <LineChart series={catSeries} xLabels={catLabels} />
         )}
+      </div>
+
+      <div className="card">
+        <div className="stats-head">
+          <h3>카테고리 상세 분석</h3>
+          <div className="seg-row">
+            <Seg
+              value={catPeriod}
+              options={[
+                { key: "month", label: "이번 달" },
+                { key: "recent30", label: "최근 30일" },
+                { key: "prev", label: "전월" },
+              ]}
+              onChange={setCatPeriod}
+            />
+            <select value={catId} onChange={(e) => setCatId(Number(e.target.value))}>
+              {expenseCats.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {!detail ? (
+          <Sk h={200} r={12} />
+        ) : detail.total === 0 && detail.trend.every((v) => v === 0) ? (
+          <p className="muted">이 카테고리의 지출 내역이 없습니다.</p>
+        ) : (
+          <>
+            <div className="cat-summary">
+              <div className="cat-metric">
+                <span className="muted small">{detail.label} 지출</span>
+                <strong className="expense">{won(detail.total)}</strong>
+                <span className="muted small">전체 지출의 {detail.share}%</span>
+              </div>
+              <div className="cat-metric">
+                <span className="muted small">{detail.prevLabel} 대비</span>
+                {detail.prev > 0 ? (
+                  <span className={`delta ${detailPrevDelta > 0 ? "bad" : detailPrevDelta < 0 ? "good" : "flat"}`}>
+                    {detailPrevDelta > 0 ? "▲" : detailPrevDelta < 0 ? "▼" : ""} {Math.abs(detailPrevDelta)}%
+                  </span>
+                ) : (
+                  <span className="delta flat">{detail.prevLabel} 데이터 없음</span>
+                )}
+                <span className="muted small">{detail.prevLabel} {won(detail.prev)}</span>
+              </div>
+              <div className="cat-metric">
+                <span className="muted small">예산</span>
+                {detail.budget > 0 ? (
+                  <>
+                    <strong className={detail.over ? "expense" : ""}>{detail.budgetPct}%</strong>
+                    <span className="muted small">{won(detail.total)} / {won(detail.budget)}</span>
+                  </>
+                ) : (
+                  <span className="muted small">{catPeriod === "recent30" ? "기간 예산 없음" : "미설정"}</span>
+                )}
+              </div>
+            </div>
+            <div className="dash-grid">
+              <Bars title="누가 (귀속자별)" rows={detail.byMember} />
+              <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
+              <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
+              <div className="card">
+                <h3>월별 추이</h3>
+                <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>카테고리 × 월 히트맵</h3>
+        {loading || !matrix ? (
+          <Sk h={220} r={12} />
+        ) : (
+          <Heatmap rows={matrix.series} months={matrix.months} />
+        )}
+      </div>
+
+      <div className="card">
+        <h3>카테고리별 귀속자 구성 ({Number(month.slice(5))}월)</h3>
+        {loading ? <Sk h={120} r={12} /> : <StackedBars data={catMember} />}
       </div>
 
       <div className="card">

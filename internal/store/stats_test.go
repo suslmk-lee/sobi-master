@@ -296,4 +296,88 @@ func TestStatsQueries(t *testing.T) {
 	if sg[0].CategoryID == nil || *sg[0].CategoryID != food || sg[0].MemberID == nil || *sg[0].MemberID != dad {
 		t.Errorf("자동완성 최근값(식비/아빠) 오류: %+v", sg[0])
 	}
+
+	// 11) 컬럼 정렬: 금액 오름차순이면 최소 금액(30000=5월 건)이 맨 앞
+	byAmt, err := st.ListTransactions(TxFilter{Sort: "amount_asc"})
+	if err != nil {
+		t.Fatalf("ListTransactions(amount_asc): %v", err)
+	}
+	if len(byAmt) < 2 || byAmt[0].Amount > byAmt[1].Amount {
+		t.Errorf("금액 오름차순 정렬 실패: %+v", byAmt)
+	}
+	if byAmt[0].Amount != 30000 {
+		t.Errorf("금액 오름차순 첫 건=%d, want 30000", byAmt[0].Amount)
+	}
+	// 카테고리 정렬도 SQL 오류 없이 동작해야 한다
+	if _, err := st.ListTransactions(TxFilter{Sort: "category_desc"}); err != nil {
+		t.Fatalf("ListTransactions(category_desc): %v", err)
+	}
+
+	// 12) 카테고리 상세 드릴다운 (식비: 6월 120000, 5월 30000, 전체의 54%)
+	cd, err := st.CategoryDetail(y, m, food, "month", date("2026-06-15"), 6)
+	if err != nil {
+		t.Fatalf("CategoryDetail: %v", err)
+	}
+	if cd.Category != "식비" || cd.Total != 120000 || cd.Prev != 30000 {
+		t.Errorf("카테고리 상세 오류: %+v", cd)
+	}
+	if cd.Label != "6월" || cd.PrevLabel != "전월" {
+		t.Errorf("기간 라벨 오류: %q / %q", cd.Label, cd.PrevLabel)
+	}
+	if cd.Share != 54 { // 120000 / 220000 = 54%
+		t.Errorf("카테고리 비중=%d, want 54", cd.Share)
+	}
+
+	// 12-b) 전월 기간: 5월(식비 30000), 예산 없으니 0
+	cdPrev, err := st.CategoryDetail(y, m, food, "prev", date("2026-06-15"), 6)
+	if err != nil {
+		t.Fatalf("CategoryDetail(prev): %v", err)
+	}
+	if cdPrev.Total != 30000 || cdPrev.Label != "5월" {
+		t.Errorf("전월 기간 오류: total=%d label=%q", cdPrev.Total, cdPrev.Label)
+	}
+
+	// 12-c) 최근 30일(오늘=6/15 → 5/17~6/15): 식비 6/1(50000)+6/10(70000)=120000, 5/1은 범위 밖. 예산 미적용
+	cd30, err := st.CategoryDetail(y, m, food, "recent30", date("2026-06-15"), 6)
+	if err != nil {
+		t.Fatalf("CategoryDetail(recent30): %v", err)
+	}
+	if cd30.Label != "최근 30일" || cd30.Total != 120000 || cd30.Budget != 0 {
+		t.Errorf("최근 30일 오류: label=%q total=%d budget=%d", cd30.Label, cd30.Total, cd30.Budget)
+	}
+	if len(cd.ByMember) == 0 || cd.ByMember[0].Name != "아빠" {
+		t.Errorf("카테고리 귀속자 분해 오류: %+v", cd.ByMember)
+	}
+	if cd.Trend[5] != 120000 || cd.Trend[4] != 30000 {
+		t.Errorf("카테고리 추이 오류: 6월=%d 5월=%d", cd.Trend[5], cd.Trend[4])
+	}
+	// 예산(앞에서 식비 6월 오버라이드 200000 설정됨) → 120000/200000 = 60%, 미초과
+	if cd.Budget != 200000 || cd.BudgetPct != 60 || cd.Over {
+		t.Errorf("카테고리 예산 오류: budget=%d pct=%d over=%v", cd.Budget, cd.BudgetPct, cd.Over)
+	}
+
+	// 13) 카테고리별 귀속자 구성 (식비 그룹 안에 아빠 120000)
+	cm, err := st.CategoryMemberBreakdown(y, m)
+	if err != nil {
+		t.Fatalf("CategoryMemberBreakdown: %v", err)
+	}
+	var foodGroup *CardCategory
+	for i := range cm {
+		if cm[i].Card == "식비" {
+			foodGroup = &cm[i]
+		}
+	}
+	if foodGroup == nil || foodGroup.Total != 120000 || foodGroup.Categories[0].Name != "아빠" {
+		t.Errorf("카테고리별 귀속자 구성 오류: %+v", cm)
+	}
+
+	// 14) 히트맵 매트릭스: 전체 카테고리 반환(묶음 없음), 식비 6월 120000
+	mtx, err := st.CategoryMatrix(y, m, 6)
+	if err != nil {
+		t.Fatalf("CategoryMatrix: %v", err)
+	}
+	fs := findSeries(mtx.Series, "식비")
+	if fs == nil || fs.Values[5] != 120000 {
+		t.Errorf("히트맵 매트릭스 오류: %+v", mtx.Series)
+	}
 }

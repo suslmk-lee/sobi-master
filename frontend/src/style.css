@@ -457,6 +457,24 @@ button.ghost:hover {
   white-space: nowrap;
 }
 
+.tx-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tx-table th.sortable:hover {
+  color: var(--accent);
+}
+
+.tx-table th.sorted {
+  color: var(--accent);
+}
+
+.sort-arrow {
+  font-size: 10px;
+}
+
 /* ---- 수정 모달 ---- */
 
 .modal-overlay {
@@ -1082,6 +1100,72 @@ label.field input {
 .member-total {
   font-size: 17px;
   font-weight: 700;
+}
+
+/* ---- 카테고리 상세 분석 ---- */
+
+.cat-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cat-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--minicard-bg);
+  border: 1px solid var(--line);
+}
+
+.cat-metric strong {
+  font-size: 18px;
+}
+
+/* ---- 카테고리 × 월 히트맵 ---- */
+
+.heatmap-wrap {
+  overflow-x: auto;
+}
+
+.heatmap {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 100%;
+}
+
+.heatmap th,
+.heatmap td {
+  padding: 5px 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.heatmap thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.heatmap .hm-name {
+  text-align: left;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.heatmap td {
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.heatmap .hm-total {
+  font-weight: 700;
+  color: var(--muted);
 }
 
 /* ---- 내용(가맹점) 자동완성 ---- */
