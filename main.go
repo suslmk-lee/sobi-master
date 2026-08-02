@@ -19,7 +19,7 @@ func main() {
 	err := wails.Run(&options.App{
 		Title:  "소비마스터 — 우리집 가계부",
 		Width:  1180,
-		Height: 800,
+		Height: 1360, // 800 × 1.7
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
