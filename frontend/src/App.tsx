@@ -49,8 +49,19 @@ export default function App() {
         ListCategories(),
         ListPaymentMethods(),
       ]);
-      // 카테고리는 글자순(가나다)으로 정렬해 모든 드롭다운/목록에서 동일하게 보이게 한다
-      categories.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      // 카테고리는 계층을 유지한 채 글자순(가나다)으로 정렬한다.
+      // 주 그룹끼리 가나다 → 그룹 안에서는 주가 먼저, 그 뒤에 부가 가나다.
+      // (이름만으로 정렬하면 부가 부모와 떨어져 엉뚱한 주 아래 있는 것처럼 보인다)
+      categories.sort((a, b) => {
+        const ga = a.parent || a.name;
+        const gb = b.parent || b.name;
+        const byGroup = ga.localeCompare(gb, "ko");
+        if (byGroup !== 0) return byGroup;
+        const sa = a.parentId ? 1 : 0;
+        const sb = b.parentId ? 1 : 0;
+        if (sa !== sb) return sa - sb;
+        return a.name.localeCompare(b.name, "ko");
+      });
       setRefs({ members, categories, paymentMethods });
       setDbError("");
     } catch (e: any) {

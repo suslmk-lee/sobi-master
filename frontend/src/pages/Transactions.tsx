@@ -13,7 +13,15 @@ import {
   UndoDelete,
 } from "../../wailsjs/go/main/App";
 import { store } from "../../wailsjs/go/models";
-import { DIRECTION_LABEL, formatAmount, parseAmount, Refs, today, won } from "../lib";
+import {
+  categoryOptions,
+  DIRECTION_LABEL,
+  formatAmount,
+  parseAmount,
+  Refs,
+  today,
+  won,
+} from "../lib";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
 
@@ -123,7 +131,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
     }
   };
 
-  const cats = refs.categories.filter((c) => c.kind === f.direction);
+  const cats = categoryOptions(refs.categories, f.direction);
 
   return (
     <form className="card manual-form" onSubmit={submit}>
@@ -187,7 +195,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         >
           <option value="">카테고리 선택</option>
           {cats.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.label}</option>
           ))}
         </select>
         <select
@@ -269,7 +277,7 @@ function EditModal({
     }
   };
 
-  const cats = refs.categories.filter((c) => c.kind === f.direction);
+  const cats = categoryOptions(refs.categories, f.direction);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -332,7 +340,7 @@ function EditModal({
             >
               <option value="">미지정</option>
               {cats.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{c.label}</option>
               ))}
             </select>
           </label>
@@ -554,9 +562,10 @@ export default function Transactions({
           <option value="transfer">이체</option>
         </select>
         <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          {/* 주를 고르면 하위 부 거래까지 함께 조회된다 */}
           <option value="">카테고리 전체</option>
-          {refs.categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+          {categoryOptions(refs.categories).map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
           ))}
         </select>
         <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
@@ -620,8 +629,8 @@ export default function Transactions({
           </select>
           <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
             <option value="">카테고리 변경</option>
-            {refs.categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {categoryOptions(refs.categories).map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </select>
           <label className="check small">

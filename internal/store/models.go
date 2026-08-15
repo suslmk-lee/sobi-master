@@ -7,10 +7,16 @@ type Member struct {
 }
 
 // Category 의 Kind 는 income(수입) | expense(지출) | transfer(이체) 중 하나.
+// 주/부 2단 계층: ParentID 가 nil 이면 주(대분류), 값이 있으면 그 주에 속한 부(소분류).
+// 부의 Kind 는 주를 따른다.
 type Category struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	ParentID *int64 `json:"parentId"`
+	// 조회 편의용
+	Parent   string `json:"parent"`   // 주 카테고리 이름 (주 자신이면 "")
+	FullName string `json:"fullName"` // "식비 > 배달" 또는 "통신비"
 }
 
 // PaymentMethod 의 Type 은 card | cash | bank 중 하나.

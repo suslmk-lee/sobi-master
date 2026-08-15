@@ -13,9 +13,10 @@ CREATE TABLE members (
 	name TEXT NOT NULL
 );
 CREATE TABLE categories (
-	id   INTEGER PRIMARY KEY,
-	name TEXT NOT NULL,
-	kind TEXT NOT NULL DEFAULT 'expense'
+	id        INTEGER PRIMARY KEY,
+	name      TEXT NOT NULL,
+	kind      TEXT NOT NULL DEFAULT 'expense',
+	parent_id INTEGER
 );
 CREATE TABLE payment_methods (
 	id              INTEGER PRIMARY KEY,
@@ -119,13 +120,14 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name}, e
 			}),
 		copy("categories",
-			`SELECT id, name, kind FROM categories`,
-			`INSERT INTO categories(id, name, kind) VALUES(?,?,?)`,
+			`SELECT id, name, kind, parent_id FROM categories`,
+			`INSERT INTO categories(id, name, kind, parent_id) VALUES(?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id int64
 				var name, kind string
-				e := r.Scan(&id, &name, &kind)
-				return []interface{}{id, name, kind}, e
+				var parent sql.NullInt64
+				e := r.Scan(&id, &name, &kind, &parent)
+				return []interface{}{id, name, kind, nullable(parent)}, e
 			}),
 		copy("payment_methods",
 			`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color FROM payment_methods`,

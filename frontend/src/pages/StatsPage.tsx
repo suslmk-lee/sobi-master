@@ -16,7 +16,7 @@ import {
   GetYearSummary,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
-import { Refs, won } from "../lib";
+import { categoryOptions, Refs, won } from "../lib";
 import Bars from "../Bars";
 import { Heatmap, LineChart, LineSeries, PaceSparkline, StackedBars, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
@@ -101,6 +101,9 @@ export default function StatsPage({
   const [catMember, setCatMember] = useState<store.CardCategory[]>([]);
   const [matrix, setMatrix] = useState<store.CategoryTrend | null>(null);
 
+  // 카테고리 집계 기준: 주(부를 상위로 합산) / 부(말단 그대로)
+  const [catLevel, setCatLevel] = useState<"main" | "sub">("main");
+
   // 카테고리 상세 드릴다운 (선택 카테고리·기간에 따라 별도 조회)
   const expenseCats = refs.categories.filter((c) => c.kind === "expense");
   const [catId, setCatId] = useState<number>(0);
@@ -118,10 +121,10 @@ export default function StatsPage({
         await Promise.all([
           GetDailyByDimension(y, m, "paymentMethod"),
           GetDailyByDimension(y, m, "member"),
-          GetDailyByDimension(y, m, "category"),
+          GetDailyByDimension(y, m, catLevel === "sub" ? "categorySub" : "category"),
           GetCumulativeCompare(y, m),
           GetWeekdayAverages(y, m),
-          GetCategoryTrend(y, m, 6),
+          GetCategoryTrend(y, m, 6, catLevel),
           GetCardCategoryBreakdown(y, m),
           GetCardPaces(),
           GetRecurringStatus(y, m),
@@ -129,8 +132,8 @@ export default function StatsPage({
           GetMemberCategoryBreakdown(y, m),
           GetMemberTrend(y, m, 6),
           GetMemberStats(y, m),
-          GetCategoryMemberBreakdown(y, m),
-          GetCategoryMatrix(y, m, 6),
+          GetCategoryMemberBreakdown(y, m, catLevel),
+          GetCategoryMatrix(y, m, 6, catLevel),
         ]);
       setDimData({ paymentMethod: pmD, member: memD, category: catD });
       setCompare(cmp);
@@ -151,7 +154,7 @@ export default function StatsPage({
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, catLevel]);
 
   useEffect(() => {
     load();
@@ -226,8 +229,18 @@ export default function StatsPage({
 
   return (
     <div>
-      <div className="toolbar">
+      <div className="toolbar wrap">
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다 */}
+        <span className="muted small">카테고리 기준</span>
+        <Seg<"main" | "sub">
+          value={catLevel}
+          options={[
+            { key: "main", label: "주" },
+            { key: "sub", label: "부" },
+          ]}
+          onChange={setCatLevel}
+        />
       </div>
 
       <div className="card">
@@ -319,9 +332,10 @@ export default function StatsPage({
               ]}
               onChange={setCatPeriod}
             />
+            {/* 주를 고르면 하위 부 지출까지 합산해서 보여준다 */}
             <select value={catId} onChange={(e) => setCatId(Number(e.target.value))}>
-              {expenseCats.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {categoryOptions(expenseCats).map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -362,6 +376,10 @@ export default function StatsPage({
               </div>
             </div>
             <div className="dash-grid">
+              {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
+              {detail.isMain && detail.bySub.length > 0 && (
+                <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
+              )}
               <Bars title="누가 (귀속자별)" rows={detail.byMember} />
               <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
               <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />

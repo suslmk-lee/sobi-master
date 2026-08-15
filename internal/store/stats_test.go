@@ -176,7 +176,7 @@ func TestStatsQueries(t *testing.T) {
 	}
 
 	// 5) 카테고리별 6개월 추이
-	ct, err := st.CategoryTrend(y, m, 6)
+	ct, err := st.CategoryTrend(y, m, 6, CatLevelMain)
 	if err != nil {
 		t.Fatalf("CategoryTrend: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestStatsQueries(t *testing.T) {
 	}
 
 	// 13) 카테고리별 귀속자 구성 (식비 그룹 안에 아빠 120000)
-	cm, err := st.CategoryMemberBreakdown(y, m)
+	cm, err := st.CategoryMemberBreakdown(y, m, CatLevelMain)
 	if err != nil {
 		t.Fatalf("CategoryMemberBreakdown: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestStatsQueries(t *testing.T) {
 	}
 
 	// 14) 히트맵 매트릭스: 전체 카테고리 반환(묶음 없음), 식비 6월 120000
-	mtx, err := st.CategoryMatrix(y, m, 6)
+	mtx, err := st.CategoryMatrix(y, m, 6, CatLevelMain)
 	if err != nil {
 		t.Fatalf("CategoryMatrix: %v", err)
 	}

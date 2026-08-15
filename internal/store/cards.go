@@ -89,10 +89,13 @@ WHERE t.payment_method_id=? AND t.direction='expense' AND t.date >= ? AND t.date
 GROUP BY 1 ORDER BY SUM(t.amount) DESC`, &bd.ByMerchant); err != nil {
 		return bd, err
 	}
+	// 카테고리는 주 기준으로 합산한다(부 지출은 상위 주에 포함)
 	err := group(`
-SELECT COALESCE(c.name, '미분류'), SUM(t.amount)
-FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+SELECT COALESCE(cp.name, c.name, '미분류'), SUM(t.amount)
+FROM transactions t
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN categories cp ON cp.id = c.parent_id
 WHERE t.payment_method_id=? AND t.direction='expense' AND t.date >= ? AND t.date <= ?
-GROUP BY c.name ORDER BY SUM(t.amount) DESC`, &bd.ByCategory)
+GROUP BY 1 ORDER BY SUM(t.amount) DESC`, &bd.ByCategory)
 	return bd, err
 }

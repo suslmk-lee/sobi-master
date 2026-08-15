@@ -41,8 +41,14 @@ func (s *Store) DeleteMember(id int64) error {
 
 // ---- 카테고리 ----
 
+// ListCategories 는 주/부 계층 순서로 돌려준다: 주 그룹별로 묶이고, 각 그룹은
+// 주가 먼저 오고 그 뒤에 부가 이름순으로 따라온다. (드롭다운에 그대로 뿌릴 수 있는 순서)
 func (s *Store) ListCategories() ([]Category, error) {
-	rows, err := s.query(`SELECT id, name, kind FROM categories ORDER BY kind, id`)
+	rows, err := s.query(`
+SELECT c.id, c.name, c.kind, c.parent_id, COALESCE(p.name, '')
+FROM categories c LEFT JOIN categories p ON p.id = c.parent_id
+ORDER BY COALESCE(p.kind, c.kind), COALESCE(p.name, c.name),
+         (c.parent_id IS NOT NULL), c.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -50,21 +56,80 @@ func (s *Store) ListCategories() ([]Category, error) {
 	out := []Category{}
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.Kind); err != nil {
+		var pid sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &pid, &c.Parent); err != nil {
 			return nil, err
+		}
+		c.ParentID = scanNullableID(pid)
+		c.FullName = c.Name
+		if c.Parent != "" {
+			c.FullName = c.Parent + " > " + c.Name
 		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
 }
 
-func (s *Store) AddCategory(name, kind string) (Category, error) {
+// AddCategory 는 카테고리를 추가한다. parentID>0 이면 그 주의 부로 만들고 kind 는 주를 따른다.
+// 계층은 2단까지만 허용한다(부의 부 금지).
+func (s *Store) AddCategory(name, kind string, parentID int64) (Category, error) {
+	name = strings.TrimSpace(name)
+	c := Category{Name: name, Kind: kind}
+	var parent interface{}
+	if parentID > 0 {
+		var pKind string
+		var pParent sql.NullInt64
+		if err := s.queryRow(`SELECT kind, parent_id FROM categories WHERE id=?`, parentID).
+			Scan(&pKind, &pParent); err != nil {
+			return Category{}, fmt.Errorf("상위 카테고리를 찾을 수 없습니다: %w", err)
+		}
+		if pParent.Valid {
+			return Category{}, fmt.Errorf("부 카테고리 아래에 다시 부를 만들 수 없습니다 (2단까지)")
+		}
+		c.Kind = pKind // 부는 주의 종류를 따른다
+		pid := parentID
+		c.ParentID = &pid
+		parent = parentID
+	}
 	var id int64
-	err := s.queryRow(`INSERT INTO categories(name, kind) VALUES(?,?) RETURNING id`, strings.TrimSpace(name), kind).Scan(&id)
+	err := s.queryRow(`INSERT INTO categories(name, kind, parent_id) VALUES(?,?,?) RETURNING id`,
+		name, c.Kind, parent).Scan(&id)
 	if err != nil {
 		return Category{}, err
 	}
-	return Category{ID: id, Name: name, Kind: kind}, nil
+	c.ID = id
+	return c, nil
+}
+
+// SetCategoryParent 는 카테고리를 다른 주 아래로 옮긴다(parentID=0 이면 주로 승격).
+// 2단 계층을 지키기 위해 부가 있는 카테고리는 다른 주 아래로 옮길 수 없다.
+func (s *Store) SetCategoryParent(id, parentID int64) error {
+	if id == parentID {
+		return fmt.Errorf("자기 자신을 상위로 지정할 수 없습니다")
+	}
+	if parentID == 0 {
+		_, err := s.exec(`UPDATE categories SET parent_id=NULL WHERE id=?`, id)
+		return err
+	}
+	var childCount int
+	if err := s.queryRow(`SELECT COUNT(*) FROM categories WHERE parent_id=?`, id).Scan(&childCount); err != nil {
+		return err
+	}
+	if childCount > 0 {
+		return fmt.Errorf("이 카테고리에는 부 카테고리가 있어 다른 주 아래로 옮길 수 없습니다 (2단까지)")
+	}
+	var pKind string
+	var pParent sql.NullInt64
+	if err := s.queryRow(`SELECT kind, parent_id FROM categories WHERE id=?`, parentID).
+		Scan(&pKind, &pParent); err != nil {
+		return fmt.Errorf("상위 카테고리를 찾을 수 없습니다: %w", err)
+	}
+	if pParent.Valid {
+		return fmt.Errorf("부 카테고리를 상위로 지정할 수 없습니다 (2단까지)")
+	}
+	// 부는 주의 종류(수입/지출/이체)를 따른다
+	_, err := s.exec(`UPDATE categories SET parent_id=?, kind=? WHERE id=?`, parentID, pKind, id)
+	return err
 }
 
 func (s *Store) DeleteCategory(id int64) error {
@@ -121,13 +186,19 @@ func (s *Store) DeletePaymentMethod(id int64) error {
 
 // ---- 거래 ----
 
+// 카테고리는 부일 때 "주 > 부" 전체 경로로 보여준다(부 이름만으로는 모호하므로).
 const txSelect = `
 SELECT t.id, t.date, t.amount, t.direction, t.merchant, t.memo,
        t.member_id, t.category_id, t.payment_method_id, t.source, t.auto_classified,
-       COALESCE(m.name, ''), COALESCE(c.name, ''), COALESCE(p.name, '')
+       COALESCE(m.name, ''),
+       CASE WHEN c.id IS NULL THEN ''
+            WHEN cp.name IS NULL THEN c.name
+            ELSE cp.name || ' > ' || c.name END,
+       COALESCE(p.name, '')
 FROM transactions t
 LEFT JOIN members m ON m.id = t.member_id
 LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN categories cp ON cp.id = c.parent_id
 LEFT JOIN payment_methods p ON p.id = t.payment_method_id
 `
 
@@ -170,7 +241,8 @@ func sortColumn(sort string) (orderExpr, dir string, isDate bool) {
 	case "member":
 		return "m.name " + dir + " NULLS LAST", dir, false
 	case "category":
-		return "c.name " + dir + " NULLS LAST", dir, false
+		// 주 그룹 → 그 안의 부 순서로 정렬
+		return "COALESCE(cp.name, c.name) " + dir + " NULLS LAST, c.name " + dir + " NULLS LAST", dir, false
 	case "payment":
 		return "p.name " + dir + " NULLS LAST", dir, false
 	default:
@@ -222,8 +294,9 @@ func (s *Store) ListTransactions(f TxFilter) ([]Transaction, error) {
 		args = append(args, f.MemberID)
 	}
 	if f.CategoryID > 0 {
-		conds = append(conds, `t.category_id = ?`)
-		args = append(args, f.CategoryID)
+		// 주 카테고리를 고르면 그 하위 부 거래까지 포함한다
+		conds = append(conds, `t.category_id IN (SELECT id FROM categories WHERE id=? OR parent_id=?)`)
+		args = append(args, f.CategoryID, f.CategoryID)
 	}
 	if f.PaymentMethodID > 0 {
 		conds = append(conds, `t.payment_method_id = ?`)
@@ -435,11 +508,14 @@ WHERE t.date LIKE ? AND t.direction='expense'
 GROUP BY m.name, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
 		return sum, err
 	}
+	// 카테고리는 주 기준으로 합산한다(부 지출은 상위 주에 포함)
 	if sum.ByCategory, err = group(`
-SELECT COALESCE(c.name, '미분류'), t.direction, SUM(t.amount)
-FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+SELECT COALESCE(cp.name, c.name, '미분류'), t.direction, SUM(t.amount)
+FROM transactions t
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN categories cp ON cp.id = c.parent_id
 WHERE t.date LIKE ?
-GROUP BY c.name, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
+GROUP BY 1, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
 		return sum, err
 	}
 	if sum.ByPaymentMethod, err = group(`

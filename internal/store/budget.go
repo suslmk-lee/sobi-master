@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+)
 
 // budgetDefault 은 "매월 기본" 예산을 나타내는 ym 값.
 const budgetDefault = "*"
@@ -112,22 +115,28 @@ WHERE b.ym = ? OR b.ym = ?`, budgetDefault, target)
 		return []BudgetStatus{}, nil
 	}
 
-	// 2) 해당 월 카테고리별 지출
+	// 2) 해당 월 지출을 예산 기준 카테고리로 모은다.
+	//    주 카테고리 예산은 하위 부 지출까지 합산해 판정한다(부에 붙은 지출도 주 예산에 포함).
 	spent := map[int64]int64{}
 	srows, err := s.query(`
-SELECT category_id, SUM(amount) FROM transactions
-WHERE date LIKE ? AND direction='expense' AND category_id IS NOT NULL
-GROUP BY category_id`, target+"%")
+SELECT t.category_id, c.parent_id, SUM(t.amount)
+FROM transactions t JOIN categories c ON c.id = t.category_id
+WHERE t.date LIKE ? AND t.direction='expense'
+GROUP BY 1, 2`, target+"%")
 	if err != nil {
 		return nil, err
 	}
 	defer srows.Close()
 	for srows.Next() {
 		var cid, amt int64
-		if err := srows.Scan(&cid, &amt); err != nil {
+		var parent sql.NullInt64
+		if err := srows.Scan(&cid, &parent, &amt); err != nil {
 			return nil, err
 		}
-		spent[cid] = amt
+		spent[cid] += amt // 부 자신에게 걸린 예산용
+		if parent.Valid {
+			spent[parent.Int64] += amt // 상위 주 예산에도 합산
+		}
 	}
 	if err := srows.Err(); err != nil {
 		return nil, err

@@ -27,6 +27,26 @@ export const today = () => {
   ).padStart(2, "0")}`;
 };
 
+// 카테고리 계층(주/부) 옵션 목록. 백엔드가 주 그룹 → 그 안의 부 순서로 정렬해 주므로
+// 순서대로 뿌리면서 부만 들여쓰기하면 계층이 그대로 보인다.
+// kind 를 주면 그 종류(income/expense/transfer)만 남긴다.
+export function categoryOptions(
+  categories: store.Category[],
+  kind?: string
+): { id: number; label: string; isSub: boolean }[] {
+  return categories
+    .filter((c) => !kind || c.kind === kind)
+    .map((c) => ({
+      id: c.id,
+      label: c.parentId ? `　└ ${c.name}` : c.name,
+      isSub: !!c.parentId,
+    }));
+}
+
+// 주(대분류) 카테고리만. 상위 선택 드롭다운에 쓴다.
+export const mainCategories = (categories: store.Category[], kind?: string) =>
+  categories.filter((c) => !c.parentId && (!kind || c.kind === kind));
+
 export const DIRECTION_LABEL: Record<string, string> = {
   income: "수입",
   expense: "지출",

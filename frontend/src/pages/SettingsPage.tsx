@@ -14,9 +14,18 @@ import {
   ListRules,
   SaveRule,
   SetBudget,
+  SetCategoryParent,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
-import { formatAmount, parseAmount, Refs, thisMonth, won } from "../lib";
+import {
+  categoryOptions,
+  formatAmount,
+  mainCategories,
+  parseAmount,
+  Refs,
+  thisMonth,
+  won,
+} from "../lib";
 
 const KIND_LABEL: Record<string, string> = {
   income: "수입",
@@ -120,11 +129,14 @@ function BudgetSection({ refs }: { refs: Refs }) {
         {scope === "default"
           ? "지출 카테고리별 매월 기본 예산입니다. 대시보드에서 사용률·초과를 추적합니다."
           : "해당 월에만 적용할 예산입니다. 비워서 저장하면 그 달은 매월 기본 예산을 따릅니다."}
+        {" "}주에 예산을 걸면 하위 부 지출까지 합산해 판정합니다.
       </p>
       <div className="budget-list">
         {expenseCats.map((c) => (
           <div className="budget-row" key={c.id}>
-            <span className="budget-name">{c.name}</span>
+            <span className="budget-name" title={c.fullName}>
+              {c.parentId ? `　└ ${c.name}` : c.name}
+            </span>
             <input
               type="text"
               inputMode="numeric"
@@ -248,8 +260,8 @@ function RuleSection({ refs }: { refs: Refs }) {
         </select>
         <select value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
           <option value="">카테고리</option>
-          {refs.categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+          {categoryOptions(refs.categories).map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
           ))}
         </select>
         <button type="submit">{f.id ? "수정" : "추가"}</button>
@@ -293,6 +305,173 @@ function RuleSection({ refs }: { refs: Refs }) {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// 카테고리: 주(대분류)/부(소분류) 2단 계층을 종류(지출/수입/이체)별 트리로 보여준다.
+// 부의 종류는 주를 따르고, 통계·예산은 기본적으로 주 기준으로 합산된다.
+function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
+  const [err, setErr] = useState("");
+  // 어느 주 아래에 부를 추가하는 중인지
+  const [addingUnder, setAddingUnder] = useState<number | null>(null);
+  const [subName, setSubName] = useState("");
+  // 새 주 카테고리
+  const [mainName, setMainName] = useState("");
+  const [mainKind, setMainKind] = useState("expense");
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setErr("");
+    try {
+      await fn();
+      reload();
+    } catch (e: any) {
+      setErr(String(e));
+    }
+  };
+
+  const addMain = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!mainName.trim()) return;
+    await run(async () => {
+      await AddCategory(mainName.trim(), mainKind, 0);
+      setMainName("");
+    });
+  };
+
+  const addSub = async (e: FormEvent, parentId: number) => {
+    e.preventDefault();
+    if (!subName.trim()) return;
+    await run(async () => {
+      await AddCategory(subName.trim(), "expense", parentId); // 종류는 주를 따른다
+      setSubName("");
+      setAddingUnder(null);
+    });
+  };
+
+  // 삭제 시 영향을 알린다: 이 카테고리를 쓰던 거래는 미분류가 되고, 부는 주로 올라간다.
+  const remove = (name: string, id: number, subCount: number) => {
+    const extra = subCount > 0 ? `\n부 카테고리 ${subCount}개는 주 카테고리로 올라갑니다.` : "";
+    if (!window.confirm(`"${name}" 카테고리를 삭제할까요?\n이 카테고리로 분류된 거래는 미분류가 됩니다.${extra}`)) {
+      return;
+    }
+    run(() => DeleteCategory(id));
+  };
+
+  // 종류별 → 주별로 부를 묶은 트리
+  const treeOf = (kind: string) =>
+    mainCategories(refs.categories, kind).map((m) => ({
+      main: m,
+      subs: refs.categories.filter((c) => c.parentId === m.id),
+    }));
+
+  const allMains = mainCategories(refs.categories);
+
+  return (
+    <div className="card">
+      <h3>카테고리 (주/부)</h3>
+      <p className="muted small">
+        주 아래에 부를 두면 통계·예산이 주 기준으로 합산됩니다(부 단위 상세는 통계 탭에서 토글).
+        거래는 주·부 어디에나 분류할 수 있습니다.
+      </p>
+      {err && <p className="error">{err}</p>}
+
+      {Object.entries(KIND_LABEL).map(([kind, label]) => {
+        const tree = treeOf(kind);
+        if (tree.length === 0) return null;
+        return (
+          <div className="cat-kind" key={kind}>
+            <h4 className="cat-kind-title">
+              {label} <span className="muted small">{tree.length}개 주 카테고리</span>
+            </h4>
+            <ul className="cat-tree">
+              {tree.map(({ main, subs }) => (
+                <li className="cat-group" key={main.id}>
+                  <div className="cat-row cat-row-main">
+                    <span className="cat-name">{main.name}</span>
+                    {subs.length > 0 && (
+                      <span className="muted small">부 {subs.length}</span>
+                    )}
+                    <button
+                      className="ghost"
+                      title="부 카테고리 추가"
+                      onClick={() => {
+                        setAddingUnder(addingUnder === main.id ? null : main.id);
+                        setSubName("");
+                      }}
+                    >＋ 부</button>
+                    <button
+                      className="ghost"
+                      title="삭제"
+                      onClick={() => remove(main.name, main.id, subs.length)}
+                    >✕</button>
+                  </div>
+
+                  {addingUnder === main.id && (
+                    <form className="cat-row cat-row-add" onSubmit={(e) => addSub(e, main.id)}>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder={`${main.name} 아래 부 카테고리명`}
+                        value={subName}
+                        onChange={(e) => setSubName(e.target.value)}
+                      />
+                      <button type="submit">추가</button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setAddingUnder(null)}
+                      >취소</button>
+                    </form>
+                  )}
+
+                  {subs.map((s) => (
+                    <div className="cat-row cat-row-sub" key={s.id}>
+                      <span className="cat-name">
+                        <span className="cat-branch">└</span>
+                        {s.name}
+                      </span>
+                      <select
+                        className="cat-parent"
+                        value={String(s.parentId)}
+                        onChange={(e) => run(() => SetCategoryParent(s.id, Number(e.target.value)))}
+                        title="상위(주) 카테고리 이동"
+                      >
+                        {allMains
+                          .filter((m) => m.kind === s.kind)
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        <option value="0">주 카테고리로 올리기</option>
+                      </select>
+                      <button
+                        className="ghost"
+                        title="삭제"
+                        onClick={() => remove(s.name, s.id, 0)}
+                      >✕</button>
+                    </div>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+
+      <form className="form-row cat-add-main" onSubmit={addMain}>
+        <input
+          type="text"
+          placeholder="새 주 카테고리명"
+          value={mainName}
+          onChange={(e) => setMainName(e.target.value)}
+        />
+        <select value={mainKind} onChange={(e) => setMainKind(e.target.value)}>
+          {Object.entries(KIND_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <button type="submit">주 카테고리 추가</button>
+      </form>
     </div>
   );
 }
@@ -363,6 +542,18 @@ function BackupSection() {
   );
 }
 
+// 설정 하위 메뉴. 한 번에 한 섹션만 넓게 보여 가독성을 높인다.
+type Section = "categories" | "members" | "payments" | "budget" | "rules" | "backup";
+
+const SECTIONS: { key: Section; label: string; desc: string }[] = [
+  { key: "categories", label: "카테고리", desc: "주/부 분류 체계" },
+  { key: "members", label: "귀속자", desc: "가족 구성원" },
+  { key: "payments", label: "결제수단", desc: "카드·현금·계좌" },
+  { key: "budget", label: "예산", desc: "카테고리별 한도" },
+  { key: "rules", label: "자동 분류 규칙", desc: "학습된 핑거프린트" },
+  { key: "backup", label: "로컬 백업", desc: "SQLite 스냅샷" },
+];
+
 export default function SettingsPage({
   refs,
   reload,
@@ -370,77 +561,94 @@ export default function SettingsPage({
   refs: Refs;
   reload: () => void;
 }) {
+  const [section, setSection] = useState<Section>("categories");
+
   const del = async (fn: (id: number) => Promise<void>, id: number) => {
     await fn(id);
     reload();
   };
 
+  const counts: Record<Section, number | null> = {
+    categories: refs.categories.length,
+    members: refs.members.length,
+    payments: refs.paymentMethods.length,
+    budget: null,
+    rules: null,
+    backup: null,
+  };
+
   return (
-    <div className="settings-grid">
-      <div className="card">
-        <h3>귀속자 (가족 구성원)</h3>
-        <ul className="item-list">
-          {refs.members.map((m) => (
-            <li key={m.id}>
-              {m.name}
-              <button className="ghost" onClick={() => del(DeleteMember, m.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-        <AddRow
-          placeholder="이름 (예: 할머니)"
-          onAdd={async (name) => {
-            await AddMember(name);
-            reload();
-          }}
-        />
+    <div className="settings-layout">
+      <nav className="settings-nav">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.key}
+            className={section === s.key ? "active" : ""}
+            onClick={() => setSection(s.key)}
+          >
+            <span className="sn-label">
+              {s.label}
+              {counts[s.key] !== null && <span className="sn-count">{counts[s.key]}</span>}
+            </span>
+            <span className="sn-desc">{s.desc}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="settings-panel">
+        {section === "categories" && <CategorySection refs={refs} reload={reload} />}
+
+        {section === "members" && (
+          <div className="card">
+            <h3>귀속자 (가족 구성원)</h3>
+            <p className="muted small">돈이 누구를 위해 쓰였는지 구분하는 기준입니다.</p>
+            <ul className="item-list">
+              {refs.members.map((m) => (
+                <li key={m.id}>
+                  {m.name}
+                  <button className="ghost" onClick={() => del(DeleteMember, m.id)}>✕</button>
+                </li>
+              ))}
+            </ul>
+            <AddRow
+              placeholder="이름 (예: 할머니)"
+              onAdd={async (name) => {
+                await AddMember(name);
+                reload();
+              }}
+            />
+          </div>
+        )}
+
+        {section === "payments" && (
+          <div className="card">
+            <h3>결제수단 (카드/현금/계좌)</h3>
+            <p className="muted small">
+              카드의 결제일·실적기간·실적한도는 카드 탭에서 관리합니다.
+            </p>
+            <ul className="item-list">
+              {refs.paymentMethods.map((p) => (
+                <li key={p.id}>
+                  {p.name} <span className="badge">{PM_LABEL[p.type]}</span>
+                  <button className="ghost" onClick={() => del(DeletePaymentMethod, p.id)}>✕</button>
+                </li>
+              ))}
+            </ul>
+            <AddRow
+              placeholder="이름 (예: 신한카드 1234)"
+              options={PM_LABEL}
+              onAdd={async (name, typ) => {
+                await AddPaymentMethod(name, typ);
+                reload();
+              }}
+            />
+          </div>
+        )}
+
+        {section === "budget" && <BudgetSection refs={refs} />}
+        {section === "rules" && <RuleSection refs={refs} />}
+        {section === "backup" && <BackupSection />}
       </div>
-
-      <div className="card">
-        <h3>카테고리</h3>
-        <ul className="item-list">
-          {refs.categories.map((c) => (
-            <li key={c.id}>
-              {c.name} <span className="badge">{KIND_LABEL[c.kind]}</span>
-              <button className="ghost" onClick={() => del(DeleteCategory, c.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-        <AddRow
-          placeholder="카테고리명"
-          options={KIND_LABEL}
-          onAdd={async (name, kind) => {
-            await AddCategory(name, kind);
-            reload();
-          }}
-        />
-      </div>
-
-      <div className="card">
-        <h3>결제수단 (카드/현금/계좌)</h3>
-        <ul className="item-list">
-          {refs.paymentMethods.map((p) => (
-            <li key={p.id}>
-              {p.name} <span className="badge">{PM_LABEL[p.type]}</span>
-              <button className="ghost" onClick={() => del(DeletePaymentMethod, p.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-        <AddRow
-          placeholder="이름 (예: 신한카드 1234)"
-          options={PM_LABEL}
-          onAdd={async (name, typ) => {
-            await AddPaymentMethod(name, typ);
-            reload();
-          }}
-        />
-      </div>
-
-      <BudgetSection refs={refs} />
-
-      <BackupSection />
-
-      <RuleSection refs={refs} />
     </div>
   );
 }

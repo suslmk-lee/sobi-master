@@ -258,13 +258,25 @@ func (a *App) ListCategories() ([]store.Category, error) {
 	return a.st.ListCategories()
 }
 
-func (a *App) AddCategory(name, kind string) (store.Category, error) {
+// AddCategory 는 카테고리를 추가한다. parentID>0 이면 그 주 카테고리의 부로 만든다
+// (부의 수입/지출/이체 종류는 주를 따른다).
+func (a *App) AddCategory(name, kind string, parentID int64) (store.Category, error) {
 	if err := a.ensure(); err != nil {
 		return store.Category{}, err
 	}
-	c, err := a.st.AddCategory(name, kind)
+	c, err := a.st.AddCategory(name, kind, parentID)
 	logIf("AddCategory", err)
 	return c, err
+}
+
+// SetCategoryParent 는 카테고리의 상위(주)를 바꾼다. parentID=0 이면 주로 승격.
+func (a *App) SetCategoryParent(id, parentID int64) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.SetCategoryParent(id, parentID)
+	logIf("SetCategoryParent", err)
+	return err
 }
 
 func (a *App) DeleteCategory(id int64) error {
@@ -729,20 +741,20 @@ func (a *App) GetMemberStats(year, month int) ([]store.MemberStat, error) {
 	return a.st.MemberStats(year, month)
 }
 
-// GetCategoryMemberBreakdown 은 해당 월의 카테고리별 귀속자 지출 구성.
-func (a *App) GetCategoryMemberBreakdown(year, month int) ([]store.CardCategory, error) {
+// GetCategoryMemberBreakdown 은 해당 월의 카테고리별 귀속자 지출 구성. level 은 main|sub.
+func (a *App) GetCategoryMemberBreakdown(year, month int, level string) ([]store.CardCategory, error) {
 	if err := a.ensure(); err != nil {
 		return nil, err
 	}
-	return a.st.CategoryMemberBreakdown(year, month)
+	return a.st.CategoryMemberBreakdown(year, month, level)
 }
 
-// GetCategoryMatrix 는 카테고리×월 히트맵용: 전체 카테고리의 최근 n개월 월별 지출.
-func (a *App) GetCategoryMatrix(year, month, n int) (store.CategoryTrend, error) {
+// GetCategoryMatrix 는 카테고리×월 히트맵용: 전체 카테고리의 최근 n개월 월별 지출. level 은 main|sub.
+func (a *App) GetCategoryMatrix(year, month, n int, level string) (store.CategoryTrend, error) {
 	if err := a.ensure(); err != nil {
 		return store.CategoryTrend{}, err
 	}
-	return a.st.CategoryMatrix(year, month, n)
+	return a.st.CategoryMatrix(year, month, n, level)
 }
 
 // GetCategoryDetail 은 카테고리 한 개의 상세 분석. period 는 month|prev|recent30.
@@ -1100,10 +1112,10 @@ func (a *App) GetWeekdayAverages(year, month int) ([]store.WeekdayAvg, error) {
 	return a.st.WeekdayAverages(year, month)
 }
 
-// GetCategoryTrend 는 (year, month) 까지 최근 n개월의 카테고리별 지출 추이.
-func (a *App) GetCategoryTrend(year, month, n int) (store.CategoryTrend, error) {
+// GetCategoryTrend 는 (year, month) 까지 최근 n개월의 카테고리별 지출 추이. level 은 main|sub.
+func (a *App) GetCategoryTrend(year, month, n int, level string) (store.CategoryTrend, error) {
 	if err := a.ensure(); err != nil {
 		return store.CategoryTrend{}, err
 	}
-	return a.st.CategoryTrend(year, month, n)
+	return a.st.CategoryTrend(year, month, n, level)
 }

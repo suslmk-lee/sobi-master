@@ -129,7 +129,13 @@ docker stop sobi-test-pg
 
 - **Member**: who the money was spent for (Dad / Mom / Kid / Shared)
 - **Category**: purpose; `kind` distinguishes income/expense/transfer
-  (salary, telecom, loan repayment, dues, investment transfer, …)
+  (salary, telecom, loan repayment, dues, investment transfer, …). Categories form a
+  **two-level main/sub hierarchy** — e.g. `식비 > 배달`. A transaction can be filed against
+  either a main or a sub category. Statistics and budgets roll sub-category spending up into
+  the main category by default (the Statistics tab has a 주/부 toggle for sub-level detail),
+  and a budget set on a main category is judged against the sum of itself plus its subs.
+  On first connect, existing names like `식비/배달` are split into `식비 > 배달` automatically —
+  but only when the prefix already exists as a category, so names such as `회비/경조사` are left intact.
 - **Payment method**: which card/cash/bank account it went through; cards carry
   billing day / performance period / target managed in the Cards tab
 - **Budget**: an optional monthly spending limit per category; set a recurring default and
