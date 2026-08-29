@@ -17,6 +17,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
 import { categoryOptions, Refs, won } from "../lib";
+import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
 import { Heatmap, LineChart, LineSeries, PaceSparkline, StackedBars, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
@@ -230,7 +231,7 @@ export default function StatsPage({
   return (
     <div>
       <div className="toolbar wrap">
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <MonthPicker value={month} onChange={setMonth} />
         {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다 */}
         <span className="muted small">카테고리 기준</span>
         <Seg<"main" | "sub">

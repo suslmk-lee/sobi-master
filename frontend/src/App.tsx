@@ -8,16 +8,25 @@ import { Refs, thisMonth } from "./lib";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import CardsPage from "./pages/CardsPage";
+import SubscriptionsPage from "./pages/SubscriptionsPage";
 import StatsPage from "./pages/StatsPage";
 import ImportPage from "./pages/ImportPage";
 import SettingsPage from "./pages/SettingsPage";
 
-type Tab = "dashboard" | "transactions" | "cards" | "stats" | "import" | "settings";
+type Tab =
+  | "dashboard"
+  | "transactions"
+  | "cards"
+  | "subscriptions"
+  | "stats"
+  | "import"
+  | "settings";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "dashboard", label: "대시보드" },
   { key: "transactions", label: "거래내역" },
   { key: "cards", label: "카드" },
+  { key: "subscriptions", label: "정기결제" },
   { key: "stats", label: "통계" },
   { key: "import", label: "가져오기" },
   { key: "settings", label: "설정" },
@@ -49,19 +58,8 @@ export default function App() {
         ListCategories(),
         ListPaymentMethods(),
       ]);
-      // 카테고리는 계층을 유지한 채 글자순(가나다)으로 정렬한다.
-      // 주 그룹끼리 가나다 → 그룹 안에서는 주가 먼저, 그 뒤에 부가 가나다.
-      // (이름만으로 정렬하면 부가 부모와 떨어져 엉뚱한 주 아래 있는 것처럼 보인다)
-      categories.sort((a, b) => {
-        const ga = a.parent || a.name;
-        const gb = b.parent || b.name;
-        const byGroup = ga.localeCompare(gb, "ko");
-        if (byGroup !== 0) return byGroup;
-        const sa = a.parentId ? 1 : 0;
-        const sb = b.parentId ? 1 : 0;
-        if (sa !== sb) return sa - sb;
-        return a.name.localeCompare(b.name, "ko");
-      });
+      // 카테고리 순서는 백엔드가 정한 그대로 쓴다(설정에서 지정한 표시 순서).
+      // 종류 → 주의 순서 → 그 주의 부들 순서로 이미 정렬돼 오므로 여기서 다시 섞지 않는다.
       setRefs({ members, categories, paymentMethods });
       setDbError("");
     } catch (e: any) {
@@ -129,6 +127,9 @@ export default function App() {
           />
         )}
         {tab === "cards" && <CardsPage reloadRefs={loadRefs} />}
+        {tab === "subscriptions" && (
+          <SubscriptionsPage refs={refs} month={month} setMonth={setMonth} />
+        )}
         {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "import" && <ImportPage refs={refs} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}

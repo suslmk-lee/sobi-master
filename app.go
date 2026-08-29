@@ -269,6 +269,29 @@ func (a *App) AddCategory(name, kind string, parentID int64) (store.Category, er
 	return c, err
 }
 
+// MoveCategoryTo 는 카테고리를 같은 그룹(같은 종류의 주끼리 / 같은 주 아래 부끼리)
+// 안에서 toIndex 자리로 옮긴다(0부터). 드래그로 순서를 바꿀 때 쓴다.
+// 여기서 정한 순서가 거래 등록·필터의 카테고리 드롭다운에도 그대로 반영된다.
+func (a *App) MoveCategoryTo(id int64, toIndex int) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.MoveCategoryTo(id, toIndex)
+	logIf("MoveCategoryTo", err)
+	return err
+}
+
+// MoveCategory 는 같은 그룹 안에서 한 칸 옮긴다. delta 는 -1(위) 또는 +1(아래).
+// 드래그가 어려운 경우를 위해 키보드(↑/↓)에서 쓴다.
+func (a *App) MoveCategory(id int64, delta int) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.MoveCategory(id, delta)
+	logIf("MoveCategory", err)
+	return err
+}
+
 // SetCategoryParent 는 카테고리의 상위(주)를 바꾼다. parentID=0 이면 주로 승격.
 func (a *App) SetCategoryParent(id, parentID int64) error {
 	if err := a.ensure(); err != nil {

@@ -1,4 +1,10 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  DragEvent as ReactDragEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import {
   AddCategory,
   AddMember,
@@ -9,6 +15,8 @@ import {
   DeleteMember,
   DeletePaymentMethod,
   DeleteRule,
+  MoveCategory,
+  MoveCategoryTo,
   GetLastBackup,
   ListBudgets,
   ListRules,
@@ -26,6 +34,7 @@ import {
   thisMonth,
   won,
 } from "../lib";
+import MonthPicker from "../MonthPicker";
 
 const KIND_LABEL: Record<string, string> = {
   income: "수입",
@@ -122,7 +131,7 @@ function BudgetSection({ refs }: { refs: Refs }) {
           >특정 월</button>
         </div>
         {scope === "month" && (
-          <input type="month" value={ym} onChange={(e) => setYm(e.target.value)} />
+          <MonthPicker value={ym} onChange={setYm} />
         )}
       </div>
       <p className="muted small">
@@ -358,12 +367,67 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
     run(() => DeleteCategory(id));
   };
 
-  // 종류별 → 주별로 부를 묶은 트리
+  // 종류별 → 주별로 부를 묶은 트리 (순서는 백엔드가 정한 표시 순서 그대로)
   const treeOf = (kind: string) =>
     mainCategories(refs.categories, kind).map((m) => ({
       main: m,
       subs: refs.categories.filter((c) => c.parentId === m.id),
     }));
+
+  // ---- 표시 순서 드래그 ----
+  // 같은 그룹 안에서만 옮길 수 있다. group 키가 같은 행끼리만 서로 드롭을 받는다.
+  // (주는 "같은 종류의 주끼리", 부는 "같은 주 아래 부끼리")
+  const [drag, setDrag] = useState<{ id: number; group: string } | null>(null);
+  const [overId, setOverId] = useState<number | null>(null);
+
+  const canDropOn = (group: string, id: number) =>
+    !!drag && drag.group === group && drag.id !== id;
+
+  // 드래그 손잡이 + 그 행을 드롭 대상으로 만드는 속성 묶음.
+  // 손잡이만 draggable 로 둬서 행 안의 셀렉트·버튼 조작을 방해하지 않는다.
+  const dragProps = (id: number, group: string, index: number) => ({
+    onDragOver: (e: ReactDragEvent) => {
+      if (!canDropOn(group, id)) return;
+      e.preventDefault(); // 이걸 해야 드롭이 허용된다
+      setOverId(id);
+    },
+    onDragLeave: () => setOverId((prev) => (prev === id ? null : prev)),
+    onDrop: (e: ReactDragEvent) => {
+      e.preventDefault();
+      const d = drag;
+      setOverId(null);
+      setDrag(null);
+      if (!d || !canDropOn(group, id)) return;
+      run(() => MoveCategoryTo(d.id, index));
+    },
+  });
+
+  const grip = (id: number, group: string) => (
+    <span
+      className="cat-grip"
+      draggable
+      title="끌어서 순서 바꾸기 (↑/↓ 키로도 이동)"
+      tabIndex={0}
+      onDragStart={(e) => {
+        setDrag({ id, group });
+        e.dataTransfer.effectAllowed = "move";
+        // Firefox 는 데이터가 없으면 드래그를 시작하지 않는다
+        e.dataTransfer.setData("text/plain", String(id));
+      }}
+      onDragEnd={() => {
+        setDrag(null);
+        setOverId(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          run(() => MoveCategory(id, e.key === "ArrowUp" ? -1 : 1));
+        }
+      }}
+    >
+      ☰
+    </span>
+  );
 
   const allMains = mainCategories(refs.categories);
 
@@ -385,9 +449,15 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
               {label} <span className="muted small">{tree.length}개 주 카테고리</span>
             </h4>
             <ul className="cat-tree">
-              {tree.map(({ main, subs }) => (
+              {tree.map(({ main, subs }, mainIdx) => (
                 <li className="cat-group" key={main.id}>
-                  <div className="cat-row cat-row-main">
+                  <div
+                    className={
+                      "cat-row cat-row-main" + (overId === main.id ? " drag-over" : "")
+                    }
+                    {...dragProps(main.id, `main:${kind}`, mainIdx)}
+                  >
+                    {grip(main.id, `main:${kind}`)}
                     <span className="cat-name">{main.name}</span>
                     {subs.length > 0 && (
                       <span className="muted small">부 {subs.length}</span>
@@ -425,8 +495,15 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                     </form>
                   )}
 
-                  {subs.map((s) => (
-                    <div className="cat-row cat-row-sub" key={s.id}>
+                  {subs.map((s, subIdx) => (
+                    <div
+                      className={
+                        "cat-row cat-row-sub" + (overId === s.id ? " drag-over" : "")
+                      }
+                      key={s.id}
+                      {...dragProps(s.id, `sub:${main.id}`, subIdx)}
+                    >
+                      {grip(s.id, `sub:${main.id}`)}
                       <span className="cat-name">
                         <span className="cat-branch">└</span>
                         {s.name}

@@ -45,11 +45,14 @@ func (s *Store) DeleteMember(id int64) error {
 // ListCategories 는 주/부 계층 순서로 돌려준다: 주 그룹별로 묶이고, 각 그룹은
 // 주가 먼저 오고 그 뒤에 부가 이름순으로 따라온다. (드롭다운에 그대로 뿌릴 수 있는 순서)
 func (s *Store) ListCategories() ([]Category, error) {
+	// 정렬: 종류 → 주의 표시 순서 → (주 먼저, 그 뒤 부) → 부의 표시 순서.
+	// 순서 값이 같으면 이름으로 갈라 항상 같은 결과가 나오게 한다.
 	rows, err := s.query(`
-SELECT c.id, c.name, c.kind, c.parent_id, COALESCE(p.name, '')
+SELECT c.id, c.name, c.kind, c.parent_id, COALESCE(p.name, ''), c.sort_order
 FROM categories c LEFT JOIN categories p ON p.id = c.parent_id
-ORDER BY COALESCE(p.kind, c.kind), COALESCE(p.name, c.name),
-         (c.parent_id IS NOT NULL), c.name`)
+ORDER BY COALESCE(p.kind, c.kind),
+         COALESCE(p.sort_order, c.sort_order), COALESCE(p.name, c.name),
+         (c.parent_id IS NOT NULL), c.sort_order, c.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +61,7 @@ ORDER BY COALESCE(p.kind, c.kind), COALESCE(p.name, c.name),
 	for rows.Next() {
 		var c Category
 		var pid sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &pid, &c.Parent); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &pid, &c.Parent, &c.SortOrder); err != nil {
 			return nil, err
 		}
 		c.ParentID = scanNullableID(pid)
@@ -92,14 +95,140 @@ func (s *Store) AddCategory(name, kind string, parentID int64) (Category, error)
 		c.ParentID = &pid
 		parent = parentID
 	}
+	// 새 카테고리는 자기 그룹의 맨 뒤에 붙인다.
+	c.SortOrder = s.nextSortOrder(parentID, c.Kind)
 	var id int64
-	err := s.queryRow(`INSERT INTO categories(name, kind, parent_id) VALUES(?,?,?) RETURNING id`,
-		name, c.Kind, parent).Scan(&id)
+	err := s.queryRow(
+		`INSERT INTO categories(name, kind, parent_id, sort_order) VALUES(?,?,?,?) RETURNING id`,
+		name, c.Kind, parent, c.SortOrder).Scan(&id)
 	if err != nil {
 		return Category{}, err
 	}
 	c.ID = id
 	return c, nil
+}
+
+// nextSortOrder 는 그룹(주면 같은 종류의 주들, 부면 같은 주 아래 부들)의 마지막 다음 순서.
+func (s *Store) nextSortOrder(parentID int64, kind string) int {
+	var next sql.NullInt64
+	var err error
+	if parentID > 0 {
+		err = s.queryRow(
+			`SELECT MAX(sort_order) + 1 FROM categories WHERE parent_id = ?`, parentID).Scan(&next)
+	} else {
+		err = s.queryRow(
+			`SELECT MAX(sort_order) + 1 FROM categories WHERE parent_id IS NULL AND kind = ?`, kind).Scan(&next)
+	}
+	if err != nil || !next.Valid {
+		return 0 // 그룹이 비어 있으면 첫 번째
+	}
+	return int(next.Int64)
+}
+
+// categorySiblings 는 id 와 같은 그룹에 속한 카테고리 ID 를 표시 순서대로 돌려준다.
+// 주는 "같은 종류의 주들", 부는 "같은 주 아래 부들"이 한 그룹이다.
+func (s *Store) categorySiblings(id int64) ([]int64, error) {
+	var kind string
+	var pid sql.NullInt64
+	if err := s.queryRow(`SELECT kind, parent_id FROM categories WHERE id=?`, id).Scan(&kind, &pid); err != nil {
+		return nil, fmt.Errorf("카테고리를 찾을 수 없습니다: %w", err)
+	}
+	var rows *sql.Rows
+	var err error
+	if pid.Valid {
+		rows, err = s.query(
+			`SELECT id FROM categories WHERE parent_id = ? ORDER BY sort_order, name`, pid.Int64)
+	} else {
+		rows, err = s.query(
+			`SELECT id FROM categories WHERE parent_id IS NULL AND kind = ? ORDER BY sort_order, name`, kind)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var i int64
+		if err := rows.Scan(&i); err != nil {
+			return nil, err
+		}
+		ids = append(ids, i)
+	}
+	return ids, rows.Err()
+}
+
+// moveInSlice 는 ids[from] 을 빼내어 to 자리에 끼워 넣은 새 슬라이스를 돌려준다.
+// 원본은 건드리지 않는다. from/to 는 호출 전에 범위 안으로 맞춰져 있어야 한다.
+func moveInSlice(ids []int64, from, to int) []int64 {
+	out := make([]int64, 0, len(ids))
+	out = append(out, ids[:from]...)
+	out = append(out, ids[from+1:]...) // from 을 뺀 목록
+	// 뺀 목록의 to 자리에 끼워 넣는다
+	out = append(out, 0)
+	copy(out[to+1:], out[to:])
+	out[to] = ids[from]
+	return out
+}
+
+// MoveCategoryTo 는 카테고리를 같은 그룹 안에서 toIndex 자리로 옮긴다(0부터).
+// 목록에서 빼낸 뒤 그 자리에 끼워 넣으므로, 아래로 끌면 대상 뒤에, 위로 끌면
+// 대상 앞에 놓이는 흔한 드래그 동작과 같아진다. 범위를 벗어난 값은 양 끝으로 자른다.
+//
+// 옮길 때 그룹 전체의 순서 값을 0..n-1 로 다시 매기므로, 값이 겹치거나 전부 0인
+// 상태(순서를 한 번도 만지지 않은 DB)에서도 정상 동작한다.
+func (s *Store) MoveCategoryTo(id int64, toIndex int) error {
+	ids, err := s.categorySiblings(id)
+	if err != nil {
+		return err
+	}
+	from := -1
+	for i, v := range ids {
+		if v == id {
+			from = i
+			break
+		}
+	}
+	if from < 0 {
+		return ErrNotFound
+	}
+	if toIndex < 0 {
+		toIndex = 0
+	}
+	if toIndex > len(ids)-1 {
+		toIndex = len(ids) - 1
+	}
+	if toIndex == from {
+		return nil
+	}
+
+	for i, v := range moveInSlice(ids, from, toIndex) {
+		if _, err := s.exec(`UPDATE categories SET sort_order = ? WHERE id = ?`, i, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MoveCategory 는 같은 그룹 안에서 delta 칸 옮긴다(-1 위, +1 아래).
+// 그룹의 끝을 넘어가면 아무 것도 하지 않는다(키보드 조작용).
+func (s *Store) MoveCategory(id int64, delta int) error {
+	if delta == 0 {
+		return nil
+	}
+	ids, err := s.categorySiblings(id)
+	if err != nil {
+		return err
+	}
+	for i, v := range ids {
+		if v == id {
+			to := i + delta
+			if to < 0 || to >= len(ids) {
+				return nil // 이미 맨 끝 — 조용히 무시한다
+			}
+			return s.MoveCategoryTo(id, to)
+		}
+	}
+	return ErrNotFound
 }
 
 // SetCategoryParent 는 카테고리를 다른 주 아래로 옮긴다(parentID=0 이면 주로 승격).
@@ -109,7 +238,13 @@ func (s *Store) SetCategoryParent(id, parentID int64) error {
 		return fmt.Errorf("자기 자신을 상위로 지정할 수 없습니다")
 	}
 	if parentID == 0 {
-		_, err := s.exec(`UPDATE categories SET parent_id=NULL WHERE id=?`, id)
+		// 주로 승격 — 같은 종류의 주들 맨 뒤에 붙인다.
+		var kind string
+		if err := s.queryRow(`SELECT kind FROM categories WHERE id=?`, id).Scan(&kind); err != nil {
+			return fmt.Errorf("카테고리를 찾을 수 없습니다: %w", err)
+		}
+		_, err := s.exec(`UPDATE categories SET parent_id=NULL, sort_order=? WHERE id=?`,
+			s.nextSortOrder(0, kind), id)
 		return err
 	}
 	var childCount int
@@ -128,8 +263,9 @@ func (s *Store) SetCategoryParent(id, parentID int64) error {
 	if pParent.Valid {
 		return fmt.Errorf("부 카테고리를 상위로 지정할 수 없습니다 (2단까지)")
 	}
-	// 부는 주의 종류(수입/지출/이체)를 따른다
-	_, err := s.exec(`UPDATE categories SET parent_id=?, kind=? WHERE id=?`, parentID, pKind, id)
+	// 부는 주의 종류(수입/지출/이체)를 따르고, 옮겨 간 주의 부들 맨 뒤에 붙는다.
+	_, err := s.exec(`UPDATE categories SET parent_id=?, kind=?, sort_order=? WHERE id=?`,
+		parentID, pKind, s.nextSortOrder(parentID, pKind), id)
 	return err
 }
 

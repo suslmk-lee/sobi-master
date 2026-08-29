@@ -1,4 +1,11 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AddTransaction,
   ApplyRulesToUnclassified,
@@ -22,6 +29,7 @@ import {
   today,
   won,
 } from "../lib";
+import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
 
@@ -44,7 +52,17 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
   // 내용(가맹점) 자동완성
   const [sug, setSug] = useState<store.MerchantSuggestion[]>([]);
   const [showSug, setShowSug] = useState(false);
+  // 키보드로 짚고 있는 항목(-1 = 없음). 위/아래 키로 옮기고 Enter 로 고른다.
+  const [activeSug, setActiveSug] = useState(-1);
   const sugTimer = useRef<ReturnType<typeof setTimeout>>();
+  const sugListRef = useRef<HTMLUListElement>(null);
+
+  // 키보드로 목록 밖으로 나가면 그 항목이 보이도록 스크롤한다.
+  useEffect(() => {
+    if (activeSug < 0 || !sugListRef.current) return;
+    const el = sugListRef.current.children[activeSug] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [activeSug]);
 
   // 귀속자 목록이 로드되면 "아빠"를 기본 선택해 둔다.
   const dadId = refs.members.find((m) => m.name === "아빠")?.id;
@@ -58,6 +76,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
   const onMerchant = (v: string) => {
     setF((prev) => ({ ...prev, merchant: v }));
     clearTimeout(sugTimer.current);
+    setActiveSug(-1);
     if (v.trim().length < 1) {
       setSug([]);
       setShowSug(false);
@@ -68,11 +87,52 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         const list = await GetMerchantSuggestions(v.trim());
         setSug(list);
         setShowSug(list.length > 0);
+        setActiveSug(-1); // 목록이 바뀌면 짚고 있던 위치는 버린다
       } catch {
         setSug([]);
         setShowSug(false);
       }
     }, 250);
+  };
+
+  const closeSug = () => {
+    setShowSug(false);
+    setActiveSug(-1);
+  };
+
+  // 자동완성 키보드 조작: ↓/↑ 이동(양끝에서 순환), Enter 선택, Esc 닫기.
+  // 목록이 떠 있어도 짚은 항목이 없으면 Enter 는 평소대로 폼 제출로 넘긴다.
+  const onMerchantKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      if (showSug) {
+        e.preventDefault();
+        closeSug();
+      }
+      return;
+    }
+    if (e.key === "Tab") {
+      closeSug();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (sug.length === 0) return;
+      e.preventDefault(); // 커서가 입력칸 끝으로 튀지 않게
+      if (!showSug) {
+        // 닫아 둔 목록은 ↓ 로 다시 연다
+        setShowSug(true);
+        setActiveSug(e.key === "ArrowDown" ? 0 : sug.length - 1);
+        return;
+      }
+      setActiveSug((i) => {
+        if (e.key === "ArrowDown") return i + 1 >= sug.length ? 0 : i + 1;
+        return i <= 0 ? sug.length - 1 : i - 1;
+      });
+      return;
+    }
+    if (e.key === "Enter" && showSug && activeSug >= 0 && activeSug < sug.length) {
+      e.preventDefault(); // 폼이 제출되지 않게 막고 선택으로 처리
+      pickSug(sug[activeSug]);
+    }
   };
 
   // 자동완성 선택 시: 그 가맹점의 최근 거래 기준으로 메모·구분·귀속자·카테고리·결제수단 채움
@@ -86,7 +146,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
       categoryId: s.categoryId ? String(s.categoryId) : "",
       paymentMethodId: s.paymentMethodId ? String(s.paymentMethodId) : "",
     }));
-    setShowSug(false);
+    closeSug();
   };
 
   // 자동완성 항목의 부가 설명(카테고리 · 귀속자 · 결제수단)
@@ -164,13 +224,26 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
             value={f.merchant}
             onChange={(e) => onMerchant(e.target.value)}
             onFocus={() => sug.length > 0 && setShowSug(true)}
-            onBlur={() => setTimeout(() => setShowSug(false), 150)}
+            onBlur={() => setTimeout(closeSug, 150)}
+            onKeyDown={onMerchantKey}
             autoComplete="off"
+            role="combobox"
+            aria-expanded={showSug}
+            aria-controls="ac-merchant-list"
+            aria-activedescendant={activeSug >= 0 ? `ac-merchant-${activeSug}` : undefined}
           />
           {showSug && (
-            <ul className="ac-list">
+            <ul className="ac-list" id="ac-merchant-list" role="listbox" ref={sugListRef}>
               {sug.map((s, i) => (
-                <li key={i} onMouseDown={() => pickSug(s)}>
+                <li
+                  key={i}
+                  id={`ac-merchant-${i}`}
+                  role="option"
+                  aria-selected={i === activeSug}
+                  className={i === activeSug ? "active" : undefined}
+                  onMouseDown={() => pickSug(s)}
+                  onMouseEnter={() => setActiveSug(i)}
+                >
                   <span className="ac-merchant">{s.merchant}</span>
                   {sugMeta(s) && <span className="ac-meta muted small">{sugMeta(s)}</span>}
                 </li>
@@ -547,7 +620,7 @@ export default function Transactions({
       <ManualForm refs={refs} onAdded={load} />
 
       <div className="toolbar wrap">
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <MonthPicker value={month} onChange={setMonth} />
         <input
           type="text"
           className="search"

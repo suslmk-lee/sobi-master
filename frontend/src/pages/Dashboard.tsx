@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { GetDashboard } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
 import { won } from "../lib";
+import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
 import { DailyChart, Donut, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
@@ -86,7 +87,7 @@ export default function Dashboard({
   return (
     <div>
       <div className="toolbar">
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <MonthPicker value={month} onChange={setMonth} />
         {sum.unclassifiedCount > 0 && (
           <button className="warn" onClick={goUnclassified}>
             미분류 거래 {sum.unclassifiedCount}건 — 지금 분류하기

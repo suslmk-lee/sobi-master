@@ -13,10 +13,11 @@ CREATE TABLE members (
 	name TEXT NOT NULL
 );
 CREATE TABLE categories (
-	id        INTEGER PRIMARY KEY,
-	name      TEXT NOT NULL,
-	kind      TEXT NOT NULL DEFAULT 'expense',
-	parent_id INTEGER
+	id         INTEGER PRIMARY KEY,
+	name       TEXT NOT NULL,
+	kind       TEXT NOT NULL DEFAULT 'expense',
+	parent_id  INTEGER,
+	sort_order INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE payment_methods (
 	id              INTEGER PRIMARY KEY,
@@ -56,6 +57,24 @@ CREATE TABLE budgets (
 	category_id INTEGER NOT NULL,
 	ym          TEXT NOT NULL DEFAULT '*',
 	amount      INTEGER NOT NULL
+);
+CREATE TABLE subscriptions (
+	id                INTEGER PRIMARY KEY,
+	name              TEXT NOT NULL,
+	merchant          TEXT NOT NULL DEFAULT '',
+	amount            INTEGER NOT NULL DEFAULT 0,
+	cycle             TEXT NOT NULL DEFAULT 'monthly',
+	billing_day       INTEGER NOT NULL DEFAULT 1,
+	billing_month     INTEGER NOT NULL DEFAULT 0,
+	start_ym          TEXT NOT NULL DEFAULT '',
+	end_ym            TEXT NOT NULL DEFAULT '',
+	next_amount       INTEGER NOT NULL DEFAULT 0,
+	next_amount_ym    TEXT NOT NULL DEFAULT '',
+	category_id       INTEGER,
+	member_id         INTEGER,
+	payment_method_id INTEGER,
+	memo              TEXT NOT NULL DEFAULT '',
+	active            INTEGER NOT NULL DEFAULT 1
 );
 `
 
@@ -120,14 +139,15 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name}, e
 			}),
 		copy("categories",
-			`SELECT id, name, kind, parent_id FROM categories`,
-			`INSERT INTO categories(id, name, kind, parent_id) VALUES(?,?,?,?)`,
+			`SELECT id, name, kind, parent_id, sort_order FROM categories`,
+			`INSERT INTO categories(id, name, kind, parent_id, sort_order) VALUES(?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id int64
 				var name, kind string
 				var parent sql.NullInt64
-				e := r.Scan(&id, &name, &kind, &parent)
-				return []interface{}{id, name, kind, nullable(parent)}, e
+				var order int
+				e := r.Scan(&id, &name, &kind, &parent, &order)
+				return []interface{}{id, name, kind, nullable(parent), order}, e
 			}),
 		copy("payment_methods",
 			`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color FROM payment_methods`,
@@ -157,6 +177,25 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var ym string
 				e := r.Scan(&id, &cid, &ym, &amount)
 				return []interface{}{id, cid, ym, amount}, e
+			}),
+		copy("subscriptions",
+			`SELECT id, name, merchant, amount, cycle, billing_day, billing_month,
+			        start_ym, end_ym, next_amount, next_amount_ym,
+			        category_id, member_id, payment_method_id, memo, active FROM subscriptions`,
+			`INSERT INTO subscriptions(id, name, merchant, amount, cycle, billing_day, billing_month,
+			        start_ym, end_ym, next_amount, next_amount_ym,
+			        category_id, member_id, payment_method_id, memo, active)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, amount, next int64
+				var day, bmonth, active int
+				var name, merchant, cycle, startYM, endYM, nextYM, memo string
+				var cid, mid, pid sql.NullInt64
+				e := r.Scan(&id, &name, &merchant, &amount, &cycle, &day, &bmonth,
+					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active)
+				return []interface{}{id, name, merchant, amount, cycle, day, bmonth,
+					startYM, endYM, next, nextYM,
+					nullable(cid), nullable(mid), nullable(pid), memo, active}, e
 			}),
 		copy("transactions",
 			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, created_at::text FROM transactions`,

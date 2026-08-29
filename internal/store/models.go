@@ -14,6 +14,8 @@ type Category struct {
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
 	ParentID *int64 `json:"parentId"`
+	// SortOrder 는 같은 그룹(같은 종류의 주끼리, 같은 주 아래 부끼리) 안에서의 표시 순서.
+	SortOrder int `json:"sortOrder"`
 	// 조회 편의용
 	Parent   string `json:"parent"`   // 주 카테고리 이름 (주 자신이면 "")
 	FullName string `json:"fullName"` // "식비 > 배달" 또는 "통신비"
