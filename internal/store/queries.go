@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -372,14 +373,65 @@ func (s *Store) GetTransaction(id int64) (Transaction, error) {
 	return s.scanTx(rows)
 }
 
-// DeleteTransactions 는 여러 거래를 한 번에 삭제한다.
+// idChunk 는 IN (...) 절에 한 번에 넣을 ID 개수. Postgres 의 파라미터 상한(65535)에
+// 걸리지 않도록 넉넉히 잘라 보낸다.
+const idChunk = 1000
+
+// idPlaceholders 는 IN (...) 에 쓸 "?,?,?" 와 인자 슬라이스를 만든다.
+func idPlaceholders(ids []int64) (string, []interface{}) {
+	ph := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		ph[i] = "?"
+		args[i] = id
+	}
+	return strings.Join(ph, ","), args
+}
+
+// DeleteTransactions 는 여러 거래를 한 번에 삭제한다(ID 묶음당 쿼리 1회).
 func (s *Store) DeleteTransactions(ids []int64) error {
-	for _, id := range ids {
-		if _, err := s.exec(`DELETE FROM transactions WHERE id=?`, id); err != nil {
+	for start := 0; start < len(ids); start += idChunk {
+		end := start + idChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		ph, args := idPlaceholders(ids[start:end])
+		if _, err := s.exec(`DELETE FROM transactions WHERE id IN (`+ph+`)`, args...); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// GetTransactions 는 여러 거래를 ID 묶음당 쿼리 1회로 읽는다(일괄 처리용).
+// 존재하지 않는 ID 는 결과에서 빠지므로, 호출 측에서 ID 순서가 필요하면 직접 정렬한다.
+func (s *Store) GetTransactions(ids []int64) ([]Transaction, error) {
+	out := make([]Transaction, 0, len(ids))
+	for start := 0; start < len(ids); start += idChunk {
+		end := start + idChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		ph, args := idPlaceholders(ids[start:end])
+		rows, err := s.query(txSelect+" WHERE t.id IN ("+ph+")", args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			t, err := s.scanTx(rows)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out = append(out, t)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
 }
 
 // MerchantSuggestions 는 query 를 포함하는 과거 가맹점들을, 각 가맹점의 가장 최근
@@ -420,11 +472,42 @@ LIMIT ?`, like, limit)
 }
 
 // HasTransaction 은 import 중복 방지용: 같은 날짜+금액+가맹점+방향 거래가 이미 있는지 본다.
+// 여러 행을 한꺼번에 확인할 때는 ExistingTxKeys 로 키 집합을 한 번에 읽는다.
 func (s *Store) HasTransaction(date string, amount int64, merchant, direction string) (bool, error) {
 	var n int
 	err := s.queryRow(`SELECT COUNT(*) FROM transactions WHERE date=? AND amount=? AND merchant=? AND direction=?`,
 		date, amount, strings.TrimSpace(merchant), direction).Scan(&n)
 	return n > 0, err
+}
+
+// TxKey 는 import 중복 판정 기준(날짜+금액+가맹점+방향)을 한 문자열로 묶는다.
+// 가맹점명은 저장 시와 같게 trim 한다. 구분자는 데이터에 나올 수 없는 NUL 을 쓴다.
+func TxKey(date string, amount int64, merchant, direction string) string {
+	return date + "\x00" + strconv.FormatInt(amount, 10) + "\x00" +
+		strings.TrimSpace(merchant) + "\x00" + direction
+}
+
+// ExistingTxKeys 는 [from, to] 기간 거래의 중복 판정 키 집합을 쿼리 1회로 읽는다.
+// 중복 판정 키에 날짜가 들어가므로, CSV 에 들어 있는 날짜 범위만 읽으면
+// 행마다 HasTransaction 을 부르는 것과 결과가 같다.
+func (s *Store) ExistingTxKeys(from, to string) (map[string]struct{}, error) {
+	rows, err := s.query(
+		`SELECT date, amount, merchant, direction FROM transactions WHERE date >= ? AND date <= ?`,
+		from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := map[string]struct{}{}
+	for rows.Next() {
+		var date, merchant, direction string
+		var amount int64
+		if err := rows.Scan(&date, &amount, &merchant, &direction); err != nil {
+			return nil, err
+		}
+		keys[TxKey(date, amount, merchant, direction)] = struct{}{}
+	}
+	return keys, rows.Err()
 }
 
 // ---- 규칙 ----

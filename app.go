@@ -415,11 +415,9 @@ func (a *App) BatchDelete(ids []int64) error {
 	if err := a.ensure(); err != nil {
 		return err
 	}
-	backup := make([]store.Transaction, 0, len(ids))
-	for _, id := range ids {
-		if t, err := a.st.GetTransaction(id); err == nil {
-			backup = append(backup, t)
-		}
+	backup, err := a.st.GetTransactions(ids)
+	if err != nil {
+		return err
 	}
 	if err := a.st.DeleteTransactions(ids); err != nil {
 		return err
@@ -463,10 +461,31 @@ func (a *App) BatchClassify(ids []int64, memberID, categoryID int64, learn bool)
 	if err := a.ensure(); err != nil {
 		return err
 	}
+	// 대상 거래를 쿼리 1회로 읽고, 예전처럼 ids 순서대로 처리한다
+	// (학습 순서가 규칙 갱신 결과에 영향을 주므로 순서를 유지한다).
+	found, err := a.st.GetTransactions(ids)
+	if err != nil {
+		return err
+	}
+	byID := make(map[int64]store.Transaction, len(found))
+	for _, t := range found {
+		byID[t.ID] = t
+	}
+
+	// 학습을 할 때만 규칙·이름을 한 번씩 읽어 루프 내내 재사용한다.
+	var ls *classifier.LearnSession
+	var nc *nameCache
+	if learn {
+		if ls, err = a.cl.NewLearnSession(); err != nil {
+			return err
+		}
+		nc = newNameCache(a.st)
+	}
+
 	for _, id := range ids {
-		t, err := a.st.GetTransaction(id)
-		if err != nil {
-			continue
+		t, ok := byID[id]
+		if !ok {
+			continue // 없는 ID 는 건너뛴다
 		}
 		if memberID > 0 {
 			m := memberID
@@ -481,7 +500,7 @@ func (a *App) BatchClassify(ids []int64, memberID, categoryID int64, learn bool)
 			return err
 		}
 		if learn {
-			a.learn(t)
+			logIf("규칙 학습", ls.Learn(nc.fill(t)))
 		}
 	}
 	return nil
@@ -497,12 +516,14 @@ func (a *App) ApplyRulesToUnclassified(month string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// 규칙은 이 루프에서 바뀌지 않으므로 한 번만 읽어 재사용한다.
+	matcher, err := a.cl.Matcher()
+	if err != nil {
+		return 0, err
+	}
 	applied := 0
 	for _, t := range txs {
-		rule, err := a.cl.Match(t.Merchant, t.Amount)
-		if err != nil {
-			return applied, err
-		}
+		rule := matcher.Match(t.Merchant, t.Amount)
 		if rule == nil {
 			continue
 		}
@@ -518,27 +539,47 @@ func (a *App) ApplyRulesToUnclassified(month string) (int, error) {
 	return applied, nil
 }
 
-// learn 은 규칙 라벨에 쓸 이름을 채운 뒤 분류 규칙을 학습한다. 실패해도 거래 저장은 유지.
-func (a *App) learn(t store.Transaction) {
+// nameCache 는 규칙 라벨에 쓸 귀속자/카테고리 이름을 처음 필요할 때 한 번만 읽어 둔다.
+// 여러 건을 학습하는 루프에서 목록 조회가 건마다 반복되지 않게 한다.
+// 조회에 실패하면 이름을 비워 둔다(라벨만 비어 학습 자체는 계속된다).
+type nameCache struct {
+	st      *store.Store
+	members map[int64]string
+	cats    map[int64]string
+}
+
+func newNameCache(st *store.Store) *nameCache { return &nameCache{st: st} }
+
+// fill 은 거래에 비어 있는 귀속자/카테고리 이름을 채워 돌려준다.
+func (n *nameCache) fill(t store.Transaction) store.Transaction {
 	if t.MemberID != nil && t.MemberName == "" {
-		if ms, err := a.st.ListMembers(); err == nil {
-			for _, m := range ms {
-				if m.ID == *t.MemberID {
-					t.MemberName = m.Name
+		if n.members == nil {
+			n.members = map[int64]string{}
+			if ms, err := n.st.ListMembers(); err == nil {
+				for _, m := range ms {
+					n.members[m.ID] = m.Name
 				}
 			}
 		}
+		t.MemberName = n.members[*t.MemberID]
 	}
 	if t.CategoryID != nil && t.CategoryName == "" {
-		if cs, err := a.st.ListCategories(); err == nil {
-			for _, c := range cs {
-				if c.ID == *t.CategoryID {
-					t.CategoryName = c.Name
+		if n.cats == nil {
+			n.cats = map[int64]string{}
+			if cs, err := n.st.ListCategories(); err == nil {
+				for _, c := range cs {
+					n.cats[c.ID] = c.Name
 				}
 			}
 		}
+		t.CategoryName = n.cats[*t.CategoryID]
 	}
-	logIf("규칙 학습", a.cl.Learn(t))
+	return t
+}
+
+// learn 은 규칙 라벨에 쓸 이름을 채운 뒤 분류 규칙을 학습한다(단건). 실패해도 거래 저장은 유지.
+func (a *App) learn(t store.Transaction) {
+	logIf("규칙 학습", a.cl.Learn(newNameCache(a.st).fill(t)))
 }
 
 // ---- CSV 가져오기 ----
@@ -583,23 +624,41 @@ func (a *App) ImportCSV(paymentMethodID int64) (ImportResult, error) {
 	if paymentMethodID > 0 {
 		pmID = &paymentMethodID
 	}
+	if len(parsed.Parsed) == 0 {
+		return res, nil
+	}
+
+	// 규칙과 기존 거래 키를 각각 한 번만 읽는다. 예전에는 행마다 규칙 조회 +
+	// 중복 확인 쿼리를 날려 500행 CSV 가 왕복 1,000회였다.
+	matcher, err := a.cl.Matcher()
+	if err != nil {
+		logIf("ImportCSV(규칙조회)", err)
+		return res, err
+	}
+	from, to := parsed.Parsed[0].Date, parsed.Parsed[0].Date
 	for _, row := range parsed.Parsed {
-		dup, err := a.st.HasTransaction(row.Date, row.Amount, row.Merchant, row.Direction)
-		if err != nil {
-			logIf("ImportCSV(중복확인)", err)
-			return res, err
+		if row.Date < from {
+			from = row.Date
 		}
-		if dup {
+		if row.Date > to {
+			to = row.Date
+		}
+	}
+	seen, err := a.st.ExistingTxKeys(from, to)
+	if err != nil {
+		logIf("ImportCSV(중복확인)", err)
+		return res, err
+	}
+
+	for _, row := range parsed.Parsed {
+		key := store.TxKey(row.Date, row.Amount, row.Merchant, row.Direction)
+		if _, dup := seen[key]; dup {
 			res.Duplicates++
 			continue
 		}
 		t := row.ToTransaction()
 		t.PaymentMethodID = pmID
-		rule, err := a.cl.Match(t.Merchant, t.Amount)
-		if err != nil {
-			return res, err
-		}
-		classifier.Apply(&t, rule)
+		classifier.Apply(&t, matcher.Match(t.Merchant, t.Amount))
 		if t.AutoClassified {
 			res.AutoClassified++
 		}
@@ -607,6 +666,8 @@ func (a *App) ImportCSV(paymentMethodID int64) (ImportResult, error) {
 			res.Errors = append(res.Errors, fmt.Sprintf("%s %s: %v", row.Date, row.Merchant, err))
 			continue
 		}
+		// 같은 CSV 안에 똑같은 행이 또 나오면 중복으로 걸러지도록 키를 등록한다.
+		seen[key] = struct{}{}
 		res.Imported++
 	}
 	return res, nil
@@ -929,13 +990,21 @@ func (a *App) GetRecurringStatus(year, month int) ([]RecurringItem, error) {
 		return nil, err
 	}
 
+	// 규칙 × 거래를 전부 대조하므로 가맹점명 정규화를 미리 한 번씩만 해 둔다
+	// (예전에는 대조 한 쌍마다 양쪽을 다시 정규화했다).
+	normTx := make([]string, len(txs))
+	for i, t := range txs {
+		normTx[i] = classifier.Normalize(t.Merchant)
+	}
+
 	unseen := []RecurringItem{}
 	seen := []RecurringItem{}
 	for _, r := range rules {
 		months := map[string]bool{}
+		normRule := classifier.Normalize(r.Merchant)
 		it := RecurringItem{Label: r.Label, Merchant: r.Merchant, AmountMin: r.AmountMin, AmountMax: r.AmountMax}
-		for _, t := range txs {
-			if !classifier.RuleMatches(r, t.Merchant, t.Amount) {
+		for i, t := range txs {
+			if !classifier.RuleMatchesNorm(r, normRule, normTx[i], t.Amount) {
 				continue
 			}
 			if len(t.Date) >= 7 {
