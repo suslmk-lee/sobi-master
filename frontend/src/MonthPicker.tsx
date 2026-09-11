@@ -1,19 +1,18 @@
-import { useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // 월 선택기.
 //
-// 원래는 <input type="month"> 를 썼는데, 이건 Chromium 계열(Windows 의 WebView2)에서만
-// 달력이 뜬다. macOS 의 WebView(WebKit)는 이 타입을 지원하지 않아 값만 보이는 텍스트
-// 칸으로 떨어져 월을 고를 수단이 사라진다. 그래서 연/월 select 와 이전·다음 버튼으로
-// 직접 만들어 어느 플랫폼에서나 같게 동작하게 한다.
+// <input type="month"> 는 Chromium 계열(Windows 의 WebView2)에서만 달력이 뜬다.
+// macOS 의 WebView(WebKit)는 이 타입을 지원하지 않아 값만 보이는 텍스트 칸으로 떨어져
+// 월을 고를 수단이 사라진다. 그래서 직접 만들어 어느 플랫폼에서나 같게 동작하게 한다.
 //
-// value 는 "YYYY-MM", onChange 도 같은 형식으로 돌려준다(기존 input 과 호환).
+// 이전·다음 화살표로 한 달씩 넘기고, 가운데 라벨을 누르면 연도 이동 + 12개월 격자가
+// 열려 몇 달 떨어진 달도 한 번에 고를 수 있다.
+//
+// value 는 "YYYY-MM", onChange 도 같은 형식으로 돌려준다.
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const ymOf = (y: number, m: number) => `${y}-${pad2(m)}`;
-
-// 과거 연도를 얼마나 거슬러 고를 수 있게 할지(내년까지는 미리 선택 가능).
-const YEARS_BACK = 10;
 
 function parseYm(value: string): { y: number; m: number } {
   const y = Number(value.slice(0, 4));
@@ -37,18 +36,32 @@ export default function MonthPicker({
   className?: string;
 }) {
   const { y, m } = parseYm(value);
+  const [open, setOpen] = useState(false);
+  // 격자에서 보고 있는 연도(선택한 연도와 별개로 넘겨볼 수 있다)
+  const [panelYear, setPanelYear] = useState(y);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  // 연도 후보. 지금 값이 범위 밖이면(오래된 데이터를 보는 중이면) 그 연도도 넣어 준다.
-  const years = useMemo(() => {
-    const now = new Date().getFullYear();
-    const list: number[] = [];
-    for (let i = now - YEARS_BACK; i <= now + 1; i++) list.push(i);
-    if (!list.includes(y)) {
-      list.push(y);
-      list.sort((a, b) => a - b);
-    }
-    return list;
-  }, [y]);
+  // 열 때마다 현재 선택 연도에서 시작한다
+  useEffect(() => {
+    if (open) setPanelYear(y);
+  }, [open, y]);
+
+  // 바깥 클릭 / Esc 로 닫는다
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   // delta 개월 이동. 12월 → 다음 해 1월 같은 연도 넘김은 Date 가 알아서 처리한다.
   const shift = (delta: number) => {
@@ -56,8 +69,18 @@ export default function MonthPicker({
     onChange(ymOf(d.getFullYear(), d.getMonth() + 1));
   };
 
+  const now = new Date();
+  const thisY = now.getFullYear();
+  const thisM = now.getMonth() + 1;
+  const isThisMonth = y === thisY && m === thisM;
+
+  const pick = (mm: number) => {
+    onChange(ymOf(panelYear, mm));
+    setOpen(false);
+  };
+
   return (
-    <div className={className ? `month-picker ${className}` : "month-picker"}>
+    <div className={className ? `month-picker ${className}` : "month-picker"} ref={boxRef}>
       <button
         type="button"
         className="mp-arrow"
@@ -67,28 +90,21 @@ export default function MonthPicker({
       >
         ‹
       </button>
-      <select
-        value={y}
-        onChange={(e) => onChange(ymOf(Number(e.target.value), m))}
-        aria-label="연도"
+
+      <button
+        type="button"
+        className={`mp-label ${open ? "open" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="달 고르기"
       >
-        {years.map((yy) => (
-          <option key={yy} value={yy}>
-            {yy}년
-          </option>
-        ))}
-      </select>
-      <select
-        value={m}
-        onChange={(e) => onChange(ymOf(y, Number(e.target.value)))}
-        aria-label="월"
-      >
-        {MONTHS.map((mm) => (
-          <option key={mm} value={mm}>
-            {mm}월
-          </option>
-        ))}
-      </select>
+        <span className="mp-y">{y}년</span>
+        <span className="mp-m">{m}월</span>
+        {isThisMonth && <span className="mp-badge">이번 달</span>}
+        <span className="mp-caret" aria-hidden="true">▾</span>
+      </button>
+
       <button
         type="button"
         className="mp-arrow"
@@ -98,6 +114,59 @@ export default function MonthPicker({
       >
         ›
       </button>
+
+      {open && (
+        <div className="mp-pop" role="dialog" aria-label="달 선택">
+          <div className="mp-pop-head">
+            <button
+              type="button"
+              className="mp-arrow"
+              onClick={() => setPanelYear((py) => py - 1)}
+              aria-label="이전 해"
+            >
+              ‹
+            </button>
+            <strong>{panelYear}년</strong>
+            <button
+              type="button"
+              className="mp-arrow"
+              onClick={() => setPanelYear((py) => py + 1)}
+              aria-label="다음 해"
+            >
+              ›
+            </button>
+          </div>
+
+          <div className="mp-grid">
+            {MONTHS.map((mm) => {
+              const selected = panelYear === y && mm === m;
+              const isNow = panelYear === thisY && mm === thisM;
+              return (
+                <button
+                  key={mm}
+                  type="button"
+                  className={`mp-m-btn${selected ? " sel" : ""}${isNow ? " now" : ""}`}
+                  onClick={() => pick(mm)}
+                  title={isNow ? "이번 달" : undefined}
+                >
+                  {mm}월
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            className="mp-today"
+            onClick={() => {
+              onChange(ymOf(thisY, thisM));
+              setOpen(false);
+            }}
+          >
+            이번 달로 이동
+          </button>
+        </div>
+      )}
     </div>
   );
 }

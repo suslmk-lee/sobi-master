@@ -399,9 +399,19 @@ button.ghost:hover {
   align-items: end;
 }
 
-.form-row input[type="text"] {
+/* 직계 입력칸만 늘린다. 자손까지 잡으면 label.field(세로 flex) 안의 입력칸에도
+   flex:1(=flex-basis:0)이 걸려 칸마다 높이가 달라진다. */
+.form-row > input[type="text"] {
   flex: 1;
   min-width: 140px;
+}
+
+/* 라벨+입력 묶음은 아래(입력칸) 기준으로 줄을 맞춘다. 라벨 길이가 달라
+   두 줄로 접히더라도 입력칸끼리는 한 선에 놓인다. */
+label.field input:not([type="checkbox"]),
+label.field select {
+  flex: none;
+  height: 36px;
 }
 
 .check {
@@ -522,6 +532,33 @@ button.ghost:hover {
 .modal-grid input,
 .modal-grid select {
   width: 100%;
+}
+
+/* 모달 안의 체크박스 항목(세로 스택이 아니라 가로 정렬) */
+.modal-grid .field.check-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* label.field input 의 min-width:120px 가 체크박스까지 늘리므로 여기서 해제한다 */
+.modal-grid .field.check-field input[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  flex: none;
+  margin: 0;
+}
+
+.check-field .cf-text {
+  white-space: nowrap;
+}
+
+.check-field .cf-hint {
+  font-size: 12px;
+  min-width: 0;
 }
 
 .modal-actions {
@@ -1227,6 +1264,41 @@ label.field input {
   gap: 8px;
 }
 
+/* ---- 거래내역 필터 바: 날짜 한 줄 + 조건 한 줄 ---- */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 첫 줄: 월 선택이 주인공. 보조 토글은 오른쪽으로 밀어 둔다 */
+.filter-row-date .check {
+  margin-left: auto;
+}
+
+/* 둘째 줄: 각 칸에 늘어나는 비율을 줘서 폭이 남거나 좁아도 가지런히 맞는다 */
+.filter-row-cond > * {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.filter-row-cond .search {
+  flex: 2 1 180px;
+}
+
+.filter-row-cond .amt {
+  flex: 0 1 96px;
+}
+
 .toolbar .search {
   flex: 1;
   min-width: 160px;
@@ -1444,6 +1516,141 @@ label.field input {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  position: relative;
+}
+
+/* 가운데 라벨: 누르면 12개월 격자가 열린다 */
+/* 글자 크기가 제각각(12/16px)이라 baseline 정렬은 위아래가 어긋나 보인다.
+   중앙 정렬 + line-height 고정으로 한 줄에 가지런히 맞춘다. */
+.month-picker .mp-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  background: var(--field-bg);
+  color: var(--text);
+  border: 1px solid rgba(120, 130, 170, 0.3);
+  border-radius: 10px;
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.month-picker .mp-label:hover,
+.month-picker .mp-label.open {
+  border-color: var(--accent);
+}
+
+.month-picker .mp-y {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.month-picker .mp-m {
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.month-picker .mp-badge {
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(91, 130, 240, 0.18);
+  color: var(--accent);
+}
+
+.month-picker .mp-caret {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+/* 팝오버 */
+.mp-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 80;
+  width: 236px;
+  padding: 10px;
+  background: var(--modal-bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(50, 55, 90, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* .card 는 backdrop-filter 로 스태킹 컨텍스트를 만들어, 카드 안에서 연 팝오버가
+   DOM 상 뒤에 오는 카드에 가린다(자동완성 목록과 같은 문제). 열린 동안만 카드를 띄운다. */
+.card:has(.mp-pop) {
+  position: relative;
+  z-index: 40;
+}
+
+.mp-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mp-pop-head strong {
+  font-size: 14px;
+}
+
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.mp-m-btn {
+  height: 34px;
+  padding: 0;
+  font-size: 13px;
+  background: rgba(90, 100, 150, 0.1);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.mp-m-btn:hover {
+  background: rgba(91, 130, 240, 0.18);
+}
+
+/* 이번 달은 테두리로, 선택한 달은 채움으로 구분한다 */
+.mp-m-btn.now {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mp-m-btn.sel {
+  background: linear-gradient(135deg, #5b82f0, #9b5cff);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+
+.mp-today {
+  width: 100%;
+  height: 30px;
+  margin-top: 8px;
+  font-size: 12px;
+  background: none;
+  color: var(--accent);
+  border: 1px solid rgba(120, 130, 170, 0.3);
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.mp-today:hover {
+  border-color: var(--accent);
 }
 
 .month-picker .mp-arrow {
@@ -1524,4 +1731,184 @@ label.field input {
 
 .ac-merchant {
   font-size: 13px;
+}
+
+/* ---- 캐시백 ---- */
+
+/* 기한이 남은 건 목록은 놓치면 안 되므로 눈에 띄게 */
+.cb-pending {
+  border-color: rgba(91, 130, 240, 0.35);
+}
+
+.cb-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cb-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--minicard-bg);
+}
+
+.cb-list li.urgent {
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(180, 83, 9, 0.3);
+}
+
+.cb-dday {
+  flex: none;
+  min-width: 62px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.cb-dday.hot {
+  color: var(--warn);
+}
+
+.cb-date {
+  flex: none;
+}
+
+.cb-merchant {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cb-card {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cb-amt,
+.cb-bonus {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-bonus {
+  min-width: 68px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.cb-total {
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.cb-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--minicard-bg);
+  border: 1px solid var(--line);
+}
+
+.cb-metric strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-table td,
+.cb-table th {
+  font-size: 12px;
+}
+
+/* 설명 문구도 입력칸 줄에 맞춰 아래로 붙인다(가운데 정렬이면 혼자 떠 보인다) */
+.cb-hint {
+  align-self: end;
+  flex: 1 1 220px;
+  min-width: 0;
+  padding-bottom: 9px;
+}
+
+/* ---- 카드 혜택 ---- */
+/* 카드사 안내를 옮겨 적는 표. 계산에 쓰지 않는 "자료"라서 톤을 낮게 잡는다. */
+
+.cbn-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 6px 0 10px;
+}
+
+.cbn-facts span strong {
+  font-size: 13px;
+}
+
+.cbn-src {
+  text-decoration: none;
+  line-height: 1;
+}
+
+.cbn-table th,
+.cbn-table td {
+  vertical-align: middle;
+}
+
+.cbn-table td.actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.cbn-note {
+  margin-top: 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.cbn-form {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  align-items: flex-end;
+}
+
+.cbn-form .cbn-area,
+.cbn-form .cbn-note-field {
+  flex: 1 1 180px;
+}
+
+/* 카드 타일의 대표 혜택 미리보기 */
+.cc-benefits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.cc-benefits .badge {
+  margin-left: 0;
+}
+
+.badge.benefit {
+  background: rgba(91, 130, 240, 0.13);
+  color: var(--accent);
+}
+
+/* 폼에서 남는 너비를 가져가는 칸 (URL·비고처럼 긴 값) */
+.form-row > label.field.grow {
+  flex: 1 1 240px;
 }

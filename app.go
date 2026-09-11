@@ -529,6 +529,93 @@ func (a *App) BatchClassify(ids []int64, memberID, categoryID int64, learn bool)
 	return nil
 }
 
+// BatchSetExcludePerf 는 선택한 거래들을 카드 실적 계산에서 제외/포함으로 한 번에 바꾼다.
+// 세금·공과금처럼 카드사가 실적에 넣어주지 않는 결제를 가져온 뒤 일괄로 표시할 때 쓴다.
+func (a *App) BatchSetExcludePerf(ids []int64, exclude bool) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.SetExcludePerf(ids, exclude)
+	logIf("BatchSetExcludePerf", err)
+	return err
+}
+
+// ---- 카드 혜택 자료 ----
+
+// GetCardBenefits 는 카드 한 장의 혜택 목록.
+func (a *App) GetCardBenefits(pmID int64) ([]store.CardBenefit, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.ListCardBenefits(pmID)
+}
+
+// GetAllCardBenefits 는 전체 카드의 혜택을 카드ID → 목록으로 돌려준다.
+func (a *App) GetAllCardBenefits() (map[int64][]store.CardBenefit, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.AllCardBenefits()
+}
+
+// SaveCardBenefit 은 혜택 한 줄을 추가(ID=0)하거나 수정한다.
+func (a *App) SaveCardBenefit(b store.CardBenefit) (store.CardBenefit, error) {
+	if err := a.ensure(); err != nil {
+		return store.CardBenefit{}, err
+	}
+	if strings.TrimSpace(b.Area) == "" {
+		return store.CardBenefit{}, fmt.Errorf("혜택 영역은 필수입니다")
+	}
+	saved, err := a.st.SaveCardBenefit(b)
+	logIf("SaveCardBenefit", err)
+	return saved, err
+}
+
+func (a *App) DeleteCardBenefit(id int64) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	return a.st.DeleteCardBenefit(id)
+}
+
+// MoveCardBenefit 은 혜택 표시 순서를 위(-1)/아래(+1)로 옮긴다.
+func (a *App) MoveCardBenefit(id int64, delta int) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.MoveCardBenefit(id, delta)
+	logIf("MoveCardBenefit", err)
+	return err
+}
+
+// ---- 캐시백 ----
+
+// GetCashback 은 해당 월의 카드별 캐시백 집계와, 오늘 기준 아직 추가 캐시백을
+// 받을 수 있는(기한이 남은) 결제 목록을 함께 돌려준다.
+func (a *App) GetCashback(year, month int) (store.CashbackReport, error) {
+	if err := a.ensure(); err != nil {
+		return store.CashbackReport{}, err
+	}
+	return a.st.Cashback(year, month, time.Now())
+}
+
+// MarkPaid 는 선택한 결제들의 카드대금 납부일을 기록한다.
+// paidAt 이 비어 있으면 오늘로 기록하고, "-" 면 기록을 지운다.
+func (a *App) MarkPaid(ids []int64, paidAt string) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	switch paidAt {
+	case "":
+		paidAt = time.Now().Format("2006-01-02")
+	case "-":
+		paidAt = ""
+	}
+	err := a.st.SetPaidAt(ids, paidAt)
+	logIf("MarkPaid", err)
+	return err
+}
+
 // ApplyRulesToUnclassified 는 학습된 규칙을 미분류 거래에 소급 적용한다.
 // month 가 빈 문자열이면 전체. 적용된 건수를 돌려준다.
 func (a *App) ApplyRulesToUnclassified(month string) (int, error) {

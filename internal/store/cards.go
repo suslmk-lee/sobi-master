@@ -45,10 +45,13 @@ func (s *Store) CardStatuses(today time.Time) ([]CardStatus, error) {
 			PeriodStart: start.Format("2006-01-02"),
 			PeriodEnd:   end.Format("2006-01-02"),
 		}
+		// 실적 제외 표시된 결제(세금·공과금 등)는 Spent 에서 빼고 Excluded 로 따로 알려준다.
 		err := s.queryRow(`
-SELECT COALESCE(SUM(amount), 0) FROM transactions
+SELECT COALESCE(SUM(amount) FILTER (WHERE exclude_perf = 0), 0),
+       COALESCE(SUM(amount) FILTER (WHERE exclude_perf = 1), 0)
+FROM transactions
 WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
-			pm.ID, st.PeriodStart, st.PeriodEnd).Scan(&st.Spent)
+			pm.ID, st.PeriodStart, st.PeriodEnd).Scan(&st.Spent, &st.Excluded)
 		if err != nil {
 			return nil, err
 		}

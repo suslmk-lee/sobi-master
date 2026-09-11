@@ -200,6 +200,11 @@ export default function Dashboard({
                   </strong>
                   <span className="muted small">{st.periodStart} ~ {st.periodEnd}</span>
                   <span>{won(st.spent)}{st.card.perfTarget > 0 && <> / {won(st.card.perfTarget)}</>}</span>
+                  {st.excluded > 0 && (
+                    <span className="muted small" title="세금·공과금 등 실적 제외로 표시한 결제">
+                      실적 제외 {won(st.excluded)}
+                    </span>
+                  )}
                   {st.card.perfTarget > 0 && (
                     <>
                       <div className="bar-track">

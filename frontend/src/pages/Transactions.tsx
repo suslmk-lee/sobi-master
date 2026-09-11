@@ -11,6 +11,7 @@ import {
   ApplyRulesToUnclassified,
   BatchClassify,
   BatchDelete,
+  BatchSetExcludePerf,
   CanUndo,
   ClassifyTransaction,
   DeleteTransaction,
@@ -42,6 +43,7 @@ const EMPTY_FORM = {
   memberId: "",
   categoryId: "",
   paymentMethodId: "",
+  excludePerf: false,
 };
 
 // 수동 등록 폼: 현금 지출, 회비, 경조사처럼 내역서에 안 잡히는 거래를 직접 입력한다.
@@ -180,6 +182,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           categoryId: f.categoryId ? Number(f.categoryId) : undefined,
           paymentMethodId: f.paymentMethodId ? Number(f.paymentMethodId) : undefined,
           source: "manual",
+          excludePerf: f.excludePerf,
         })
       );
       // 금액만 바꿔 연속 입력하는 경우가 많아 금액만 비우고 나머지는 유지한다
@@ -286,6 +289,14 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           value={f.memo}
           onChange={(e) => setF({ ...f, memo: e.target.value })}
         />
+        <label className="check" title="세금·공과금처럼 카드사가 실적에 넣어주지 않는 결제">
+          <input
+            type="checkbox"
+            checked={f.excludePerf}
+            onChange={(e) => setF({ ...f, excludePerf: e.target.checked })}
+          />
+          실적 제외
+        </label>
         <button type="submit">등록</button>
       </div>
       {err && <p className="error">{err}</p>}
@@ -293,6 +304,8 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         이미 학습된 가맹점·금액이면 규칙대로 자동 분류됩니다(기본 귀속자보다 규칙이 우선).
         새 거래는 카테고리까지 골라 등록하면 다음부터 자동 분류되도록 규칙으로 학습됩니다.
         규칙과 다르게 처리하려면 등록 후 해당 행을 수정하세요.
+        <br />
+        <strong>실적 제외</strong>를 켜면 이 결제는 카드 실적 계산에서만 빠지고, 지출 통계에는 그대로 포함됩니다.
       </p>
     </form>
   );
@@ -319,6 +332,7 @@ function EditModal({
     memberId: tx.memberId ? String(tx.memberId) : "",
     categoryId: tx.categoryId ? String(tx.categoryId) : "",
     paymentMethodId: tx.paymentMethodId ? String(tx.paymentMethodId) : "",
+    excludePerf: tx.excludePerf,
   });
   const [err, setErr] = useState("");
 
@@ -342,6 +356,7 @@ function EditModal({
           memberId: f.memberId ? Number(f.memberId) : undefined,
           categoryId: f.categoryId ? Number(f.categoryId) : undefined,
           paymentMethodId: f.paymentMethodId ? Number(f.paymentMethodId) : undefined,
+          excludePerf: f.excludePerf,
         })
       );
       onSaved();
@@ -436,6 +451,15 @@ function EditModal({
               value={f.memo}
               onChange={(e) => setF({ ...f, memo: e.target.value })}
             />
+          </label>
+          <label className="field span3 check-field">
+            <input
+              type="checkbox"
+              checked={f.excludePerf}
+              onChange={(e) => setF({ ...f, excludePerf: e.target.checked })}
+            />
+            <span className="cf-text">카드 실적에서 제외</span>
+            <span className="cf-hint muted">세금·공과금 등 — 지출 통계에는 그대로 집계</span>
           </label>
         </div>
         {err && <p className="error">{err}</p>}
@@ -607,6 +631,16 @@ export default function Transactions({
     load();
   };
 
+  // 세금·공과금처럼 카드사가 실적에 안 넣어주는 결제를 일괄로 표시/해제한다.
+  // (카드 결제는 대부분 CSV 로 들어오므로 가져온 뒤 골라서 처리하는 경로가 필요하다)
+  const bulkExclude = async (exclude: boolean) => {
+    if (selected.size === 0) return;
+    const n = selected.size;
+    await BatchSetExcludePerf([...selected], exclude);
+    setMsg(`${n}건을 카드 실적에서 ${exclude ? "제외" : "포함"}했습니다.`);
+    load();
+  };
+
   const bulkDelete = async () => {
     if (selected.size === 0) return;
     if (!window.confirm(`${selected.size}건을 삭제할까요? (되돌리기 가능)`)) return;
@@ -619,8 +653,21 @@ export default function Transactions({
     <div>
       <ManualForm refs={refs} onAdded={load} />
 
-      <div className="toolbar wrap">
-        <MonthPicker value={month} onChange={setMonth} />
+      {/* 날짜 한 줄, 나머지 조건 한 줄로 나눠 어중간한 줄바꿈을 없앤다 */}
+      <div className="filter-bar">
+        <div className="filter-row filter-row-date">
+          <MonthPicker value={month} onChange={setMonth} />
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={unclassifiedOnly}
+              onChange={(e) => setUnclassifiedOnly(e.target.checked)}
+            />
+            미분류만
+          </label>
+          <button className="ghost filter-reset" onClick={resetFilters}>필터 초기화</button>
+        </div>
+        <div className="filter-row filter-row-cond">
         <input
           type="text"
           className="search"
@@ -669,15 +716,7 @@ export default function Transactions({
           value={amountMax}
           onChange={(e) => setAmountMax(formatAmount(e.target.value))}
         />
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={unclassifiedOnly}
-            onChange={(e) => setUnclassifiedOnly(e.target.checked)}
-          />
-          미분류만
-        </label>
-        <button className="ghost" onClick={resetFilters}>필터 초기화</button>
+        </div>
       </div>
 
       <div className="toolbar wrap">
@@ -715,6 +754,10 @@ export default function Transactions({
             규칙 학습
           </label>
           <button onClick={bulkClassify} disabled={!bulkMember && !bulkCategory}>일괄 적용</button>
+          <button className="ghost-btn" onClick={() => bulkExclude(true)} title="세금·공과금 등을 카드 실적에서 빼기">
+            실적 제외
+          </button>
+          <button className="ghost-btn" onClick={() => bulkExclude(false)}>실적 포함</button>
           <button className="warn" onClick={bulkDelete}>일괄 삭제</button>
           <button className="ghost" onClick={() => setSelected(new Set())}>선택 해제</button>
         </div>
@@ -757,6 +800,9 @@ export default function Transactions({
                 {t.merchant || "-"}
                 {t.autoClassified && <span className="badge auto">자동</span>}
                 {t.source === "manual" && <span className="badge manual">수동</span>}
+                {t.excludePerf && (
+                  <span className="badge shortfall" title="카드 실적 계산에서 제외됨">실적제외</span>
+                )}
                 {t.memo && <div className="muted small">{t.memo}</div>}
               </td>
               <td className={`num ${t.direction}`}>{won(t.amount)}</td>

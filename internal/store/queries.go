@@ -277,7 +277,7 @@ func (s *Store) DeleteCategory(id int64) error {
 // ---- 결제수단 ----
 
 func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
-	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color FROM payment_methods ORDER BY id`)
+	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +285,9 @@ func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
 	out := []PaymentMethod{}
 	for rows.Next() {
 		var p PaymentMethod
-		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Issuer, &p.BillingDay, &p.CycleStartDay, &p.PerfTarget, &p.Color); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Issuer, &p.BillingDay, &p.CycleStartDay,
+			&p.PerfTarget, &p.Color, &p.CashbackBp, &p.CashbackBonusBp, &p.CashbackBonusDays,
+			&p.AnnualFee, &p.AnnualFeeGlobal, &p.BenefitURL, &p.BenefitNote); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -307,12 +309,19 @@ func (s *Store) SavePaymentMethod(p PaymentMethod) (PaymentMethod, error) {
 		p.BillingDay = 0
 	}
 	if p.ID > 0 {
-		_, err := s.exec(`UPDATE payment_methods SET name=?, type=?, issuer=?, billing_day=?, cycle_start_day=?, perf_target=?, color=? WHERE id=?`,
-			p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color, p.ID)
+		_, err := s.exec(`UPDATE payment_methods SET name=?, type=?, issuer=?, billing_day=?, cycle_start_day=?, perf_target=?, color=?,
+	cashback_bp=?, cashback_bonus_bp=?, cashback_bonus_days=?,
+	annual_fee=?, annual_fee_global=?, benefit_url=?, benefit_note=? WHERE id=?`,
+			p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color,
+			p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
+			p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote, p.ID)
 		return p, err
 	}
-	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, perf_target, color) VALUES(?,?,?,?,?,?,?) RETURNING id`,
-		p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color).Scan(&p.ID)
+	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+		p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color,
+		p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
+		p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote).Scan(&p.ID)
 	return p, err
 }
 
@@ -327,6 +336,7 @@ func (s *Store) DeletePaymentMethod(id int64) error {
 const txSelect = `
 SELECT t.id, t.date, t.amount, t.direction, t.merchant, t.memo,
        t.member_id, t.category_id, t.payment_method_id, t.source, t.auto_classified,
+       t.exclude_perf, t.paid_at,
        COALESCE(m.name, ''),
        CASE WHEN c.id IS NULL THEN ''
             WHEN cp.name IS NULL THEN c.name
@@ -342,9 +352,9 @@ LEFT JOIN payment_methods p ON p.id = t.payment_method_id
 func (s *Store) scanTx(rows *sql.Rows) (Transaction, error) {
 	var t Transaction
 	var mid, cid, pid sql.NullInt64
-	var auto int
+	var auto, excl int
 	err := rows.Scan(&t.ID, &t.Date, &t.Amount, &t.Direction, &t.Merchant, &t.Memo,
-		&mid, &cid, &pid, &t.Source, &auto,
+		&mid, &cid, &pid, &t.Source, &auto, &excl, &t.PaidAt,
 		&t.MemberName, &t.CategoryName, &t.PaymentMethodName)
 	if err != nil {
 		return t, err
@@ -353,6 +363,7 @@ func (s *Store) scanTx(rows *sql.Rows) (Transaction, error) {
 	t.CategoryID = scanNullableID(cid)
 	t.PaymentMethodID = scanNullableID(pid)
 	t.AutoClassified = auto == 1
+	t.ExcludePerf = excl == 1
 	return t, nil
 }
 
@@ -472,22 +483,22 @@ func (s *Store) AddTransaction(t Transaction) (int64, error) {
 	}
 	var id int64
 	err := s.queryRow(`
-INSERT INTO transactions(date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified)
-VALUES(?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+INSERT INTO transactions(date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
 		t.Date, t.Amount, t.Direction, strings.TrimSpace(t.Merchant), t.Memo,
 		nullableID(t.MemberID), nullableID(t.CategoryID), nullableID(t.PaymentMethodID),
-		t.Source, boolToInt(t.AutoClassified)).Scan(&id)
+		t.Source, boolToInt(t.AutoClassified), boolToInt(t.ExcludePerf), strings.TrimSpace(t.PaidAt)).Scan(&id)
 	return id, err
 }
 
 func (s *Store) UpdateTransaction(t Transaction) error {
 	_, err := s.exec(`
 UPDATE transactions SET date=?, amount=?, direction=?, merchant=?, memo=?,
-	member_id=?, category_id=?, payment_method_id=?, auto_classified=?
+	member_id=?, category_id=?, payment_method_id=?, auto_classified=?, exclude_perf=?, paid_at=?
 WHERE id=?`,
 		t.Date, t.Amount, t.Direction, strings.TrimSpace(t.Merchant), t.Memo,
 		nullableID(t.MemberID), nullableID(t.CategoryID), nullableID(t.PaymentMethodID),
-		boolToInt(t.AutoClassified), t.ID)
+		boolToInt(t.AutoClassified), boolToInt(t.ExcludePerf), strings.TrimSpace(t.PaidAt), t.ID)
 	return err
 }
 
@@ -522,6 +533,40 @@ func idPlaceholders(ids []int64) (string, []interface{}) {
 		args[i] = id
 	}
 	return strings.Join(ph, ","), args
+}
+
+// SetExcludePerf 는 여러 거래의 "카드 실적 제외" 표시를 한 번에 켜고 끈다(ID 묶음당 쿼리 1회).
+func (s *Store) SetExcludePerf(ids []int64, exclude bool) error {
+	for start := 0; start < len(ids); start += idChunk {
+		end := start + idChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		ph, args := idPlaceholders(ids[start:end])
+		args = append([]interface{}{boolToInt(exclude)}, args...)
+		if _, err := s.exec(`UPDATE transactions SET exclude_perf=? WHERE id IN (`+ph+`)`, args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetPaidAt 은 여러 거래의 카드대금 납부일을 한 번에 기록한다(ID 묶음당 쿼리 1회).
+// paidAt 이 빈 문자열이면 납부 기록을 지운다.
+func (s *Store) SetPaidAt(ids []int64, paidAt string) error {
+	paidAt = strings.TrimSpace(paidAt)
+	for start := 0; start < len(ids); start += idChunk {
+		end := start + idChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		ph, args := idPlaceholders(ids[start:end])
+		args = append([]interface{}{paidAt}, args...)
+		if _, err := s.exec(`UPDATE transactions SET paid_at=? WHERE id IN (`+ph+`)`, args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteTransactions 는 여러 거래를 한 번에 삭제한다(ID 묶음당 쿼리 1회).

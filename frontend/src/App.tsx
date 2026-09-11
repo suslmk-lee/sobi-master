@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import CardsPage from "./pages/CardsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
+import CashbackPage from "./pages/CashbackPage";
 import StatsPage from "./pages/StatsPage";
 import ImportPage from "./pages/ImportPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -18,6 +19,7 @@ type Tab =
   | "transactions"
   | "cards"
   | "subscriptions"
+  | "cashback"
   | "stats"
   | "import"
   | "settings";
@@ -27,6 +29,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "transactions", label: "거래내역" },
   { key: "cards", label: "카드" },
   { key: "subscriptions", label: "정기결제" },
+  { key: "cashback", label: "캐시백" },
   { key: "stats", label: "통계" },
   { key: "import", label: "가져오기" },
   { key: "settings", label: "설정" },
@@ -130,6 +133,7 @@ export default function App() {
         {tab === "subscriptions" && (
           <SubscriptionsPage refs={refs} month={month} setMonth={setMonth} />
         )}
+        {tab === "cashback" && <CashbackPage month={month} setMonth={setMonth} />}
         {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "import" && <ImportPage refs={refs} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}

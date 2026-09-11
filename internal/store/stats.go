@@ -365,7 +365,8 @@ func (s *Store) dailyInRange(pmID int64, start, end time.Time) ([]int64, error) 
 	daily := make([]int64, days)
 	rows, err := s.query(`
 SELECT date, SUM(amount) FROM transactions
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?
+WHERE payment_method_id=? AND direction='expense' AND exclude_perf = 0
+  AND date >= ? AND date <= ?
 GROUP BY date`, pmID, start.Format("2006-01-02"), end.Format("2006-01-02"))
 	if err != nil {
 		return nil, err

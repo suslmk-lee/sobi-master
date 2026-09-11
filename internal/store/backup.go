@@ -27,7 +27,26 @@ CREATE TABLE payment_methods (
 	billing_day     INTEGER NOT NULL DEFAULT 0,
 	cycle_start_day INTEGER NOT NULL DEFAULT 1,
 	perf_target     INTEGER NOT NULL DEFAULT 0,
-	color           TEXT NOT NULL DEFAULT ''
+	color           TEXT NOT NULL DEFAULT '',
+	cashback_bp         INTEGER NOT NULL DEFAULT 0,
+	cashback_bonus_bp   INTEGER NOT NULL DEFAULT 0,
+	cashback_bonus_days INTEGER NOT NULL DEFAULT 0,
+	annual_fee          INTEGER NOT NULL DEFAULT 0,
+	annual_fee_global   INTEGER NOT NULL DEFAULT 0,
+	benefit_url         TEXT NOT NULL DEFAULT '',
+	benefit_note        TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE card_benefits (
+	id                INTEGER PRIMARY KEY,
+	payment_method_id INTEGER NOT NULL,
+	area              TEXT NOT NULL,
+	kind              TEXT NOT NULL DEFAULT 'point',
+	rate_bp           INTEGER NOT NULL DEFAULT 0,
+	is_max            INTEGER NOT NULL DEFAULT 0,
+	monthly_cap       INTEGER NOT NULL DEFAULT 0,
+	note              TEXT NOT NULL DEFAULT '',
+	needs_check       INTEGER NOT NULL DEFAULT 0,
+	sort_order        INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE transactions (
 	id                INTEGER PRIMARY KEY,
@@ -41,6 +60,8 @@ CREATE TABLE transactions (
 	payment_method_id INTEGER,
 	source            TEXT NOT NULL DEFAULT 'manual',
 	auto_classified   INTEGER NOT NULL DEFAULT 0,
+	exclude_perf      INTEGER NOT NULL DEFAULT 0,
+	paid_at           TEXT NOT NULL DEFAULT '',
 	created_at        TEXT
 );
 CREATE TABLE rules (
@@ -150,14 +171,26 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name, kind, nullable(parent), order}, e
 			}),
 		copy("payment_methods",
-			`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color FROM payment_methods`,
-			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, perf_target, color) VALUES(?,?,?,?,?,?,?,?)`,
+			`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods`,
+			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
-				var id, target int64
-				var day, cycle int
-				var name, typ, issuer, color string
-				e := r.Scan(&id, &name, &typ, &issuer, &day, &cycle, &target, &color)
-				return []interface{}{id, name, typ, issuer, day, cycle, target, color}, e
+				var id, target, fee, feeG int64
+				var day, cycle, cbBp, cbBonusBp, cbDays int
+				var name, typ, issuer, color, bURL, bNote string
+				e := r.Scan(&id, &name, &typ, &issuer, &day, &cycle, &target, &color, &cbBp, &cbBonusBp, &cbDays,
+					&fee, &feeG, &bURL, &bNote)
+				return []interface{}{id, name, typ, issuer, day, cycle, target, color, cbBp, cbBonusBp, cbDays,
+					fee, feeG, bURL, bNote}, e
+			}),
+		copy("card_benefits",
+			`SELECT id, payment_method_id, area, kind, rate_bp, is_max, monthly_cap, note, needs_check, sort_order FROM card_benefits`,
+			`INSERT INTO card_benefits(id, payment_method_id, area, kind, rate_bp, is_max, monthly_cap, note, needs_check, sort_order) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, pmID, cap int64
+				var rateBp, isMax, needsCheck, order int
+				var area, kind, note string
+				e := r.Scan(&id, &pmID, &area, &kind, &rateBp, &isMax, &cap, &note, &needsCheck, &order)
+				return []interface{}{id, pmID, area, kind, rateBp, isMax, cap, note, needsCheck, order}, e
 			}),
 		copy("rules",
 			`SELECT id, merchant, amount_min, amount_max, member_id, category_id, label FROM rules`,
@@ -198,16 +231,16 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 					nullable(cid), nullable(mid), nullable(pid), memo, active}, e
 			}),
 		copy("transactions",
-			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, created_at::text FROM transactions`,
-			`INSERT INTO transactions(id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at::text FROM transactions`,
+			`INSERT INTO transactions(id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id, amount int64
-				var auto int
+				var auto, excl int
 				var mid, cid, pid sql.NullInt64
-				var date, direction, merchant, memo, source string
+				var date, direction, merchant, memo, source, paidAt string
 				var createdAt sql.NullString
-				e := r.Scan(&id, &date, &amount, &direction, &merchant, &memo, &mid, &cid, &pid, &source, &auto, &createdAt)
-				return []interface{}{id, date, amount, direction, merchant, memo, nullable(mid), nullable(cid), nullable(pid), source, auto, nullable2(createdAt)}, e
+				e := r.Scan(&id, &date, &amount, &direction, &merchant, &memo, &mid, &cid, &pid, &source, &auto, &excl, &paidAt, &createdAt)
+				return []interface{}{id, date, amount, direction, merchant, memo, nullable(mid), nullable(cid), nullable(pid), source, auto, excl, paidAt, nullable2(createdAt)}, e
 			}),
 	)
 	if err != nil {

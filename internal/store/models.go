@@ -36,6 +36,38 @@ type PaymentMethod struct {
 	PerfTarget int64 `json:"perfTarget"`
 	// Color: 목록 칩 색상(hex, 예: "#3b5fd9"). 비어 있으면 이름 기반 자동 색.
 	Color string `json:"color"`
+	// 혜택 자료. 실적 조건은 PerfTarget 을 그대로 쓴다.
+	AnnualFee       int64  `json:"annualFee"`       // 연회비(국내전용)
+	AnnualFeeGlobal int64  `json:"annualFeeGlobal"` // 연회비(해외겸용)
+	BenefitURL      string `json:"benefitUrl"`      // 혜택 자료 출처 링크
+	BenefitNote     string `json:"benefitNote"`     // 유의사항 메모
+	// 캐시백 설정. 요율은 만분율(bp): 1% = 100bp. 0이면 캐시백 없는 카드.
+	CashbackBp int `json:"cashbackBp"`
+	// CashbackBonusBp: 기한 내 카드대금을 갚으면 추가로 주는 요율(bp).
+	CashbackBonusBp int `json:"cashbackBonusBp"`
+	// CashbackBonusDays: 결제일로부터 며칠 안에 갚아야 추가 캐시백을 받는지.
+	CashbackBonusDays int `json:"cashbackBonusDays"`
+}
+
+// CardBenefit 은 카드 혜택 한 줄(카드사 안내를 옮겨 적은 자료).
+// 카드사 표기가 "최대 4.5%"처럼 실적 구간에 따라 달라지는 경우가 많아,
+// 최대치 여부(IsMax)와 상세 미확인 여부(NeedsCheck)를 함께 남긴다.
+type CardBenefit struct {
+	ID              int64  `json:"id"`
+	PaymentMethodID int64  `json:"paymentMethodId"`
+	Area            string `json:"area"` // "차량유지관리 업종", "대중교통/쏘카/타다" 등
+	// Kind: point(적립) | discount(할인) | service(서비스 — 요율 없음)
+	Kind string `json:"kind"`
+	// RateBp: 적립·할인률(만분율). 450 = 4.5%. service 면 0.
+	RateBp int `json:"rateBp"`
+	// IsMax: 카드사가 "최대 N%"로 안내한 값인지(실적 구간별 차등).
+	IsMax bool `json:"isMax"`
+	// MonthlyCap: 월 적립·할인 한도(원). 0이면 없음 또는 미확인.
+	MonthlyCap int64  `json:"monthlyCap"`
+	Note       string `json:"note"`
+	// NeedsCheck: 상세 조건을 아직 확인하지 못한 항목 표시.
+	NeedsCheck bool `json:"needsCheck"`
+	SortOrder  int  `json:"sortOrder"`
 }
 
 // CardStatus 는 카드 한 장의 현재 실적기간 현황.
@@ -43,7 +75,8 @@ type CardStatus struct {
 	Card        PaymentMethod `json:"card"`
 	PeriodStart string        `json:"periodStart"`
 	PeriodEnd   string        `json:"periodEnd"`
-	Spent       int64         `json:"spent"`     // 실적기간 내 지출 합계
+	Spent       int64         `json:"spent"`     // 실적기간 내 지출 합계 (실적 제외분 뺀 값)
+	Excluded    int64         `json:"excluded"`  // 같은 기간 중 실적 제외로 표시된 결제 합계
 	Remaining   int64         `json:"remaining"` // 한도까지 남은 금액 (달성 시 0)
 	Achieved    bool          `json:"achieved"`  // 실적한도 충족 여부
 }
@@ -66,6 +99,12 @@ type Transaction struct {
 	CategoryID      *int64 `json:"categoryId"`
 	PaymentMethodID *int64 `json:"paymentMethodId"`
 	Source          string `json:"source"` // manual | import
+	// ExcludePerf: 카드 실적 계산에서 제외(세금·공과금 등 카드사가 실적에 안 넣어주는 결제).
+	// 일반 지출 집계에는 그대로 포함된다.
+	ExcludePerf bool `json:"excludePerf"`
+	// PaidAt: 이 결제에 대한 카드대금을 갚은 날("YYYY-MM-DD", 빈 값이면 미납부).
+	// 기한 내 납부 시 추가 캐시백을 주는 카드의 판정에 쓴다.
+	PaidAt string `json:"paidAt"`
 	// 조회 편의용 조인 결과
 	MemberName        string `json:"memberName"`
 	CategoryName      string `json:"categoryName"`

@@ -136,8 +136,25 @@ docker stop sobi-test-pg
   and a budget set on a main category is judged against the sum of itself plus its subs.
   On first connect, existing names like `식비/배달` are split into `식비 > 배달` automatically —
   but only when the prefix already exists as a category, so names such as `회비/경조사` are left intact.
+- **Cashback**: a card can carry a base rate (e.g. 1% of every charge) plus a bonus rate granted
+  when the card bill for that charge is paid within N days (e.g. +1% within 5 days). Set the rates
+  and window on the card in the Cards tab; the **캐시백 (Cashback)** tab lists what is still claimable
+  with a countdown, what was earned, and what was missed. Mark a charge paid there in one click.
 - **Payment method**: which card/cash/bank account it went through; cards carry
-  billing day / performance period / target managed in the Cards tab
+  billing day / performance period / target managed in the Cards tab.
+  A transaction can be flagged **실적 제외 (exclude from card performance)** — for charges card
+  issuers don't count toward the spending target, such as taxes and utility bills. Set it with the
+  checkbox on manual entry or in the edit modal, or mark several at once from the Transactions
+  bulk bar (handy for imported CSV rows). Excluded charges are left out of card performance and
+  pace only; they still count in every normal expense statistic, and the card widgets show the
+  excluded total so the numbers reconcile.
+- **Card benefit**: reference material copied from the issuer's own page. Pick a card in the Cards
+  tab and you get its annual fee (domestic/overseas) and prior-month spending requirement plus a
+  table of `area / kind (points, discount, service) / rate / monthly cap / note`, editable and
+  reorderable in place. Issuers usually advertise a tier-dependent headline ("up to 4.5%"), so each
+  row can be marked **최대치 (headline maximum)** and **확인 필요 (details unverified)** — that way you
+  can tell later how much to trust the number. The source URL and any caveats live on the card form.
+  The app does not compute earnings from these rows; that is what the cashback settings do.
 - **Budget**: an optional monthly spending limit per category; set a recurring default and
   override specific months in Settings; the dashboard tracks usage and flags overruns
 - **Rule**: learned automatically whenever you confirm a classification; on a match it takes

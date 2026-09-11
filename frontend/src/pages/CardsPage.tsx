@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   DeletePaymentMethod,
+  GetAllCardBenefits,
   GetCardBreakdown,
   GetCardStatuses,
   SaveCard,
@@ -8,6 +9,7 @@ import {
 import { store } from "../../wailsjs/go/models";
 import { formatAmount, parseAmount, won } from "../lib";
 import Bars from "../Bars";
+import CardBenefits, { bpToPct as bpToPctLabel } from "../CardBenefits";
 import PmChip, { autoColor, CHIP_PALETTE } from "../PmChip";
 import { CardsSkeleton } from "../Skeleton";
 
@@ -40,9 +42,23 @@ const EMPTY = {
   cycleStartDay: "1",
   perfTarget: "",
   color: "",
+  // 캐시백: 화면에는 %로 입력받고 저장할 때 만분율(bp)로 바꾼다 (1% → 100)
+  cashbackPct: "",
+  cashbackBonusPct: "",
+  cashbackBonusDays: "",
+  // 혜택 자료: 카드사 안내에서 옮겨 적는 값들
+  annualFee: "",
+  annualFeeGlobal: "",
+  benefitUrl: "",
+  benefitNote: "",
 };
 
 type FormState = typeof EMPTY;
+
+// "1.5" → 150 (만분율). 빈 값이나 숫자가 아니면 0.
+const pctToBp = (s: string) => Math.round((Number(s) || 0) * 100);
+// 150 → "1.5" (0 이면 빈 칸으로 둬서 "설정 안 함"이 드러나게)
+const bpToPct = (bp: number) => (bp ? String(bp / 100) : "");
 
 // 카드 등록/수정 폼: 카드사, 카드명, 결제일, 실적 산정 시작일, 실적한도.
 function CardForm({
@@ -76,6 +92,13 @@ function CardForm({
           cycleStartDay: f.cycleStartDay ? Number(f.cycleStartDay) : 1,
           perfTarget: parseAmount(f.perfTarget) || 0,
           color: f.color,
+          cashbackBp: pctToBp(f.cashbackPct),
+          cashbackBonusBp: pctToBp(f.cashbackBonusPct),
+          cashbackBonusDays: f.cashbackBonusDays ? Number(f.cashbackBonusDays) : 0,
+          annualFee: parseAmount(f.annualFee) || 0,
+          annualFeeGlobal: parseAmount(f.annualFeeGlobal) || 0,
+          benefitUrl: f.benefitUrl.trim(),
+          benefitNote: f.benefitNote.trim(),
         })
       );
       setF({ ...EMPTY });
@@ -146,6 +169,86 @@ function CardForm({
           <button type="button" className="ghost" onClick={onCancel}>취소</button>
         )}
       </div>
+      {/* 캐시백: 결제액의 기본 %, 그리고 기한 내 카드대금 납부 시 얹어 주는 추가 % */}
+      <div className="form-row">
+        <label className="field">
+          캐시백 기본 (%)
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="예: 1"
+            value={f.cashbackPct}
+            onChange={(e) => setF({ ...f, cashbackPct: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          기한 내 납부 시 추가 (%)
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="예: 1"
+            value={f.cashbackBonusPct}
+            onChange={(e) => setF({ ...f, cashbackBonusPct: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          추가 적립 기한 (일)
+          <input
+            type="number"
+            min={0}
+            max={60}
+            placeholder="예: 5"
+            value={f.cashbackBonusDays}
+            onChange={(e) => setF({ ...f, cashbackBonusDays: e.target.value })}
+          />
+        </label>
+        <span className="muted small cb-hint">
+          결제일로부터 기한 안에 카드대금을 갚으면 추가분을 받습니다. 캐시백 탭에서 집계·독촉을 봅니다.
+        </span>
+      </div>
+      {/* 혜택 자료: 카드사 안내를 그대로 적어 두는 칸. 앱 계산에는 쓰지 않는다 */}
+      <div className="form-row">
+        <label className="field">
+          연회비 국내 (원)
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="예: 70,000"
+            value={f.annualFee}
+            onChange={(e) => setF({ ...f, annualFee: formatAmount(e.target.value) })}
+          />
+        </label>
+        <label className="field">
+          연회비 해외 (원)
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="예: 70,000"
+            value={f.annualFeeGlobal}
+            onChange={(e) => setF({ ...f, annualFeeGlobal: formatAmount(e.target.value) })}
+          />
+        </label>
+        <label className="field grow">
+          혜택 자료 출처 (URL)
+          <input
+            type="text"
+            placeholder="카드사 안내 페이지 주소"
+            value={f.benefitUrl}
+            onChange={(e) => setF({ ...f, benefitUrl: e.target.value })}
+          />
+        </label>
+      </div>
+      <div className="form-row">
+        <label className="field grow">
+          혜택 유의사항
+          <input
+            type="text"
+            placeholder="예: 전월 실적 50만원 이상 시 적용, 실적 산정 제외 업종 있음"
+            value={f.benefitNote}
+            onChange={(e) => setF({ ...f, benefitNote: e.target.value })}
+          />
+        </label>
+      </div>
       <div className="form-row">
         <label className="field">
           칩 색상 (목록에서 이 카드를 표시할 색)
@@ -185,12 +288,17 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
   const [statuses, setStatuses] = useState<store.CardStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<FormState>({ ...EMPTY });
-  const [selected, setSelected] = useState<store.CardStatus | null>(null);
+  // 선택은 id 로만 들고 있다가 목록에서 찾는다 — 카드 정보를 고쳐도 화면이 같이 갱신되도록
+  const [selectedId, setSelectedId] = useState(0);
   const [breakdown, setBreakdown] = useState<store.CardBreakdown | null>(null);
+  // 카드 타일에 대표 혜택을 미리 보여 주려고 전체를 한 번에 받아 둔다
+  const [benefits, setBenefits] = useState<Record<number, store.CardBenefit[]>>({});
 
   const load = useCallback(async () => {
     try {
-      setStatuses(await GetCardStatuses());
+      const [sts, bns] = await Promise.all([GetCardStatuses(), GetAllCardBenefits()]);
+      setStatuses(sts);
+      setBenefits(bns ?? {});
     } finally {
       setLoading(false);
     }
@@ -200,8 +308,10 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
     load();
   }, [load]);
 
+  const selected = statuses.find((st) => st.card.id === selectedId) ?? null;
+
   const select = async (st: store.CardStatus) => {
-    setSelected(st);
+    setSelectedId(st.card.id);
     setBreakdown(await GetCardBreakdown(st.card.id, st.periodStart, st.periodEnd));
   };
 
@@ -214,13 +324,20 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
       cycleStartDay: String(st.card.cycleStartDay || 1),
       perfTarget: st.card.perfTarget ? formatAmount(String(st.card.perfTarget)) : "",
       color: st.card.color || "",
+      cashbackPct: bpToPct(st.card.cashbackBp),
+      cashbackBonusPct: bpToPct(st.card.cashbackBonusBp),
+      cashbackBonusDays: st.card.cashbackBonusDays ? String(st.card.cashbackBonusDays) : "",
+      annualFee: st.card.annualFee ? formatAmount(String(st.card.annualFee)) : "",
+      annualFeeGlobal: st.card.annualFeeGlobal ? formatAmount(String(st.card.annualFeeGlobal)) : "",
+      benefitUrl: st.card.benefitUrl || "",
+      benefitNote: st.card.benefitNote || "",
     });
 
   const remove = async (st: store.CardStatus) => {
     if (!window.confirm(`"${st.card.name}" 카드를 삭제할까요? 거래 기록은 남습니다.`)) return;
     await DeletePaymentMethod(st.card.id);
-    if (selected?.card.id === st.card.id) {
-      setSelected(null);
+    if (selectedId === st.card.id) {
+      setSelectedId(0);
       setBreakdown(null);
     }
     load();
@@ -250,7 +367,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
           return (
             <div
               key={st.card.id}
-              className={`card credit-card ${selected?.card.id === st.card.id ? "selected" : ""}`}
+              className={`card credit-card ${selectedId === st.card.id ? "selected" : ""}`}
               onClick={() => select(st)}
             >
               <div className="cc-head">
@@ -271,6 +388,11 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
                 기간 내 사용 <strong>{won(st.spent)}</strong>
                 {st.card.perfTarget > 0 && <> / 한도 {won(st.card.perfTarget)}</>}
               </p>
+              {st.excluded > 0 && (
+                <p className="muted small">
+                  실적 제외 {won(st.excluded)} (세금·공과금 등, 실적 합계에서 뺀 금액)
+                </p>
+              )}
               {st.card.perfTarget > 0 && (
                 <>
                   <div className="bar-track">
@@ -283,6 +405,26 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
                   )}
                 </>
               )}
+              {/* 대표 혜택 두 줄만 미리보기 — 전체는 카드를 눌러서 본다 */}
+              {(benefits[st.card.id]?.length ?? 0) > 0 && (
+                <div className="cc-benefits">
+                  {benefits[st.card.id].slice(0, 2).map((b) => (
+                    <span key={b.id} className="badge benefit" title={b.note}>
+                      {b.area}
+                      {b.rateBp > 0 && (
+                        <>
+                          {" "}
+                          {b.isMax ? "최대 " : ""}
+                          {bpToPctLabel(b.rateBp)}
+                        </>
+                      )}
+                    </span>
+                  ))}
+                  {benefits[st.card.id].length > 2 && (
+                    <span className="muted small">외 {benefits[st.card.id].length - 2}건</span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -291,10 +433,21 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
         )}
       </div>
 
+      {selected && (
+        <div>
+          <h3 className="section-title">
+            {selected.card.issuer} {selected.card.name} — 혜택과 실적
+          </h3>
+          <div className="card">
+            <CardBenefits card={selected.card} onChanged={load} />
+          </div>
+        </div>
+      )}
+
       {selected && breakdown && (
         <div>
           <h3 className="section-title">
-            {selected.card.issuer} {selected.card.name} — 실적기간({selected.periodStart} ~ {selected.periodEnd}) 지출 분석
+            실적기간({selected.periodStart} ~ {selected.periodEnd}) 지출 분석
           </h3>
           <div className="dash-grid">
             <Bars title="어디에서 썼는가 (가맹점별)" rows={breakdown.byMerchant} />

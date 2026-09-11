@@ -114,3 +114,90 @@ func TestCardStatus(t *testing.T) {
 		t.Errorf("가맹점 집계 오류: %+v", bd.ByMerchant)
 	}
 }
+
+// TestCardPerfExcludesMarked 는 "실적 제외" 표시된 결제가 카드 실적에서만 빠지고
+// 일반 지출 집계에는 그대로 잡히는지 검증한다. (TEST_DATABASE_URL 미설정 시 스킵)
+func TestCardPerfExcludesMarked(t *testing.T) {
+	st := openTestStore(t)
+
+	card, err := st.SavePaymentMethod(PaymentMethod{
+		Name: "실적테스트카드", Type: "card", CycleStartDay: 1, PerfTarget: 300000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(amt int64, exclude bool) {
+		t.Helper()
+		if _, err := st.AddTransaction(Transaction{
+			Date: "2026-06-05", Amount: amt, Direction: "expense", Merchant: "가맹점",
+			PaymentMethodID: &card.ID, ExcludePerf: exclude,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(200000, false) // 실적 포함
+	add(150000, true)  // 세금 등 — 실적 제외
+
+	sts, err := st.CardStatuses(date("2026-06-10"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *CardStatus
+	for i := range sts {
+		if sts[i].Card.ID == card.ID {
+			got = &sts[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("등록한 카드를 찾지 못함")
+	}
+	// 실적에는 20만만 잡히고, 제외분 15만은 따로 보고된다
+	if got.Spent != 200000 || got.Excluded != 150000 {
+		t.Errorf("Spent=%d Excluded=%d, want 200000/150000", got.Spent, got.Excluded)
+	}
+	// 20만 < 목표 30만 → 미달 (제외분을 더하면 35만이라 잘못 달성 처리될 수 있음)
+	if got.Achieved || got.Remaining != 100000 {
+		t.Errorf("Achieved=%v Remaining=%d, want false/100000", got.Achieved, got.Remaining)
+	}
+
+	// 일반 지출 집계에는 제외분도 포함돼야 한다 (실제로 나간 돈이므로)
+	sum, err := st.MonthlySummary(2026, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.TotalExpense != 350000 {
+		t.Errorf("월 지출 합계=%d, want 350000 (실적 제외분 포함)", sum.TotalExpense)
+	}
+
+	// 실적 페이스(누적)도 제외분을 빼야 한다
+	paces, err := st.CardPaces(date("2026-06-10"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paces {
+		if p.Card.ID == card.ID && p.Spent != 200000 {
+			t.Errorf("CardPace Spent=%d, want 200000", p.Spent)
+		}
+	}
+
+	// 일괄 해제하면 실적에 다시 포함된다
+	txs, err := st.ListTransactions(TxFilter{Month: "2026-06"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []int64{}
+	for _, tx := range txs {
+		ids = append(ids, tx.ID)
+	}
+	if err := st.SetExcludePerf(ids, false); err != nil {
+		t.Fatal(err)
+	}
+	sts, _ = st.CardStatuses(date("2026-06-10"))
+	for i := range sts {
+		if sts[i].Card.ID == card.ID {
+			if sts[i].Spent != 350000 || sts[i].Excluded != 0 {
+				t.Errorf("해제 후 Spent=%d Excluded=%d, want 350000/0", sts[i].Spent, sts[i].Excluded)
+			}
+		}
+	}
+}
