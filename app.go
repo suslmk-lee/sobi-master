@@ -15,7 +15,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"sobi/internal/classifier"
-	"sobi/internal/importer"
 	"sobi/internal/store"
 )
 
@@ -690,97 +689,6 @@ func (n *nameCache) fill(t store.Transaction) store.Transaction {
 // learn 은 규칙 라벨에 쓸 이름을 채운 뒤 분류 규칙을 학습한다(단건). 실패해도 거래 저장은 유지.
 func (a *App) learn(t store.Transaction) {
 	logIf("규칙 학습", a.cl.Learn(newNameCache(a.st).fill(t)))
-}
-
-// ---- CSV 가져오기 ----
-
-type ImportResult struct {
-	File           string   `json:"file"`
-	Total          int      `json:"total"`
-	Imported       int      `json:"imported"`
-	AutoClassified int      `json:"autoClassified"`
-	Duplicates     int      `json:"duplicates"`
-	Errors         []string `json:"errors"`
-}
-
-// ImportCSV 는 파일 선택 대화상자를 열어 카드사/은행 CSV 를 읽고,
-// 중복(같은 날짜+금액+가맹점)을 건너뛰면서 거래를 등록한다.
-// 등록 시 규칙이 맞으면 자동 분류까지 수행한다. 결제수단을 지정하면 모든 행에 적용.
-func (a *App) ImportCSV(paymentMethodID int64) (ImportResult, error) {
-	if err := a.ensure(); err != nil {
-		return ImportResult{}, err
-	}
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "카드/은행 이용내역 CSV 선택",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV 파일 (*.csv)", Pattern: "*.csv;*.CSV"},
-		},
-	})
-	if err != nil {
-		return ImportResult{}, err
-	}
-	if path == "" { // 사용자가 취소
-		return ImportResult{}, nil
-	}
-
-	parsed, err := importer.ParseFile(path)
-	if err != nil {
-		logIf("ImportCSV(파싱)", err)
-		return ImportResult{File: path}, err
-	}
-
-	res := ImportResult{File: path, Total: parsed.Total, Errors: parsed.Errors}
-	var pmID *int64
-	if paymentMethodID > 0 {
-		pmID = &paymentMethodID
-	}
-	if len(parsed.Parsed) == 0 {
-		return res, nil
-	}
-
-	// 규칙과 기존 거래 키를 각각 한 번만 읽는다. 예전에는 행마다 규칙 조회 +
-	// 중복 확인 쿼리를 날려 500행 CSV 가 왕복 1,000회였다.
-	matcher, err := a.cl.Matcher()
-	if err != nil {
-		logIf("ImportCSV(규칙조회)", err)
-		return res, err
-	}
-	from, to := parsed.Parsed[0].Date, parsed.Parsed[0].Date
-	for _, row := range parsed.Parsed {
-		if row.Date < from {
-			from = row.Date
-		}
-		if row.Date > to {
-			to = row.Date
-		}
-	}
-	seen, err := a.st.ExistingTxKeys(from, to)
-	if err != nil {
-		logIf("ImportCSV(중복확인)", err)
-		return res, err
-	}
-
-	for _, row := range parsed.Parsed {
-		key := store.TxKey(row.Date, row.Amount, row.Merchant, row.Direction)
-		if _, dup := seen[key]; dup {
-			res.Duplicates++
-			continue
-		}
-		t := row.ToTransaction()
-		t.PaymentMethodID = pmID
-		classifier.Apply(&t, matcher.Match(t.Merchant, t.Amount))
-		if t.AutoClassified {
-			res.AutoClassified++
-		}
-		if _, err := a.st.AddTransaction(t); err != nil {
-			res.Errors = append(res.Errors, fmt.Sprintf("%s %s: %v", row.Date, row.Merchant, err))
-			continue
-		}
-		// 같은 CSV 안에 똑같은 행이 또 나오면 중복으로 걸러지도록 키를 등록한다.
-		seen[key] = struct{}{}
-		res.Imported++
-	}
-	return res, nil
 }
 
 // ---- 카드 ----

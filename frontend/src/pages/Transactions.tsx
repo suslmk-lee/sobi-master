@@ -472,7 +472,7 @@ export default function Transactions({
   };
 
   // 세금·공과금처럼 카드사가 실적에 안 넣어주는 결제를 일괄로 표시/해제한다.
-  // (카드 결제는 대부분 CSV 로 들어오므로 가져온 뒤 골라서 처리하는 경로가 필요하다)
+  // (여러 달치를 몰아서 정리할 때 한 건씩 모달을 여는 것보다 빠르다)
   const bulkExclude = async (exclude: boolean) => {
     if (selected.size === 0) return;
     const n = selected.size;

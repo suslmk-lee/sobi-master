@@ -4,7 +4,7 @@
 
 A family budget desktop app built with Go + Wails v2 + React/TS + Supabase (Postgres).
 
-Import card/bank CSV statements or register transactions manually. Once you label a
+Register transactions manually. Once you label a
 transaction, a "merchant + amount range" fingerprint rule classifies the same recurring
 charge automatically from the next month on. For example, three LG U+ auto-payments that
 differ only in amount can be labeled once as Dad / Kid / Internet — after that, the app
@@ -32,11 +32,8 @@ tells you whose bill each charge is, every month, automatically.
   have or haven't posted yet); yearly summary with year-over-year deltas
 - **Budget** — set a recurring monthly budget per category, with optional per-month overrides;
   the dashboard shows usage gauges and raises alerts on overruns
-- **Import** — CSV statements from Korean card companies/banks, automatic column
-  detection (date/merchant/amount/deposit/withdrawal keywords), EUC-KR encoding support,
-  duplicate skipping
 - **Auto-classification** — a fingerprint rule (merchant + amount ±8%) is learned whenever you
-  classify a transaction. On manual entry and import a matching rule takes priority over form
+  classify a transaction. On manual entry a matching rule takes priority over form
   defaults and classifies automatically. Add/edit/delete rules manually in Settings
 - **Dark mode** — toggle in the header, remembered across launches
 
@@ -112,8 +109,7 @@ the "reconnect" button recovers without a restart once the config is fixed.
 - `internal/store` — Supabase (Postgres) schema/queries; analytics & statistics (`analytics.go`,
   `stats.go`); budgets (`budget.go`); config/log paths; SQLite migration
 - `internal/classifier` — auto-classification rule learning/matching (±8% amount tolerance)
-- `internal/importer` — card/bank CSV parser (header keyword detection, EUC-KR support)
-- `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Statistics / Import / Settings
+- `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Subscriptions / Cashback / Statistics / Settings
 
 ## Tests
 
@@ -145,7 +141,7 @@ docker stop sobi-test-pg
   A transaction can be flagged **실적 제외 (exclude from card performance)** — for charges card
   issuers don't count toward the spending target, such as taxes and utility bills. Set it with the
   checkbox on manual entry or in the edit modal, or mark several at once from the Transactions
-  bulk bar (handy for imported CSV rows). Excluded charges are left out of card performance and
+  bulk bar. Excluded charges are left out of card performance and
   pace only; they still count in every normal expense statistic, and the card widgets show the
   excluded total so the numbers reconcile.
 - **Card benefit**: reference material copied from the issuer's own page. Pick a card in the Cards
