@@ -1912,3 +1912,82 @@ label.field input {
 .form-row > label.field.grow {
   flex: 1 1 240px;
 }
+
+/* ---- 카테고리 월별 상세 (월 × 항목) ---- */
+/* 가맹점 이름이 길고 개월 수가 많아 가로로 넓어진다. 항목 열은 붙박이로 둔다. */
+
+.cat-monthly .heatmap .hm-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  max-width: 200px;
+  background: var(--glass-strong);
+}
+
+.cat-monthly > .ghost-btn {
+  margin-top: 10px;
+}
+
+/* 히트맵 칸 클릭 → 그 달·그 항목의 거래 내역 */
+.heatmap td.hm-click {
+  cursor: pointer;
+}
+
+.heatmap td.hm-click:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.drill-modal {
+  /* 표가 6열이라 좁으면 결제수단·귀속자가 두 줄로 접힌다 */
+  width: 1180px;
+}
+
+.drill-modal .stats-head {
+  margin-bottom: 4px;
+}
+
+/* 한 달치라도 건수가 많을 수 있어 목록만 스크롤시킨다 */
+.drill-scroll {
+  max-height: 55vh;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.drill-modal .tx-table td.actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.drill-modal .tx-table .nowrap {
+  white-space: nowrap;
+}
+
+/* 내용 열이 남는 너비를 가져간다 */
+.drill-modal .tx-table td:nth-child(2) {
+  min-width: 220px;
+}
+
+/* 드릴다운 모달 머리의 항목 추이 */
+.drill-trend {
+  margin: 6px 0 10px;
+}
+
+.chart.mini-trend {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* .chart text 규칙이 회색으로 덮어쓰므로 강조 글자는 따로 지정한다 */
+.chart.mini-trend text.mt-on {
+  fill: #5b82f0;
+}
+
+.mini-trend .mt-pick {
+  cursor: pointer;
+}
+
+.mini-trend .mt-pick:hover circle {
+  r: 5;
+  fill: #5b82f0;
+}

@@ -936,6 +936,36 @@ func (a *App) GetCategoryDetail(year, month int, categoryID int64, period string
 	return a.st.CategoryDetail(year, month, categoryID, period, time.Now(), 6)
 }
 
+// GetCategoryMonthly 는 카테고리 한 개를 "월 × 항목"으로 쪼갠 표.
+// by 는 sub|merchant|member|payment. n 은 개월 수(1~24).
+func (a *App) GetCategoryMonthly(year, month, n int, categoryID int64, by string) (store.CategoryTrend, error) {
+	if err := a.ensure(); err != nil {
+		return store.CategoryTrend{}, err
+	}
+	if n < 1 || n > 24 {
+		n = 6
+	}
+	return a.st.CategoryMonthly(year, month, n, categoryID, by)
+}
+
+// GetCategoryMonthlyTx 는 월 × 항목 표의 칸 하나에 들어 있는 거래 목록.
+// ym 은 "YYYY-MM", key 는 표에 찍힌 항목 이름 그대로.
+func (a *App) GetCategoryMonthlyTx(ym string, categoryID int64, by, key string) ([]store.Transaction, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.CategoryMonthlyTx(ym, categoryID, by, key)
+}
+
+// GetMatrixCellTx 는 카테고리 × 월 히트맵의 칸 하나에 들어 있는 거래 목록.
+// name 은 표에 찍힌 카테고리 이름 그대로, level 은 main|sub.
+func (a *App) GetMatrixCellTx(ym, name, level string) ([]store.Transaction, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.MatrixCellTx(ym, name, level)
+}
+
 // GetYearSummary 는 연간 보기(12개월 추이 + 전년 대비 + 카테고리).
 func (a *App) GetYearSummary(year int) (store.YearSummary, error) {
 	if err := a.ensure(); err != nil {

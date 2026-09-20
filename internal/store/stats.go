@@ -566,6 +566,13 @@ type CategoryTrend struct {
 // seriesTrend 는 최근 n개월의 한 차원(nameExpr/join)별 월별 지출 추이를 돌려준다.
 // topN>0 이면 상위 topN + "기타"로 묶고, 0이면 전체 시리즈를 총액순으로 돌려준다.
 func (s *Store) seriesTrend(year, month, n int, nameExpr, join string, topN int) (CategoryTrend, error) {
+	return s.seriesTrendWhere(year, month, n, nameExpr, join, topN, "", nil)
+}
+
+// seriesTrendWhere 는 seriesTrend 에 추가 조건절을 붙인 것. 카테고리 하나로 좁힐 때 쓴다.
+// extraWhere 는 "AND ..." 없이 조건만 넘기고, 그 안의 ? 개수만큼 extraArgs 를 준다.
+func (s *Store) seriesTrendWhere(year, month, n int, nameExpr, join string, topN int,
+	extraWhere string, extraArgs []interface{}) (CategoryTrend, error) {
 	if n < 1 {
 		n = 6
 	}
@@ -581,12 +588,16 @@ func (s *Store) seriesTrend(year, month, n int, nameExpr, join string, topN int)
 	out := CategoryTrend{Months: months, Series: []Series{}}
 	first, last := months[0], months[n-1]
 
+	cond := ""
+	if extraWhere != "" {
+		cond = " AND " + extraWhere
+	}
 	q := fmt.Sprintf(`
 SELECT %s AS name, substr(t.date,1,7) AS ym, SUM(t.amount)
 FROM transactions t %s
-WHERE substr(t.date,1,7) >= ? AND substr(t.date,1,7) <= ? AND t.direction='expense'
-GROUP BY 1, 2`, nameExpr, join)
-	rows, err := s.query(q, first, last)
+WHERE substr(t.date,1,7) >= ? AND substr(t.date,1,7) <= ? AND t.direction='expense'%s
+GROUP BY 1, 2`, nameExpr, join, cond)
+	rows, err := s.query(q, append([]interface{}{first, last}, extraArgs...)...)
 	if err != nil {
 		return out, err
 	}
@@ -650,6 +661,86 @@ func (s *Store) MemberTrend(year, month, n int) (CategoryTrend, error) {
 // level: main(주 기준 합산) | sub(부 기준).
 func (s *Store) CategoryMatrix(year, month, n int, level string) (CategoryTrend, error) {
 	return s.seriesTrend(year, month, n, catNameExpr(level), joinCategory, 0)
+}
+
+// 카테고리 월별 상세에서 쪼갤 수 있는 기준.
+const (
+	BreakSub      = "sub"      // 부 카테고리 (주를 골랐을 때만 의미 있음)
+	BreakMerchant = "merchant" // 가맹점
+	BreakMember   = "member"   // 귀속자
+	BreakPayment  = "payment"  // 결제수단
+)
+
+// CategoryMonthly 는 카테고리 하나를 골라 "월 × 항목"으로 쪼갠 표를 돌려준다.
+// 카테고리별 추이는 달마다 총액만 보여 주는데, 그 달에 왜 늘었는지는 항목을 쪼개야 보인다.
+// 주 카테고리를 고르면 하위 부 지출까지 포함한다. by 는 sub|merchant|member|payment.
+func (s *Store) CategoryMonthly(year, month, n int, categoryID int64, by string) (CategoryTrend, error) {
+	join := ""
+	switch by {
+	case BreakMember:
+		join = joinMember
+	case BreakPayment:
+		join = joinPayment
+	case BreakMerchant:
+	default:
+		join = joinCategory
+	}
+	return s.seriesTrendWhere(year, month, n, breakNameExpr(by, "pm"), join, 0,
+		catScopeT, []interface{}{categoryID, categoryID})
+}
+
+// breakNameExpr 는 월 × 항목 표에서 항목 이름을 만드는 식.
+// 집계와 드릴다운이 같은 식을 써야 칸 금액과 거래 목록 합계가 어긋나지 않는다.
+// pmAlias 는 payment_methods 조인 별칭(집계 쪽은 pm, 거래 목록 쪽은 p).
+func breakNameExpr(by, pmAlias string) string {
+	switch by {
+	case BreakMerchant:
+		return `CASE WHEN TRIM(t.merchant) = '' THEN '(가맹점 없음)' ELSE TRIM(t.merchant) END`
+	case BreakMember:
+		return nameMember
+	case BreakPayment:
+		return `COALESCE(` + pmAlias + `.name,'(미지정)')`
+	default: // sub — 주에 바로 단 지출과 부에 단 지출을 구분해야 "어디로 샜는지"가 보인다
+		return `CASE WHEN c.id IS NULL THEN '(미분류)'
+                WHEN c.parent_id IS NULL THEN c.name || ' (주 직접)'
+                ELSE c.name END`
+	}
+}
+
+// MatrixCellTx 는 카테고리 × 월 히트맵의 칸 하나에 해당하는 거래 목록.
+// 행 이름이 카테고리 id 가 아니라 표시 이름이므로, 집계와 같은 이름 식(catNameExpr)으로 되짚는다.
+func (s *Store) MatrixCellTx(ym, name, level string) ([]Transaction, error) {
+	q := txSelect + `WHERE t.direction='expense'
+AND substr(t.date,1,7) = ? AND ` + catNameExpr(level) + ` = ?
+ORDER BY t.date, t.id`
+	return s.scanTxList(q, ym, name)
+}
+
+// CategoryMonthlyTx 는 월 × 항목 표의 칸 하나(ym, 항목 key)에 해당하는 거래 목록.
+// 표에서 칸을 눌러 "이 달 이 항목에 뭐가 들었나"를 열어 볼 때 쓴다.
+func (s *Store) CategoryMonthlyTx(ym string, categoryID int64, by, key string) ([]Transaction, error) {
+	q := txSelect + `WHERE ` + catScopeT + ` AND t.direction='expense'
+AND substr(t.date,1,7) = ? AND ` + breakNameExpr(by, "p") + ` = ?
+ORDER BY t.date, t.id`
+	return s.scanTxList(q, categoryID, categoryID, ym, key)
+}
+
+// scanTxList 는 txSelect 기반 질의를 거래 목록으로 읽는다.
+func (s *Store) scanTxList(query string, args ...interface{}) ([]Transaction, error) {
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Transaction{}
+	for rows.Next() {
+		t, err := s.scanTx(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // MemberStat 은 귀속자 한 명의 해당 월 지출 요약.

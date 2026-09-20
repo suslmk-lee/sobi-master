@@ -5,6 +5,9 @@ import {
   GetCategoryDetail,
   GetCategoryMatrix,
   GetCategoryMemberBreakdown,
+  GetCategoryMonthly,
+  GetCategoryMonthlyTx,
+  GetMatrixCellTx,
   GetCategoryTrend,
   GetCumulativeCompare,
   GetDailyByDimension,
@@ -19,12 +22,32 @@ import { main, store } from "../../wailsjs/go/models";
 import { categoryOptions, Refs, won } from "../lib";
 import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
-import { Heatmap, LineChart, LineSeries, PaceSparkline, StackedBars, TrendChart } from "../charts";
+import EditModal from "../EditModal";
+import TxDrillModal from "../TxDrillModal";
+import {
+  Heatmap,
+  LineChart,
+  LineSeries,
+  PaceSparkline,
+  StackedBars,
+  TrendChart,
+} from "../charts";
 import { autoColor } from "../PmChip";
 import { Sk } from "../Skeleton";
 
 type Dim = "paymentMethod" | "member" | "category";
 type Mode = "daily" | "cumulative";
+
+// 카테고리 월별 상세를 쪼개는 기준
+type CatBy = "merchant" | "sub" | "member" | "payment";
+// 가맹점으로 쪼개면 줄이 길어진다. 기본은 상위 N개만 보여 주고 나머지는 접는다.
+const CAT_ROW_LIMIT = 15;
+const CAT_BY: { key: CatBy; label: string }[] = [
+  { key: "merchant", label: "가맹점" },
+  { key: "sub", label: "부 카테고리" },
+  { key: "member", label: "귀속자" },
+  { key: "payment", label: "결제수단" },
+];
 
 const DIM_LABEL: { key: Dim; label: string }[] = [
   { key: "paymentMethod", label: "카드/결제수단" },
@@ -110,6 +133,19 @@ export default function StatsPage({
   const [catId, setCatId] = useState<number>(0);
   const [catPeriod, setCatPeriod] = useState<"month" | "recent30" | "prev">("month");
   const [detail, setDetail] = useState<store.CategoryDetail | null>(null);
+  // 월 × 항목 표: 어느 달에 무엇 때문에 늘었는지 보려고 따로 조회한다
+  const [catBy, setCatBy] = useState<CatBy>("merchant");
+  const [catMonths, setCatMonths] = useState(6);
+  const [catMonthly, setCatMonthly] = useState<store.CategoryTrend | null>(null);
+  const [catAll, setCatAll] = useState(false);
+  // 표의 칸을 누르면 그 달·그 항목의 거래를 모달로 열어 고칠 수 있게 한다.
+  // kind 로 어느 표에서 열렸는지 구분한다 (item = 월별 상세, matrix = 카테고리 히트맵).
+  const [drill, setDrill] = useState<{ kind: "item" | "matrix"; key: string; ym: string } | null>(
+    null
+  );
+  const [drillTx, setDrillTx] = useState<store.Transaction[]>([]);
+  const [editTx, setEditTx] = useState<store.Transaction | null>(null);
+  const [bump, setBump] = useState(0); // 수정 후 표·상세를 다시 읽기 위한 카운터
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -155,7 +191,7 @@ export default function StatsPage({
     } finally {
       setLoading(false);
     }
-  }, [month, catLevel]);
+  }, [month, catLevel, bump]);
 
   useEffect(() => {
     load();
@@ -173,7 +209,43 @@ export default function StatsPage({
     GetCategoryDetail(y, m, catId, catPeriod)
       .then(setDetail)
       .catch(() => setDetail(null));
-  }, [month, catId, catPeriod]);
+  }, [month, catId, catPeriod, bump]);
+
+  // 선택 카테고리의 월 × 항목 표 (기간 토글과 무관하게 항상 최근 N개월 기준)
+  useEffect(() => {
+    if (catId === 0) return;
+    const [y, m] = month.split("-").map(Number);
+    GetCategoryMonthly(y, m, catMonths, catId, catBy)
+      .then(setCatMonthly)
+      .catch(() => setCatMonthly(null));
+  }, [month, catId, catBy, catMonths, bump]);
+
+  // 기준·카테고리를 바꾸면 다시 상위 항목부터 보고, 열려 있던 드릴다운은 닫는다
+  useEffect(() => {
+    setCatAll(false);
+    setDrill(null);
+  }, [catId, catBy, catMonths, catLevel, month]);
+
+  // 드릴다운: 고른 칸의 거래 목록.
+  // 집계와 같은 기준으로 되짚어야 칸 금액과 목록 합계가 맞으므로 표마다 전용 조회를 쓴다.
+  const loadDrill = useCallback(async () => {
+    if (!drill) return;
+    try {
+      setDrillTx(
+        drill.kind === "matrix"
+          ? await GetMatrixCellTx(drill.ym, drill.key, catLevel)
+          : catId === 0
+          ? []
+          : await GetCategoryMonthlyTx(drill.ym, catId, catBy, drill.key)
+      );
+    } catch {
+      setDrillTx([]);
+    }
+  }, [drill, catId, catBy, catLevel]);
+
+  useEffect(() => {
+    loadDrill();
+  }, [loadDrill]);
 
   if (err)
     return (
@@ -225,6 +297,15 @@ export default function StatsPage({
     ? [{ name: detail.category, color: "#5b82f0", values: detail.trend }]
     : [];
   const detailLabels = (detail?.months ?? []).map(monthLabel);
+  // 월 × 항목 표에 실제로 그릴 줄 (총액순으로 이미 정렬돼 온다)
+  const catMonthlyRows = catAll
+    ? catMonthly?.series ?? []
+    : (catMonthly?.series ?? []).slice(0, CAT_ROW_LIMIT);
+  // 드릴다운 모달의 추이 데이터. 연 표에 이미 있으니 다시 조회하지 않는다.
+  const drillSrc = drill ? (drill.kind === "matrix" ? matrix : catMonthly) : null;
+  const drillRow = drillSrc?.series.find((s) => s.name === drill?.key) ?? null;
+  const drillView =
+    drillSrc && drillRow ? { months: drillSrc.months, values: drillRow.values } : null;
   const detailPrevDelta =
     detail && detail.prev ? Math.round(((detail.total - detail.prev) / detail.prev) * 100) : 0;
 
@@ -389,6 +470,44 @@ export default function StatsPage({
                 <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
               </div>
             </div>
+
+            {/* 달마다 총액만 보면 왜 늘었는지 모른다. 항목을 쪼개야 그게 보인다. */}
+            <div className="card cat-monthly">
+              <div className="stats-head">
+                <h3>월별 상세 — 무엇에 썼나</h3>
+                <div className="seg-row">
+                  <Seg value={catBy} options={CAT_BY} onChange={setCatBy} />
+                  <select
+                    value={catMonths}
+                    onChange={(e) => setCatMonths(Number(e.target.value))}
+                  >
+                    {[3, 6, 12, 24].map((n) => (
+                      <option key={n} value={n}>최근 {n}개월</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {!catMonthly ? (
+                <Sk h={200} r={12} />
+              ) : catMonthly.series.length === 0 ? (
+                <p className="muted">이 기간에 기록된 지출이 없습니다.</p>
+              ) : (
+                <>
+                  <Heatmap
+                    rows={catMonthlyRows}
+                    months={catMonthly.months}
+                    onCell={(key, ym) => setDrill({ kind: "item", key, ym })}
+                  />
+                  {catMonthly.series.length > CAT_ROW_LIMIT && (
+                    <button className="ghost-btn" onClick={() => setCatAll((v) => !v)}>
+                      {catAll
+                        ? "상위 항목만 보기"
+                        : `나머지 ${catMonthly.series.length - CAT_ROW_LIMIT}개 항목 더 보기`}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -398,7 +517,11 @@ export default function StatsPage({
         {loading || !matrix ? (
           <Sk h={220} r={12} />
         ) : (
-          <Heatmap rows={matrix.series} months={matrix.months} />
+          <Heatmap
+            rows={matrix.series}
+            months={matrix.months}
+            onCell={(key, ym) => setDrill({ kind: "matrix", key, ym })}
+          />
         )}
       </div>
 
@@ -564,6 +687,33 @@ export default function StatsPage({
           </>
         )}
       </div>
+
+      {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
+      {drill && drillView && (
+        <TxDrillModal
+          title={drill.key}
+          ym={drill.ym}
+          months={drillView.months}
+          values={drillView.values}
+          txs={drillTx}
+          onPickMonth={(ym) => setDrill({ ...drill, ym })}
+          onEdit={setEditTx}
+          onClose={() => setDrill(null)}
+        />
+      )}
+
+      {editTx && (
+        <EditModal
+          tx={editTx}
+          refs={refs}
+          onClose={() => setEditTx(null)}
+          onSaved={() => {
+            setEditTx(null);
+            setBump((v) => v + 1); // 표·요약 다시 계산
+            loadDrill(); // 열려 있는 내역도 갱신
+          }}
+        />
+      )}
     </div>
   );
 }

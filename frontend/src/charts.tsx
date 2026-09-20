@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
 import { autoColor } from "./PmChip";
@@ -389,13 +390,123 @@ export function PaceSparkline({ pace }: { pace: store.CardPace }) {
   );
 }
 
+// 항목 하나의 월별 금액 추이. 드릴다운 모달 머리에 놓아 "이 달이 유난한가"를 바로 보게 한다.
+// 고른 달은 강조하고, 값이 있는 다른 달을 누르면 그 달로 옮겨 간다.
+export function MiniTrend({
+  values,
+  months,
+  active,
+  onPick,
+}: {
+  values: number[];
+  months: string[];
+  active: number; // 강조할 달의 인덱스
+  onPick?: (i: number) => void;
+}) {
+  const gid = useId(); // 그라디언트 id 충돌 방지
+  const W = 1000;
+  const H = 170;
+  const padL = 10;
+  const padR = 10;
+  const padT = 30; // 강조 지점 위 금액 라벨 자리
+  const padB = 24; // 월 라벨 자리
+  const n = values.length;
+  if (n === 0) return null;
+
+  const max = Math.max(1, ...values);
+  const avg = values.reduce((s, v) => s + v, 0) / n;
+  const x = (i: number) => (n === 1 ? W / 2 : padL + ((W - padL - padR) * i) / (n - 1));
+  const y = (v: number) => H - padB - ((H - padT - padB) * v) / max;
+
+  const line = values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
+  const area = `${line} L ${x(n - 1)} ${H - padB} L ${x(0)} ${H - padB} Z`;
+  const ay = y(avg);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="chart mini-trend">
+      <defs>
+        <linearGradient id={`mt-${gid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#5b82f0" stopOpacity={0.36} />
+          <stop offset="100%" stopColor="#5b82f0" stopOpacity={0.02} />
+        </linearGradient>
+      </defs>
+
+      {/* 바닥선과 평균선 — 평균 위아래로 어느 달이 튀는지 한눈에 */}
+      <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke={C_GRID} strokeWidth={1} />
+      {avg > 0 && (
+        <>
+          <line x1={padL} x2={W - padR} y1={ay} y2={ay} stroke={C_TEXT} strokeWidth={1} strokeDasharray="3 4" />
+          <text x={W - padR} y={ay - 4} fontSize={9} fill={C_TEXT} textAnchor="end">
+            평균 {compact(Math.round(avg))}
+          </text>
+        </>
+      )}
+
+      <path d={area} fill={`url(#mt-${gid})`} />
+      <path d={line} fill="none" stroke="#5b82f0" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+
+      {values.map((v, i) => {
+        const on = i === active;
+        const pickable = !!onPick && v > 0 && !on;
+        // 양 끝 라벨은 가운데 정렬하면 그림 밖으로 밀려 잘린다
+        const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
+        return (
+          <g
+            key={i}
+            className={pickable ? "mt-pick" : undefined}
+            onClick={pickable ? () => onPick!(i) : undefined}
+          >
+            {/* 넓은 투명 히트 영역 — 점이 작아도 누르기 쉽게 */}
+            <rect
+              x={x(i) - (W - padL - padR) / (2 * Math.max(1, n - 1))}
+              y={0}
+              width={(W - padL - padR) / Math.max(1, n - 1)}
+              height={H}
+              fill="transparent"
+            >
+              <title>{`${Number(months[i].slice(5))}월 · ${won(v)}`}</title>
+            </rect>
+            {on && <line x1={x(i)} x2={x(i)} y1={y(v)} y2={H - padB} stroke="#5b82f0" strokeWidth={1} opacity={0.45} />}
+            <circle
+              cx={x(i)}
+              cy={y(v)}
+              r={on ? 5 : 3}
+              fill={on ? "#5b82f0" : "var(--glass-strong)"}
+              stroke="#5b82f0"
+              strokeWidth={on ? 2.5 : 1.5}
+            />
+            {on && (
+              <text className="mt-on" x={x(i)} y={y(v) - 12} fontSize={12} fontWeight={700} textAnchor={anchor}>
+                {won(v)}
+              </text>
+            )}
+            <text
+              x={x(i)}
+              y={H - 7}
+              fontSize={10}
+              className={on ? "mt-on" : undefined}
+              fontWeight={on ? 700 : 400}
+              textAnchor={anchor}
+            >
+              {Number(months[i].slice(5))}월
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 // 카테고리×월 히트맵. 각 행=카테고리, 열=월, 셀 색 진하기=금액(행 기준 상대). 셀에 마우스 올리면 툴팁.
 export function Heatmap({
   rows,
   months,
+  onCell,
 }: {
   rows: store.Series[];
   months: string[];
+  // 값이 있는 칸을 누르면 그 달·그 항목의 거래를 열어 보게 한다
+  onCell?: (name: string, ym: string) => void;
 }) {
   if (rows.length === 0) return <p className="muted">데이터 없음</p>;
   const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
@@ -420,11 +531,18 @@ export function Heatmap({
               <th className="hm-name" title={r.name}>{r.name}</th>
               {r.values.map((v, i) => {
                 const a = v === 0 ? 0 : 0.12 + 0.78 * (v / max);
+                const clickable = !!onCell && v > 0;
                 return (
                   <td
                     key={i}
+                    className={clickable ? "hm-click" : undefined}
                     style={{ background: `rgba(91,130,240,${a})` }}
-                    title={`${r.name} · ${monthLabel(months[i])} · ${won(v)}`}
+                    title={
+                      clickable
+                        ? `${r.name} · ${monthLabel(months[i])} · ${won(v)} — 눌러서 내역 보기`
+                        : `${r.name} · ${monthLabel(months[i])} · ${won(v)}`
+                    }
+                    onClick={clickable ? () => onCell!(r.name, months[i]) : undefined}
                   >
                     {v > 0 ? compact(v) : ""}
                   </td>
