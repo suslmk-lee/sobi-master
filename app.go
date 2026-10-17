@@ -29,6 +29,8 @@ type App struct {
 	// backupMu 는 로컬 백업을 한 번에 하나만 수행하도록 직렬화한다.
 	backupMu   sync.Mutex
 	backupDone chan struct{}
+	// autoPostDone 은 정기결제 자동 등록 루프를 멈추는 신호.
+	autoPostDone chan struct{}
 }
 
 // backupInterval 는 앱 실행 중 자동 로컬 백업 주기.
@@ -55,6 +57,7 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("시작 시 DB 연결 실패: %v", err)
 	}
 	a.startBackupLoop()
+	a.startAutoPostLoop()
 }
 
 // startBackupLoop 은 시작 직후 한 번, 이후 backupInterval 마다 로컬 백업을 수행한다.
@@ -103,6 +106,9 @@ func (a *App) ensure() error {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.autoPostDone != nil {
+		close(a.autoPostDone)
+	}
 	// 백업 루프를 멈추고, 종료 전 마지막 스냅샷을 남긴다.
 	if a.backupDone != nil {
 		close(a.backupDone)
@@ -113,6 +119,9 @@ func (a *App) shutdown(ctx context.Context) {
 	// backupMu 를 잡아 진행 중 백업이 끝난 뒤 연결을 닫는다(백업 중 Close 방지).
 	a.backupMu.Lock()
 	defer a.backupMu.Unlock()
+	// 자동 등록도 마찬가지 — 한 달치를 쓰는 도중에 연결이 닫히지 않게 끝나길 기다린다.
+	autoPostMu.Lock()
+	defer autoPostMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.st != nil {
@@ -872,6 +881,14 @@ func (a *App) GetMatrixCellTx(ym, name, level string) ([]store.Transaction, erro
 		return nil, err
 	}
 	return a.st.MatrixCellTx(ym, name, level)
+}
+
+// GetCategoryCompare 는 카테고리별 이번 달 vs 전월 지출 비교(증감액 큰 순). level 은 main|sub.
+func (a *App) GetCategoryCompare(year, month int, level string) (store.CategoryCompare, error) {
+	if err := a.ensure(); err != nil {
+		return store.CategoryCompare{}, err
+	}
+	return a.st.CategoryCompare(year, month, level)
 }
 
 // GetYearSummary 는 연간 보기(12개월 추이 + 전년 대비 + 카테고리).

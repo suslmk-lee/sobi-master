@@ -210,6 +210,27 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 	memo              TEXT NOT NULL DEFAULT '',
 	active            INTEGER NOT NULL DEFAULT 1
 );
+-- 정기결제 자동 등록: 켜 두면 결제일(주말·공휴일이면 다음 업무일)에 거래를 만든다.
+-- auto_since 는 자동 등록을 시작하는 달. 켠 시점 이전으로 소급하지 않기 위해 둔다.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_post INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_since TEXT NOT NULL DEFAULT '';
+-- 정기결제 한 달치를 처리했다는 기록. (정기결제, 월) 이 기본키라 같은 달이 두 번 등록되지 않는다.
+-- 사용자가 만들어진 거래를 지워도 기록은 남겨 다시 생기지 않게 한다(transaction_id 만 비워짐).
+-- matched=1 은 새로 만들지 않고 이미 손으로 입력한 거래에 연결했다는 뜻.
+CREATE TABLE IF NOT EXISTS subscription_posts (
+	subscription_id BIGINT NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+	ym              TEXT NOT NULL,
+	transaction_id  BIGINT REFERENCES transactions(id) ON DELETE SET NULL,
+	matched         INTEGER NOT NULL DEFAULT 0,
+	posted_at       TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (subscription_id, ym)
+);
+-- 공휴일 정정: 내장 공휴일 표에 더하거나(is_holiday=1, 임시공휴일 등) 빼는(is_holiday=0) 날.
+CREATE TABLE IF NOT EXISTS custom_holidays (
+	date       TEXT PRIMARY KEY,
+	name       TEXT NOT NULL DEFAULT '',
+	is_holiday INTEGER NOT NULL DEFAULT 1
+);
 `
 	_, err := s.db.Exec(schema)
 	return err

@@ -95,7 +95,22 @@ CREATE TABLE subscriptions (
 	member_id         INTEGER,
 	payment_method_id INTEGER,
 	memo              TEXT NOT NULL DEFAULT '',
-	active            INTEGER NOT NULL DEFAULT 1
+	active            INTEGER NOT NULL DEFAULT 1,
+	auto_post         INTEGER NOT NULL DEFAULT 0,
+	auto_since        TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE subscription_posts (
+	subscription_id INTEGER NOT NULL,
+	ym              TEXT NOT NULL,
+	transaction_id  INTEGER,
+	matched         INTEGER NOT NULL DEFAULT 0,
+	posted_at       TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (subscription_id, ym)
+);
+CREATE TABLE custom_holidays (
+	date       TEXT PRIMARY KEY,
+	name       TEXT NOT NULL DEFAULT '',
+	is_holiday INTEGER NOT NULL DEFAULT 1
 );
 `
 
@@ -214,21 +229,42 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 		copy("subscriptions",
 			`SELECT id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
-			        category_id, member_id, payment_method_id, memo, active FROM subscriptions`,
+			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since FROM subscriptions`,
 			`INSERT INTO subscriptions(id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
-			        category_id, member_id, payment_method_id, memo, active)
-			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id, amount, next int64
-				var day, bmonth, active int
-				var name, merchant, cycle, startYM, endYM, nextYM, memo string
+				var day, bmonth, active, autoPost int
+				var name, merchant, cycle, startYM, endYM, nextYM, memo, autoSince string
 				var cid, mid, pid sql.NullInt64
 				e := r.Scan(&id, &name, &merchant, &amount, &cycle, &day, &bmonth,
-					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active)
+					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active, &autoPost, &autoSince)
 				return []interface{}{id, name, merchant, amount, cycle, day, bmonth,
 					startYM, endYM, next, nextYM,
-					nullable(cid), nullable(mid), nullable(pid), memo, active}, e
+					nullable(cid), nullable(mid), nullable(pid), memo, active, autoPost, autoSince}, e
+			}),
+		// 자동 등록 기록이 빠지면 복원 후 같은 달 거래가 다시 만들어진다
+		copy("subscription_posts",
+			`SELECT subscription_id, ym, transaction_id, matched, posted_at FROM subscription_posts`,
+			`INSERT INTO subscription_posts(subscription_id, ym, transaction_id, matched, posted_at) VALUES(?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var sid int64
+				var tid sql.NullInt64
+				var matched int
+				var ym, at string
+				e := r.Scan(&sid, &ym, &tid, &matched, &at)
+				return []interface{}{sid, ym, nullable(tid), matched, at}, e
+			}),
+		copy("custom_holidays",
+			`SELECT date, name, is_holiday FROM custom_holidays`,
+			`INSERT INTO custom_holidays(date, name, is_holiday) VALUES(?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var date, name string
+				var h int
+				e := r.Scan(&date, &name, &h)
+				return []interface{}{date, name, h}, e
 			}),
 		copy("transactions",
 			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at::text FROM transactions`,

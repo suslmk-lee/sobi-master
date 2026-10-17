@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Subscription 은 직접 등록해 두는 정기결제(구독·고정비) 한 건이다.
@@ -12,8 +13,8 @@ import (
 // 명시적으로 등록해 관리하는 쪽이다. 언제까지 쓸지(EndYM), 언제부터 요금이 얼마로
 // 바뀌는지(NextAmount/NextAmountYM)를 미리 적어 두고 추적한다.
 //
-// 거래를 자동으로 만들지는 않는다. 카드 내역을 가져오면 진짜 거래가 들어오므로,
-// 등록해 둔 정기결제와 실제 거래를 대조해 "빠짐/예정"만 보여 준다.
+// 기본은 추적만 한다 — 등록해 둔 정기결제와 실제 거래를 대조해 "빠짐/예정"을 보여 준다.
+// AutoPost 를 켜면 결제일에 거래를 자동으로 만든다(같은 달 거래가 이미 있으면 연결만 한다).
 type Subscription struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
@@ -40,6 +41,11 @@ type Subscription struct {
 	Memo            string `json:"memo"`
 	// Active 가 false 면 잠시 꺼 둔 것(삭제하지 않고 추적만 중단).
 	Active bool `json:"active"`
+	// AutoPost 면 결제일(주말·공휴일이면 다음 업무일)에 거래를 자동으로 만든다.
+	// AutoSince 는 자동 등록을 시작하는 달("YYYY-MM"). 저장 시 서버가 정한다 —
+	// 켠 시점보다 이전 달로 소급해 거래를 만들지 않기 위해서다.
+	AutoPost  bool   `json:"autoPost"`
+	AutoSince string `json:"autoSince"`
 
 	// 조회 편의용 조인 결과
 	CategoryName      string `json:"categoryName"`
@@ -102,7 +108,7 @@ func (s Subscription) MatchTarget() string {
 const subSelect = `
 SELECT s.id, s.name, s.merchant, s.amount, s.cycle, s.billing_day, s.billing_month,
        s.start_ym, s.end_ym, s.next_amount, s.next_amount_ym,
-       s.category_id, s.member_id, s.payment_method_id, s.memo, s.active,
+       s.category_id, s.member_id, s.payment_method_id, s.memo, s.active, s.auto_post, s.auto_since,
        CASE WHEN c.id IS NULL THEN ''
             WHEN cp.name IS NULL THEN c.name
             ELSE cp.name || ' > ' || c.name END,
@@ -117,10 +123,10 @@ LEFT JOIN payment_methods p ON p.id = s.payment_method_id
 func scanSub(rows *sql.Rows) (Subscription, error) {
 	var s Subscription
 	var cid, mid, pid sql.NullInt64
-	var active int
+	var active, autoPost int
 	err := rows.Scan(&s.ID, &s.Name, &s.Merchant, &s.Amount, &s.Cycle, &s.BillingDay, &s.BillingMonth,
 		&s.StartYM, &s.EndYM, &s.NextAmount, &s.NextAmountYM,
-		&cid, &mid, &pid, &s.Memo, &active,
+		&cid, &mid, &pid, &s.Memo, &active, &autoPost, &s.AutoSince,
 		&s.CategoryName, &s.MemberName, &s.PaymentMethodName)
 	if err != nil {
 		return s, err
@@ -129,6 +135,7 @@ func scanSub(rows *sql.Rows) (Subscription, error) {
 	s.MemberID = scanNullableID(mid)
 	s.PaymentMethodID = scanNullableID(pid)
 	s.Active = active == 1
+	s.AutoPost = autoPost == 1
 	return s, nil
 }
 
@@ -181,19 +188,22 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 	if sub.Active {
 		active = 1
 	}
+	if err := s.resolveAutoSince(&sub); err != nil {
+		return sub, err
+	}
 	args := []interface{}{
 		sub.Name, sub.Merchant, sub.Amount, sub.Cycle, sub.BillingDay, sub.BillingMonth,
 		sub.StartYM, sub.EndYM, sub.NextAmount, sub.NextAmountYM,
 		nullableID(sub.CategoryID), nullableID(sub.MemberID), nullableID(sub.PaymentMethodID),
-		sub.Memo, active,
+		sub.Memo, active, boolToInt(sub.AutoPost), sub.AutoSince,
 	}
 	if sub.ID == 0 {
 		var id int64
 		err := s.queryRow(`
 INSERT INTO subscriptions(name, merchant, amount, cycle, billing_day, billing_month,
 	start_ym, end_ym, next_amount, next_amount_ym,
-	category_id, member_id, payment_method_id, memo, active)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
+	category_id, member_id, payment_method_id, memo, active, auto_post, auto_since)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
 		if err != nil {
 			return sub, err
 		}
@@ -203,9 +213,41 @@ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
 	_, err := s.exec(`
 UPDATE subscriptions SET name=?, merchant=?, amount=?, cycle=?, billing_day=?, billing_month=?,
 	start_ym=?, end_ym=?, next_amount=?, next_amount_ym=?,
-	category_id=?, member_id=?, payment_method_id=?, memo=?, active=?
+	category_id=?, member_id=?, payment_method_id=?, memo=?, active=?, auto_post=?, auto_since=?
 WHERE id=?`, append(args, sub.ID)...)
 	return sub, err
+}
+
+// nowFunc 는 테스트에서 "오늘"을 바꿔 끼우기 위한 시계.
+var nowFunc = time.Now
+
+// resolveAutoSince 는 자동 등록 시작 달을 정한다. 클라이언트가 보낸 값은 믿지 않는다.
+//   - 자동 등록을 끄면 비운다(나중에 다시 켜면 그때부터 새로 센다 — 꺼 둔 기간은 소급하지 않는다).
+//   - 이미 켜져 있던 것을 수정하면 원래 시작 달을 지킨다(수정할 때마다 밀리면 그 사이 달이 빠진다).
+//   - 새로 켜면 max(시작 월, 이번 달). 과거 달을 한꺼번에 만들어 내지 않기 위해서다.
+func (s *Store) resolveAutoSince(sub *Subscription) error {
+	if !sub.AutoPost {
+		sub.AutoSince = ""
+		return nil
+	}
+	if sub.ID > 0 {
+		var was int
+		var since string
+		err := s.queryRow(`SELECT auto_post, auto_since FROM subscriptions WHERE id=?`, sub.ID).Scan(&was, &since)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if was == 1 && since != "" {
+			sub.AutoSince = since
+			return nil
+		}
+	}
+	cur := nowFunc().Format("2006-01")
+	sub.AutoSince = cur
+	if sub.StartYM > cur {
+		sub.AutoSince = sub.StartYM
+	}
+	return nil
 }
 
 func (s *Store) DeleteSubscription(id int64) error {

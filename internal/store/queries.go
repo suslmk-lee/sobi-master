@@ -476,17 +476,26 @@ func (s *Store) ListTransactions(f TxFilter) ([]Transaction, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) AddTransaction(t Transaction) (int64, error) {
+// insertTxSQL/insertTxArgs 는 거래 한 건 INSERT. 일반 등록과 정기결제 자동 등록이 함께 써서
+// 두 경로의 저장 방식(가맹점 trim, 빈 방향 기본값 등)이 어긋나지 않게 한다.
+const insertTxSQL = `
+INSERT INTO transactions(date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`
+
+func insertTxArgs(t Transaction) []interface{} {
 	if t.Direction == "" {
 		t.Direction = "expense"
 	}
-	var id int64
-	err := s.queryRow(`
-INSERT INTO transactions(date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+	return []interface{}{
 		t.Date, t.Amount, t.Direction, strings.TrimSpace(t.Merchant), t.Memo,
 		nullableID(t.MemberID), nullableID(t.CategoryID), nullableID(t.PaymentMethodID),
-		t.Source, boolToInt(t.AutoClassified), boolToInt(t.ExcludePerf), strings.TrimSpace(t.PaidAt)).Scan(&id)
+		t.Source, boolToInt(t.AutoClassified), boolToInt(t.ExcludePerf), strings.TrimSpace(t.PaidAt),
+	}
+}
+
+func (s *Store) AddTransaction(t Transaction) (int64, error) {
+	var id int64
+	err := s.queryRow(insertTxSQL, insertTxArgs(t)...).Scan(&id)
 	return id, err
 }
 

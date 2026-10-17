@@ -663,6 +663,86 @@ func (s *Store) CategoryMatrix(year, month, n int, level string) (CategoryTrend,
 	return s.seriesTrend(year, month, n, catNameExpr(level), joinCategory, 0)
 }
 
+// CategoryDelta 는 카테고리 하나의 전월 대비 지출 변화.
+type CategoryDelta struct {
+	Name    string `json:"name"`
+	Current int64  `json:"current"`
+	Prev    int64  `json:"prev"`
+	Delta   int64  `json:"delta"` // Current - Prev
+	Pct     int    `json:"pct"`   // 전월 대비 증감률(%). Prev=0 이면 0 — IsNew 로 구분한다
+	IsNew   bool   `json:"isNew"` // 전월엔 없던 지출
+	Gone    bool   `json:"gone"`  // 이번 달엔 사라진 지출
+}
+
+// CategoryCompare 는 이번 달과 전월의 카테고리별 지출 비교.
+type CategoryCompare struct {
+	Month     string          `json:"month"`     // "YYYY-MM"
+	PrevMonth string          `json:"prevMonth"` //
+	Total     int64           `json:"total"`
+	PrevTotal int64           `json:"prevTotal"`
+	Rows      []CategoryDelta `json:"rows"` // 증감액 절댓값 내림차순
+}
+
+// CategoryCompare 는 카테고리별로 이번 달과 전월 지출을 나란히 놓고 증감을 돌려준다.
+// 총지출이 늘어도 어느 카테고리가 끌어올렸는지는 총액만으로는 알 수 없으므로,
+// 금액순이 아니라 "증감액이 큰 순"으로 정렬해 원인이 위로 오게 한다.
+// 한쪽 달에만 있는 카테고리도 신규/사라짐으로 함께 싣는다. level 은 main|sub.
+func (s *Store) CategoryCompare(year, month int, level string) (CategoryCompare, error) {
+	cur := fmt.Sprintf("%04d-%02d", year, month)
+	py, pm := prevMonthOf(year, month)
+	prev := fmt.Sprintf("%04d-%02d", py, pm)
+	out := CategoryCompare{Month: cur, PrevMonth: prev, Rows: []CategoryDelta{}}
+
+	q := fmt.Sprintf(`
+SELECT %s AS name,
+       COALESCE(SUM(t.amount) FILTER (WHERE substr(t.date,1,7) = ?), 0),
+       COALESCE(SUM(t.amount) FILTER (WHERE substr(t.date,1,7) = ?), 0)
+FROM transactions t %s
+WHERE t.direction='expense' AND substr(t.date,1,7) IN (?, ?)
+GROUP BY 1`, catNameExpr(level), joinCategory)
+	rows, err := s.query(q, cur, prev, cur, prev)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d CategoryDelta
+		if err := rows.Scan(&d.Name, &d.Current, &d.Prev); err != nil {
+			return out, err
+		}
+		d.Delta = d.Current - d.Prev
+		switch {
+		case d.Prev == 0:
+			d.IsNew = true
+		case d.Current == 0:
+			d.Gone = true
+			d.Pct = -100
+		default:
+			d.Pct = int(d.Delta * 100 / d.Prev)
+		}
+		out.Total += d.Current
+		out.PrevTotal += d.Prev
+		out.Rows = append(out.Rows, d)
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	sort.Slice(out.Rows, func(i, j int) bool {
+		a, b := out.Rows[i].Delta, out.Rows[j].Delta
+		if a < 0 {
+			a = -a
+		}
+		if b < 0 {
+			b = -b
+		}
+		if a != b {
+			return a > b
+		}
+		return out.Rows[i].Current > out.Rows[j].Current
+	})
+	return out, nil
+}
+
 // 카테고리 월별 상세에서 쪼갤 수 있는 기준.
 const (
 	BreakSub      = "sub"      // 부 카테고리 (주를 골랐을 때만 의미 있음)

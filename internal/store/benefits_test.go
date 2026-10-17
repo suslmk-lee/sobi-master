@@ -66,7 +66,7 @@ func TestCardBenefitsOrderAndScope(t *testing.T) {
 // 위/아래 이동은 같은 카드 안에서만 자리를 바꾸고, 끝에서 더 밀어도 조용히 제자리에 있어야 한다.
 func TestMoveCardBenefit(t *testing.T) {
 	st := openTestStore(t)
-	pm := benefitCard(t, st, "카드")
+	pm := benefitCard(t, st, "순서테스트카드")
 
 	var ids []int64
 	for _, area := range []string{"주유", "마트", "통신"} {
@@ -109,7 +109,7 @@ func TestMoveCardBenefit(t *testing.T) {
 // 화면에 "0% 적립" 같은 잘못된 숫자가 뜨지 않는다.
 func TestSaveCardBenefitNormalizes(t *testing.T) {
 	st := openTestStore(t)
-	pm := benefitCard(t, st, "카드")
+	pm := benefitCard(t, st, "정리테스트카드")
 
 	svc, err := st.SaveCardBenefit(CardBenefit{
 		PaymentMethodID: pm, Area: "  공항 라운지  ", Kind: "service", RateBp: 300,

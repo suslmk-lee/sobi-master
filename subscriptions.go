@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"sobi/internal/classifier"
+	"sobi/internal/holiday"
 	"sobi/internal/store"
 )
 
 // ---- 정기결제 관리 ----
 //
 // 등록해 둔 정기결제를 실제 거래와 대조해 "이번 달에 빠졌는지 / 얼마가 빠졌는지"를 본다.
-// 거래를 자동으로 만들지는 않는다 — 카드 내역을 가져오면 진짜 거래가 들어오기 때문에
-// 자동 생성하면 같은 결제가 두 번 잡힌다.
+// 자동 등록을 켠 정기결제는 결제일에 거래를 만들어 준다(autopost.go). 같은 달 결제를
+// 이미 손으로 입력했으면 새로 만들지 않고 연결만 해서 두 번 잡히지 않게 한다.
 
 // SubStatus 는 정기결제 한 건의 특정 월 현황.
 type SubStatus struct {
@@ -33,6 +34,14 @@ type SubStatus struct {
 	// ChangingYM/ChangingAmount 는 앞으로 예정된 요금 변경(없으면 빈 값).
 	ChangingYM     string `json:"changingYm"`
 	ChangingAmount int64  `json:"changingAmount"`
+	// PlannedDate 는 원래 결제일, ChargeDate 는 주말·공휴일을 피해 민 실제 결제일.
+	// ShiftReason 은 밀린 까닭("토요일", "추석" …) — 안 밀렸으면 "".
+	PlannedDate string `json:"plannedDate"`
+	ChargeDate  string `json:"chargeDate"`
+	ShiftReason string `json:"shiftReason"`
+	// PostState 는 자동 등록 상태: "" (아직) | "created" (자동으로 만듦) |
+	// "matched" (이미 입력된 거래에 연결) | "deleted" (만들었으나 사용자가 지움 — 다시 만들지 않음).
+	PostState string `json:"postState"`
 }
 
 // SubMonth 는 정기결제 화면 한 달치 전체.
@@ -108,7 +117,134 @@ func (a *App) SaveSubscription(sub store.Subscription) (store.Subscription, erro
 	}
 	saved, err := a.st.SaveSubscription(sub)
 	logIf("SaveSubscription", err)
+	// 자동 등록을 켠 채 저장했으면 이미 결제일이 지난 이번 달 몫을 바로 반영한다
+	// (다음 주기까지 기다리면 저장하고 나서 거래가 안 보여 헷갈린다).
+	if err == nil && saved.AutoPost {
+		if _, perr := a.postDue(time.Now()); perr != nil {
+			logIf("SaveSubscription(자동 등록)", perr)
+		}
+	}
 	return saved, err
+}
+
+// ---- 공휴일 ----
+
+// HolidayYear 는 설정 화면의 공휴일 목록 한 해치.
+type HolidayYear struct {
+	Year    int                `json:"year"`
+	Covered bool               `json:"covered"` // 음력·대체공휴일까지 내장 표에 있는지
+	Entries []holiday.Entry    `json:"entries"`
+	Custom  []holiday.Override `json:"custom"` // 그 해의 사용자 정정
+}
+
+// GetHolidays 는 그 해 공휴일(내장 표 + 사용자 정정)을 돌려준다.
+func (a *App) GetHolidays(year int) (HolidayYear, error) {
+	if err := a.ensure(); err != nil {
+		return HolidayYear{}, err
+	}
+	over, err := a.st.ListCustomHolidays()
+	if err != nil {
+		return HolidayYear{}, err
+	}
+	out := HolidayYear{Year: year, Covered: holiday.Covered(year), Custom: []holiday.Override{}}
+	out.Entries = holiday.New(over).Year(year)
+	prefix := fmt.Sprintf("%04d-", year)
+	for _, o := range over {
+		if strings.HasPrefix(o.Date, prefix) {
+			out.Custom = append(out.Custom, o)
+		}
+	}
+	return out, nil
+}
+
+// SaveCustomHoliday 는 공휴일을 추가하거나(임시공휴일 등) 내장 공휴일을 업무일로 정정한다.
+func (a *App) SaveCustomHoliday(o holiday.Override) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	if _, err := time.Parse("2006-01-02", o.Date); err != nil {
+		return fmt.Errorf("날짜 형식이 올바르지 않습니다: %q", o.Date)
+	}
+	return a.st.SaveCustomHoliday(o)
+}
+
+// DeleteCustomHoliday 는 정정을 지워 그 날을 내장 표대로 되돌린다.
+func (a *App) DeleteCustomHoliday(date string) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	return a.st.DeleteCustomHoliday(date)
+}
+
+// SubDraft 는 거래 한 건으로 만든 정기결제 초안과, 이미 같은 가맹점으로 걸려 있는 정기결제 목록.
+type SubDraft struct {
+	Draft      store.Subscription   `json:"draft"`
+	Duplicates []store.Subscription `json:"duplicates"`
+}
+
+// DraftSubscriptionFromTx 는 거래내역의 한 건을 정기결제로 등록할 수 있게 초안을 채운다.
+// 그 거래가 있는 달은 이미 결제가 끝났으므로 다음 달부터 추적하도록 시작 월을 잡는다.
+// 저장은 하지 않는다 — 사용자가 확인·수정한 뒤 SaveSubscription 으로 저장한다.
+// 중복 판정은 실제 대조(subMatcher)와 같은 규칙(정규화 후 부분 일치)을 쓴다.
+// 기준이 다르면 "중복 없음"이라 해 놓고 같은 거래가 두 정기결제에 동시에 잡힌다.
+func (a *App) DraftSubscriptionFromTx(id int64) (SubDraft, error) {
+	if err := a.ensure(); err != nil {
+		return SubDraft{}, err
+	}
+	t, err := a.st.GetTransaction(id)
+	if err != nil {
+		return SubDraft{}, err
+	}
+	if t.Direction != "expense" {
+		return SubDraft{}, fmt.Errorf("지출 거래만 정기결제로 등록할 수 있습니다")
+	}
+	d, err := time.Parse("2006-01-02", t.Date)
+	if err != nil {
+		return SubDraft{}, fmt.Errorf("거래 날짜를 읽을 수 없습니다: %s", t.Date)
+	}
+	next := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+
+	draft := store.Subscription{
+		Name:            strings.TrimSpace(t.Merchant),
+		Merchant:        strings.TrimSpace(t.Merchant),
+		Amount:          t.Amount,
+		Cycle:           "monthly",
+		BillingDay:      d.Day(),
+		BillingMonth:    int(d.Month()),
+		StartYM:         next.Format("2006-01"),
+		CategoryID:      t.CategoryID,
+		MemberID:        t.MemberID,
+		PaymentMethodID: t.PaymentMethodID,
+		Memo:            fmt.Sprintf("%s 거래에서 등록", t.Date),
+		Active:          true,
+		// 거래에서 만드는 건 "다음 달부터 매달 자동으로 넣어 달라"는 뜻이라 기본으로 켠다
+		AutoPost: true,
+		// 확인 화면 표시용 이름 (저장에는 쓰이지 않음)
+		CategoryName:      t.CategoryName,
+		MemberName:        t.MemberName,
+		PaymentMethodName: t.PaymentMethodName,
+	}
+
+	out := SubDraft{Draft: draft, Duplicates: []store.Subscription{}}
+	subs, err := a.st.ListSubscriptions()
+	if err != nil {
+		return out, err
+	}
+	nt := classifier.Normalize(t.Merchant)
+	if nt == "" {
+		return out, nil
+	}
+	for _, s := range subs {
+		target := s.Merchant
+		if target == "" {
+			target = s.Name
+		}
+		ns := classifier.Normalize(target)
+		if ns != "" && (strings.Contains(nt, ns) || strings.Contains(ns, nt)) {
+			out.Duplicates = append(out.Duplicates, s)
+		}
+	}
+	return out, nil
 }
 
 func (a *App) DeleteSubscription(id int64) error {
@@ -141,6 +277,33 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 	}
 	matcher := newSubMatcher(txs)
 
+	cal, err := a.st.Calendar()
+	if err != nil {
+		return SubMonth{}, err
+	}
+	posts, err := a.st.SubscriptionPosts()
+	if err != nil {
+		return SubMonth{}, err
+	}
+	// 자동 등록된 달은 기록에 남은 그 거래로 "빠짐"을 판정한다. 결제일이 다음 업무일로
+	// 밀려 다음 달로 넘어간 경우, 그 달 거래만 훑는 대조로는 못 찾기 때문이다.
+	var postedIDs []int64
+	for _, sub := range subs {
+		if p, ok := posts[sub.ID][ym]; ok && p.TransactionID != nil {
+			postedIDs = append(postedIDs, *p.TransactionID)
+		}
+	}
+	postedTx := map[int64]store.Transaction{}
+	if len(postedIDs) > 0 {
+		list, err := a.st.GetTransactions(postedIDs)
+		if err != nil {
+			return SubMonth{}, err
+		}
+		for _, t := range list {
+			postedTx[t.ID] = t
+		}
+	}
+
 	out := SubMonth{Month: ym, Items: []SubStatus{}}
 	for _, sub := range subs {
 		st := SubStatus{
@@ -148,6 +311,25 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 			Amount: sub.AmountAt(ym),
 			Due:    sub.DueIn(ym),
 			Ending: sub.EndsIn(ym),
+		}
+		if st.Due {
+			if planned, actual, err := chargeDate(sub, ym, cal); err == nil {
+				st.PlannedDate = planned.Format("2006-01-02")
+				st.ChargeDate = actual.Format("2006-01-02")
+				if !actual.Equal(planned) {
+					st.ShiftReason = cal.Reason(planned)
+				}
+			}
+		}
+		if p, ok := posts[sub.ID][ym]; ok {
+			switch {
+			case p.TransactionID == nil:
+				st.PostState = "deleted"
+			case p.Matched:
+				st.PostState = "matched"
+			default:
+				st.PostState = "created"
+			}
 		}
 		// 아직 오지 않은 요금 변경만 "예정"으로 알린다.
 		if sub.NextAmountYM != "" && sub.NextAmountYM > ym {
@@ -158,7 +340,16 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 			out.DueCount++
 			out.Planned += st.Amount
 			out.MonthlyEquivalent += sub.MonthlyEquivalent(ym)
-			if t := matcher.find(sub.MatchTarget()); t != nil {
+			var t *store.Transaction
+			if p, ok := posts[sub.ID][ym]; ok && p.TransactionID != nil {
+				if pt, ok := postedTx[*p.TransactionID]; ok {
+					t = &pt
+				}
+			}
+			if t == nil {
+				t = matcher.find(sub.MatchTarget())
+			}
+			if t != nil {
 				st.Seen = true
 				st.SeenAmount = t.Amount
 				st.SeenDate = t.Date

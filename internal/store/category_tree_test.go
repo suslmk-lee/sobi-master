@@ -175,11 +175,9 @@ func TestCategoryRollup(t *testing.T) {
 func TestSplitSlashCategories(t *testing.T) {
 	st := openTestStore(t)
 
-	// "식비" 는 시드에 있음 → 분리 대상. "회비" 는 없음 → 유지.
+	// "식비" 는 시드에 있음 → 분리 대상. "회비/경조사" 는 시드에 이미 있는 카테고리이고
+	// "회비" 라는 주는 없으므로 → 유지돼야 한다(다시 추가하면 이름 중복으로 막힌다).
 	if _, err := st.AddCategory("식비/배달", "expense", 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.AddCategory("회비/경조사", "expense", 0); err != nil {
 		t.Fatal(err)
 	}
 
