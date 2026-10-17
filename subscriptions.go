@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -65,41 +66,77 @@ type SubMonth struct {
 // ymOf 는 (year, month) 를 "YYYY-MM" 로.
 func ymOf(year, month int) string { return fmt.Sprintf("%04d-%02d", year, month) }
 
-// subMatcher 는 정기결제를 실제 거래와 대조한다. 가맹점명을 정규화해 부분 일치로 본다
-// (금액은 보지 않는다 — 요금이 바뀌어도 같은 결제로 봐야 하기 때문).
-type subMatcher struct {
-	norm []string            // norm[i] 는 txs[i].Merchant 의 정규화 결과
-	txs  []store.Transaction // 대조 대상 거래(지출만)
+// merchantMatch 는 정기결제 대조 가맹점과 거래 가맹점이 같은 곳인지 본다.
+// 정규화한 뒤 한쪽이 다른 쪽을 포함하면 같다고 본다("LG U+" ↔ "LG U+ 자동결제").
+func merchantMatch(target, merchant string) bool {
+	nt, nm := classifier.Normalize(target), classifier.Normalize(merchant)
+	if nt == "" || nm == "" {
+		return false
+	}
+	return strings.Contains(nm, nt) || strings.Contains(nt, nm)
 }
 
-func newSubMatcher(txs []store.Transaction) *subMatcher {
-	m := &subMatcher{txs: txs, norm: make([]string, len(txs))}
-	for i, t := range txs {
-		m.norm[i] = classifier.Normalize(t.Merchant)
-	}
-	return m
+// chargeWant 는 "이 정기결제의 이 달 결제를 찾는다"는 요청 하나.
+type chargeWant struct {
+	Sub      store.Subscription
+	Amount   int64  // 그 달 예상 요금
+	From, To string // 허용 날짜 범위("YYYY-MM-DD", 양끝 포함). 빈 값이면 제한 없음
 }
 
-// find 는 target 과 맞는 거래 중 가장 이른 것을 돌려준다. 없으면 nil.
-func (m *subMatcher) find(target string) *store.Transaction {
-	nt := classifier.Normalize(target)
-	if nt == "" {
-		return nil
+// assignCharges 는 정기결제(wants)와 실제 거래(txs)를 짝짓는다.
+//
+// 가맹점이 맞는 (정기결제, 거래) 쌍을 모두 모아 금액 차이가 작은 순으로 훑고, 정기결제도
+// 거래도 한 번씩만 쓴다. 그래서
+//   - 같은 가맹점 정기결제가 하나면 후보도 그것뿐이라 금액이 달라도 찾는다(요금이 오른 달).
+//   - 같은 가맹점이 여럿이면(LG U+ 회선 셋) 금액이 가장 가까운 것끼리 묶여 뒤섞이지 않고,
+//     거래가 모자라면 금액이 먼 정기결제는 짝이 없다(엉뚱한 회선의 요금을 가져가지 않는다).
+// exclude 의 거래는 이미 다른 정기결제 달에 묶여 있어 후보에서 뺀다.
+// 결과는 정기결제 id → 짝지은 거래.
+func assignCharges(wants []chargeWant, txs []store.Transaction, exclude map[int64]bool) map[int64]*store.Transaction {
+	type pair struct {
+		w, t int
+		diff int64
 	}
-	var best *store.Transaction
-	for i := range m.txs {
-		nm := m.norm[i]
-		if nm == "" {
+	var pairs []pair
+	for wi, w := range wants {
+		target := w.Sub.MatchTarget()
+		for ti, t := range txs {
+			if exclude[t.ID] || t.Direction != "expense" {
+				continue
+			}
+			if (w.From != "" && t.Date < w.From) || (w.To != "" && t.Date > w.To) {
+				continue
+			}
+			if !merchantMatch(target, t.Merchant) {
+				continue
+			}
+			d := t.Amount - w.Amount
+			if d < 0 {
+				d = -d
+			}
+			pairs = append(pairs, pair{wi, ti, d})
+		}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].diff != pairs[j].diff {
+			return pairs[i].diff < pairs[j].diff
+		}
+		if txs[pairs[i].t].Date != txs[pairs[j].t].Date {
+			return txs[pairs[i].t].Date < txs[pairs[j].t].Date
+		}
+		return wants[pairs[i].w].Sub.ID < wants[pairs[j].w].Sub.ID
+	})
+	out := map[int64]*store.Transaction{}
+	usedTx := map[int]bool{}
+	for _, p := range pairs {
+		sid := wants[p.w].Sub.ID
+		if _, done := out[sid]; done || usedTx[p.t] {
 			continue
 		}
-		if !strings.Contains(nm, nt) && !strings.Contains(nt, nm) {
-			continue
-		}
-		if best == nil || m.txs[i].Date < best.Date {
-			best = &m.txs[i]
-		}
+		out[sid] = &txs[p.t]
+		usedTx[p.t] = true
 	}
-	return best
+	return out
 }
 
 // ListSubscriptions 는 등록된 정기결제 전체.
@@ -178,15 +215,18 @@ func (a *App) DeleteCustomHoliday(date string) error {
 
 // SubDraft 는 거래 한 건으로 만든 정기결제 초안과, 이미 같은 가맹점으로 걸려 있는 정기결제 목록.
 type SubDraft struct {
-	Draft      store.Subscription   `json:"draft"`
+	Draft store.Subscription `json:"draft"`
+	// Duplicates: 같은 가맹점에 금액도 비슷해 같은 결제가 두 번 걸린 것으로 보이는 정기결제.
 	Duplicates []store.Subscription `json:"duplicates"`
+	// Siblings: 같은 가맹점이지만 금액이 달라 별개(다른 회선·상품)로 구분되는 정기결제.
+	Siblings []store.Subscription `json:"siblings"`
 }
 
 // DraftSubscriptionFromTx 는 거래내역의 한 건을 정기결제로 등록할 수 있게 초안을 채운다.
 // 그 거래가 있는 달은 이미 결제가 끝났으므로 다음 달부터 추적하도록 시작 월을 잡는다.
 // 저장은 하지 않는다 — 사용자가 확인·수정한 뒤 SaveSubscription 으로 저장한다.
-// 중복 판정은 실제 대조(subMatcher)와 같은 규칙(정규화 후 부분 일치)을 쓴다.
-// 기준이 다르면 "중복 없음"이라 해 놓고 같은 거래가 두 정기결제에 동시에 잡힌다.
+// 중복 판정은 실제 대조(assignCharges)와 같은 기준이다: 가맹점이 맞고 금액이 가까우면 중복,
+// 금액이 다르면 같은 가맹점의 별개 결제(LG U+ 회선 여럿 등)로 본다.
 func (a *App) DraftSubscriptionFromTx(id int64) (SubDraft, error) {
 	if err := a.ensure(); err != nil {
 		return SubDraft{}, err
@@ -225,26 +265,52 @@ func (a *App) DraftSubscriptionFromTx(id int64) (SubDraft, error) {
 		PaymentMethodName: t.PaymentMethodName,
 	}
 
-	out := SubDraft{Draft: draft, Duplicates: []store.Subscription{}}
+	out := SubDraft{Draft: draft, Duplicates: []store.Subscription{}, Siblings: []store.Subscription{}}
 	subs, err := a.st.ListSubscriptions()
 	if err != nil {
 		return out, err
 	}
-	nt := classifier.Normalize(t.Merchant)
-	if nt == "" {
-		return out, nil
-	}
+	// 같은 가맹점 정기결제를 금액으로 나눈다. 대조가 금액이 가까운 것끼리 짝지으므로
+	// 금액이 비슷하면 같은 결제가 두 번 걸린 것(중복), 다르면 다른 회선·상품(별개)이다.
 	for _, s := range subs {
-		target := s.Merchant
-		if target == "" {
-			target = s.Name
+		if !merchantMatch(s.MatchTarget(), t.Merchant) {
+			continue
 		}
-		ns := classifier.Normalize(target)
-		if ns != "" && (strings.Contains(nt, ns) || strings.Contains(ns, nt)) {
+		if amountClose(s.Amount, t.Amount) {
 			out.Duplicates = append(out.Duplicates, s)
+		} else {
+			out.Siblings = append(out.Siblings, s)
 		}
 	}
 	return out, nil
+}
+
+// amountClose 는 두 요금이 같은 결제로 볼 만큼 가까운지(±3%).
+// 넓게 잡으면 요금이 비슷한 다른 회선(44,800 / 46,800)까지 "중복"으로 경고한다.
+func amountClose(a, b int64) bool {
+	if a <= 0 || b <= 0 {
+		return false
+	}
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	m := a
+	if b > m {
+		m = b
+	}
+	return d*100 <= 3*m
+}
+
+// LinkSubscriptionTx 는 거래내역의 거래를 정기결제의 그 달 결제로 연결한다.
+// 거래에서 정기결제를 만든 직후 원본 거래를 묶어, 그 행에 정기결제 표시가 붙게 한다.
+func (a *App) LinkSubscriptionTx(subID, txID int64) (bool, error) {
+	if err := a.ensure(); err != nil {
+		return false, err
+	}
+	ok, err := a.st.LinkSubscriptionTx(subID, txID)
+	logIf("LinkSubscriptionTx", err)
+	return ok, err
 }
 
 func (a *App) DeleteSubscription(id int64) error {
@@ -275,8 +341,6 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 	if err != nil {
 		return SubMonth{}, err
 	}
-	matcher := newSubMatcher(txs)
-
 	cal, err := a.st.Calendar()
 	if err != nil {
 		return SubMonth{}, err
@@ -303,6 +367,28 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 			postedTx[t.ID] = t
 		}
 	}
+
+	// 기록이 없는 달은 실제 거래와 짝짓는다. 다른 정기결제 달에 이미 묶인 거래는 빼고,
+	// 같은 가맹점 정기결제가 여럿이면 금액이 가까운 것끼리 묶는다(assignCharges).
+	linkedTx := map[int64]bool{}
+	for _, byYM := range posts {
+		for _, p := range byYM {
+			if p.TransactionID != nil {
+				linkedTx[*p.TransactionID] = true
+			}
+		}
+	}
+	var wants []chargeWant
+	for _, sub := range subs {
+		if !sub.DueIn(ym) {
+			continue
+		}
+		if p, ok := posts[sub.ID][ym]; ok && p.TransactionID != nil {
+			continue
+		}
+		wants = append(wants, chargeWant{Sub: sub, Amount: sub.AmountAt(ym)})
+	}
+	assigned := assignCharges(wants, txs, linkedTx)
 
 	out := SubMonth{Month: ym, Items: []SubStatus{}}
 	for _, sub := range subs {
@@ -347,7 +433,7 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 				}
 			}
 			if t == nil {
-				t = matcher.find(sub.MatchTarget())
+				t = assigned[sub.ID]
 			}
 			if t != nil {
 				st.Seen = true
@@ -383,15 +469,15 @@ func (a *App) subTrend(subs []store.Subscription, year, month, n int) ([]int64, 
 		if err != nil {
 			return nil, nil, err
 		}
-		matcher := newSubMatcher(txs)
-		var sum int64
+		var wants []chargeWant
 		for _, sub := range subs {
-			if !sub.DueIn(ym) {
-				continue
+			if sub.DueIn(ym) {
+				wants = append(wants, chargeWant{Sub: sub, Amount: sub.AmountAt(ym)})
 			}
-			if t := matcher.find(sub.MatchTarget()); t != nil {
-				sum += t.Amount
-			}
+		}
+		var sum int64
+		for _, t := range assignCharges(wants, txs, nil) {
+			sum += t.Amount
 		}
 		trend = append(trend, sum)
 		months = append(months, ym)

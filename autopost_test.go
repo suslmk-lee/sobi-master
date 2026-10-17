@@ -293,3 +293,124 @@ func TestAutoPostCustomHoliday(t *testing.T) {
 		t.Fatalf("임시공휴일(10-20)을 건너 10-21 이어야 함: %+v", r)
 	}
 }
+
+// 사용자 실제 상황: 같은 가맹점(LG U+) 회선 셋을 각자 정기결제로 걸어 두고, 그중 한 회선만
+// 손으로 먼저 입력했다. 그 거래는 금액이 맞는 회선에 연결되고, 나머지 두 회선만 새로 만들어져야
+// 한다 — 가맹점만 보면 엉뚱한 회선이 그 거래를 가져가고 남은 회선이 같은 요금을 또 만든다.
+func TestAutoPostSameMerchantLines(t *testing.T) {
+	a := newAutoPostApp(t)
+	lines := []struct {
+		name string
+		amt  int64
+	}{{"인터넷", 38280}, {"민규 모바일", 46800}, {"은미 모바일", 44800}}
+	ids := map[string]int64{}
+	for _, l := range lines {
+		s := autoSub(t, a, store.Subscription{Name: l.name, Merchant: "LG U+", Amount: l.amt, Cycle: "monthly", BillingDay: 8}, "2026-11")
+		ids[l.name] = s.ID
+	}
+	// 11/8 은 일요일 → 11/9(월). 민규 회선 요금만 손으로 먼저 입력
+	manual, err := a.st.AddTransaction(store.Transaction{
+		Date: "2026-11-09", Amount: 46800, Direction: "expense", Merchant: "LG U+", Source: "manual",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := a.postDue(ymd("2026-11-10"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Matched != 1 || r.Created != 2 {
+		t.Fatalf("연결 1·생성 2 여야 함: %+v", r)
+	}
+	txs := expensesOf(t, a, "LG U+")
+	if len(txs) != 3 {
+		t.Fatalf("LG U+ 거래가 %d건 — 3건이어야 함(중복 없이)", len(txs))
+	}
+	amounts := map[int64]int{}
+	for _, tx := range txs {
+		amounts[tx.Amount]++
+	}
+	for _, l := range lines {
+		if amounts[l.amt] != 1 {
+			t.Errorf("%s(%d원) 거래가 %d건", l.name, l.amt, amounts[l.amt])
+		}
+	}
+	posts, _ := a.st.SubscriptionPosts()
+	if p := posts[ids["민규 모바일"]]["2026-11"]; p.TransactionID == nil || *p.TransactionID != manual || !p.Matched {
+		t.Errorf("손으로 넣은 46,800원이 민규 회선에 연결되지 않음: %+v", p)
+	}
+
+	// 정기결제 화면: 세 회선이 각자 자기 금액으로 "빠짐"
+	m, err := a.GetSubscriptionMonth(2026, 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range m.Items {
+		if !it.Seen || it.SeenAmount != it.Amount {
+			t.Errorf("%s: 빠짐=%v 금액 %d (예상 %d)", it.Sub.Name, it.Seen, it.SeenAmount, it.Amount)
+		}
+	}
+	// 거래내역에 정기결제 이름이 붙는다
+	for _, tx := range expensesOf(t, a, "LG U+") {
+		if tx.SubscriptionName == "" {
+			t.Errorf("거래 %d(%d원)에 정기결제 표시가 없음", tx.ID, tx.Amount)
+		}
+	}
+}
+
+// 거래에서 정기결제를 만들면 원본 거래가 그 달 결제로 연결된다(거래내역에 표시가 붙는다).
+// 연결 기능이 생기기 전에 만든 정기결제는 메모의 날짜·가맹점·금액으로 찾아 소급 연결한다.
+func TestLinkOriginTx(t *testing.T) {
+	a := newAutoPostApp(t)
+	tx1, _ := a.st.AddTransaction(store.Transaction{Date: "2026-10-08", Amount: 46800, Direction: "expense", Merchant: "LG U+"})
+	tx2, _ := a.st.AddTransaction(store.Transaction{Date: "2026-10-08", Amount: 38280, Direction: "expense", Merchant: "LG U+"})
+
+	s1, err := a.st.SaveSubscription(store.Subscription{Name: "모바일", Merchant: "LG U+", Amount: 46800, BillingDay: 8, StartYM: "2026-11", Active: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, err := a.LinkSubscriptionTx(s1.ID, tx1)
+	if err != nil || !ok {
+		t.Fatalf("원본 연결 실패: ok=%v err=%v", ok, err)
+	}
+	got, _ := a.st.GetTransaction(tx1)
+	if got.SubscriptionName != "모바일" {
+		t.Errorf("원본 거래에 정기결제 표시가 없음: %q", got.SubscriptionName)
+	}
+	// 같은 거래를 다른 정기결제에 또 묶지 않는다
+	s2, _ := a.st.SaveSubscription(store.Subscription{Name: "다른 것", Merchant: "LG U+", Amount: 46800, BillingDay: 8, Active: true})
+	if ok, _ := a.LinkSubscriptionTx(s2.ID, tx1); ok {
+		t.Error("이미 묶인 거래가 두 번째 정기결제에도 묶임")
+	}
+
+	// 소급 연결: 메모로 원본을 찾는다 — 금액이 맞는 거래만(같은 날 다른 회선과 섞이지 않게)
+	s3, _ := a.st.SaveSubscription(store.Subscription{
+		Name: "인터넷", Merchant: "LG U+", Amount: 38280, BillingDay: 8, StartYM: "2026-11",
+		Memo: "2026-10-08 거래에서 등록", Active: true,
+	})
+	n, err := a.st.BackfillOriginLinks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("소급 연결 %d건, want 1", n)
+	}
+	got2, _ := a.st.GetTransaction(tx2)
+	if got2.SubscriptionName != "인터넷" {
+		t.Errorf("38,280원 원본이 인터넷 정기결제에 연결되지 않음: %q", got2.SubscriptionName)
+	}
+	// 다시 돌려도 그대로
+	if n, _ := a.st.BackfillOriginLinks(); n != 0 {
+		t.Errorf("두 번째 소급 연결에서 %d건이 또 연결됨", n)
+	}
+	_ = s3
+	// 원본 달(10월) 기록이 있어도 자동 등록은 시작 달(11월)부터만
+	r, err := a.postDue(ymd("2026-10-20"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Created != 0 {
+		t.Errorf("시작 전 달에 거래가 생김: %+v", r)
+	}
+}

@@ -135,10 +135,26 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 	}
 	warnedYear := map[int]bool{}
 
-	for _, sub := range auto {
-		ym := sub.AutoSince
-		for i := 0; ym <= curYM && i < autoPostMaxMonths; i, ym = i+1, nextYM(ym) {
-			if !sub.DueIn(ym) {
+	// 달 단위로 처리한다. 같은 달에 같은 가맹점 정기결제가 여럿이면(LG U+ 회선 셋) 한꺼번에
+	// 짝지어야 금액이 맞는 것끼리 묶인다. 정기결제마다 따로 찾으면 먼저 찾은 쪽이 엉뚱한
+	// 회선의 요금을 가져가고, 남은 쪽이 같은 요금을 또 만든다(중복).
+	start := curYM
+	for _, s := range auto {
+		if s.AutoSince < start {
+			start = s.AutoSince
+		}
+	}
+	for i, ym := 0, start; ym <= curYM && i < autoPostMaxMonths; i, ym = i+1, nextYM(ym) {
+		type job struct {
+			sub  store.Subscription
+			item AutoPostItem
+		}
+		var jobs []job
+		var wants []chargeWant
+		first, _ := time.Parse("2006-01", ym)
+		winTo := first.AddDate(0, 1, -1)
+		for _, sub := range auto {
+			if ym < sub.AutoSince || !sub.DueIn(ym) {
 				continue
 			}
 			if _, done := posts[sub.ID][ym]; done {
@@ -156,7 +172,6 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 				out.Warnings = append(out.Warnings, fmt.Sprintf(
 					"%d년 공휴일 표가 없어 음력 공휴일·대체공휴일은 반영하지 못했습니다. 설정 → 공휴일에서 추가하세요.", y))
 			}
-
 			item := AutoPostItem{
 				SubscriptionID: sub.ID, Name: sub.Name, YM: ym,
 				PlannedDate: planned.Format("2006-01-02"),
@@ -166,12 +181,36 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 			if !actual.Equal(planned) {
 				item.Reason = cal.Reason(planned)
 			}
-
-			// 이미 손으로 입력해 둔 그 달 결제가 있으면 연결만 한다.
-			match, err := a.findManualCharge(sub, ym, actual, linked)
-			if err != nil {
-				return out, err
+			// 이미 입력된 결제를 찾는 기간: 그 달 1일 ~ 말일, 결제일이 다음 달로 밀렸으면 그 날까지
+			to := first.AddDate(0, 1, -1)
+			if actual.After(to) {
+				to = actual
 			}
+			if to.After(winTo) {
+				winTo = to
+			}
+			jobs = append(jobs, job{sub, item})
+			wants = append(wants, chargeWant{
+				Sub: sub, Amount: item.Amount,
+				From: first.Format("2006-01-02"), To: to.Format("2006-01-02"),
+			})
+		}
+		if len(jobs) == 0 {
+			continue
+		}
+
+		// 이미 손으로 입력해 둔 그 달 결제와 짝짓는다(정기결제 화면의 "빠짐" 판정과 같은 규칙).
+		txs, err := a.st.ListTransactions(store.TxFilter{
+			From: first.Format("2006-01-02"), To: winTo.Format("2006-01-02"), Direction: "expense",
+		})
+		if err != nil {
+			return out, err
+		}
+		assigned := assignCharges(wants, txs, linked)
+
+		for _, j := range jobs {
+			sub, item := j.sub, j.item
+			match := assigned[sub.ID]
 			t := store.Transaction{
 				Date: item.Date, Amount: item.Amount, Direction: "expense",
 				Merchant: sub.MatchTarget(), Memo: "정기결제 자동 등록 · " + sub.Name,
@@ -206,30 +245,6 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 	return out, nil
 }
 
-// findManualCharge 는 ym 달 결제로 볼 수 있는, 이미 입력된 거래를 찾는다.
-// 기간은 그 달 1일부터 말일까지 — 결제일이 다음 업무일로 밀려 다음 달로 넘어갔으면 그 날까지.
-// 대조 규칙은 정기결제 화면의 "빠짐/예정" 판정과 같다(가맹점 정규화 후 부분 일치, 금액 무관).
-func (a *App) findManualCharge(sub store.Subscription, ym string, actual time.Time, linked map[int64]bool) (*store.Transaction, error) {
-	first, _ := time.Parse("2006-01", ym)
-	to := first.AddDate(0, 1, -1)
-	if actual.After(to) {
-		to = actual
-	}
-	txs, err := a.st.ListTransactions(store.TxFilter{
-		From: first.Format("2006-01-02"), To: to.Format("2006-01-02"), Direction: "expense",
-	})
-	if err != nil {
-		return nil, err
-	}
-	free := txs[:0]
-	for _, t := range txs {
-		if !linked[t.ID] {
-			free = append(free, t)
-		}
-	}
-	return newSubMatcher(free).find(sub.MatchTarget()), nil
-}
-
 // startAutoPostLoop 은 시작 직후 한 번, 이후 autoPostInterval 마다 자동 등록을 돌린다.
 func (a *App) startAutoPostLoop() {
 	a.autoPostDone = make(chan struct{})
@@ -242,6 +257,14 @@ func (a *App) startAutoPostLoop() {
 		run := func(when string) {
 			if a.ensure() != nil {
 				return // 연결 실패는 화면에 따로 뜬다
+			}
+			// 원본 거래 연결이 생기기 전에 거래에서 만든 정기결제를 원본과 잇는다(한 번이면 됨)
+			if when == "시작" {
+				if n, err := a.st.BackfillOriginLinks(); err != nil {
+					logIf("정기결제 원본 거래 연결", err)
+				} else if n > 0 {
+					log.Printf("정기결제 원본 거래 %d건 연결", n)
+				}
 			}
 			if _, err := a.postDue(time.Now()); err != nil {
 				logIf("정기결제 자동 등록("+when+")", err)

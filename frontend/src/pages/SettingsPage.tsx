@@ -34,6 +34,7 @@ import {
   thisMonth,
   won,
 } from "../lib";
+import { useConfirm } from "../ConfirmModal";
 import HolidaySection from "../HolidaySection";
 import MonthPicker from "../MonthPicker";
 
@@ -186,6 +187,7 @@ function RuleSection({ refs }: { refs: Refs }) {
   const [rules, setRules] = useState<store.Rule[]>([]);
   const [f, setF] = useState<RuleForm>({ ...RULE_BLANK });
   const [err, setErr] = useState("");
+  const [confirm, confirmUI] = useConfirm();
 
   const load = useCallback(async () => setRules(await ListRules()), []);
   useEffect(() => {
@@ -236,6 +238,7 @@ function RuleSection({ refs }: { refs: Refs }) {
 
   return (
     <div className="card rules">
+      {confirmUI}
       <h3>자동 분류 규칙</h3>
       <p className="muted small">
         거래를 분류할 때마다 자동으로 만들어집니다. 직접 추가·수정할 수도 있습니다.
@@ -300,6 +303,13 @@ function RuleSection({ refs }: { refs: Refs }) {
                 <button
                   className="ghost"
                   onClick={async () => {
+                    const ok = await confirm({
+                      title: `"${r.merchant}" 규칙을 삭제할까요?`,
+                      message: "이미 분류된 거래는 바뀌지 않습니다. 다음 분류부터 이 규칙이 쓰이지 않습니다.",
+                      danger: true,
+                      confirmLabel: "삭제",
+                    });
+                    if (!ok) return;
                     await DeleteRule(r.id);
                     load();
                   }}
@@ -323,6 +333,7 @@ function RuleSection({ refs }: { refs: Refs }) {
 // 부의 종류는 주를 따르고, 통계·예산은 기본적으로 주 기준으로 합산된다.
 function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
   const [err, setErr] = useState("");
+  const [confirm, confirmUI] = useConfirm();
   // 어느 주 아래에 부를 추가하는 중인지
   const [addingUnder, setAddingUnder] = useState<number | null>(null);
   const [subName, setSubName] = useState("");
@@ -360,11 +371,19 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
   };
 
   // 삭제 시 영향을 알린다: 이 카테고리를 쓰던 거래는 미분류가 되고, 부는 주로 올라간다.
-  const remove = (name: string, id: number, subCount: number) => {
-    const extra = subCount > 0 ? `\n부 카테고리 ${subCount}개는 주 카테고리로 올라갑니다.` : "";
-    if (!window.confirm(`"${name}" 카테고리를 삭제할까요?\n이 카테고리로 분류된 거래는 미분류가 됩니다.${extra}`)) {
-      return;
-    }
+  const remove = async (name: string, id: number, subCount: number) => {
+    const ok = await confirm({
+      title: `"${name}" 카테고리를 삭제할까요?`,
+      danger: true,
+      confirmLabel: "삭제",
+      message: (
+        <>
+          이 카테고리로 분류된 거래는 <strong>미분류</strong>가 됩니다.
+          {subCount > 0 && <> 부 카테고리 {subCount}개는 주 카테고리로 올라갑니다.</>}
+        </>
+      ),
+    });
+    if (!ok) return;
     run(() => DeleteCategory(id));
   };
 
@@ -434,6 +453,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
 
   return (
     <div className="card">
+      {confirmUI}
       <h3>카테고리 (주/부)</h3>
       <p className="muted small">
         주 아래에 부를 두면 통계·예산이 주 기준으로 합산됩니다(부 단위 상세는 통계 탭에서 토글).
@@ -641,8 +661,15 @@ export default function SettingsPage({
   reload: () => void;
 }) {
   const [section, setSection] = useState<Section>("categories");
+  const [confirm, confirmUI] = useConfirm();
 
-  const del = async (fn: (id: number) => Promise<void>, id: number) => {
+  const del = async (
+    fn: (id: number) => Promise<void>,
+    id: number,
+    title: string,
+    message: string
+  ) => {
+    if (!(await confirm({ title, message, danger: true, confirmLabel: "삭제" }))) return;
     await fn(id);
     reload();
   };
@@ -659,6 +686,7 @@ export default function SettingsPage({
 
   return (
     <div className="settings-layout">
+      {confirmUI}
       <nav className="settings-nav">
         {SECTIONS.map((s) => (
           <button
@@ -686,7 +714,10 @@ export default function SettingsPage({
               {refs.members.map((m) => (
                 <li key={m.id}>
                   {m.name}
-                  <button className="ghost" onClick={() => del(DeleteMember, m.id)}>✕</button>
+                  <button className="ghost" title="삭제" onClick={() =>
+                    del(DeleteMember, m.id, `"${m.name}"을(를) 귀속자에서 삭제할까요?`,
+                      "이 사람으로 기록된 거래는 그대로 남고 귀속자만 비워집니다.")
+                  }>✕</button>
                 </li>
               ))}
             </ul>
@@ -710,7 +741,10 @@ export default function SettingsPage({
               {refs.paymentMethods.map((p) => (
                 <li key={p.id}>
                   {p.name} <span className="badge">{PM_LABEL[p.type]}</span>
-                  <button className="ghost" onClick={() => del(DeletePaymentMethod, p.id)}>✕</button>
+                  <button className="ghost" title="삭제" onClick={() =>
+                    del(DeletePaymentMethod, p.id, `"${p.name}" 결제수단을 삭제할까요?`,
+                      "이 결제수단으로 기록된 거래는 그대로 남고 결제수단만 비워집니다.")
+                  }>✕</button>
                 </li>
               ))}
             </ul>

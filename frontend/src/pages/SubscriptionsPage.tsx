@@ -10,6 +10,7 @@ import { categoryOptions, formatAmount, parseAmount, Refs, won } from "../lib";
 import MonthPicker from "../MonthPicker";
 import { LineChart } from "../charts";
 import { Sk } from "../Skeleton";
+import { useConfirm } from "../ConfirmModal";
 
 const BLANK = {
   id: 0,
@@ -89,6 +90,7 @@ export default function SubscriptionsPage({
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [postMsg, setPostMsg] = useState("");
+  const [confirm, confirmUI] = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,7 +172,15 @@ export default function SubscriptionsPage({
   };
 
   const remove = async (s: store.Subscription) => {
-    if (!window.confirm(`"${s.name}" 정기결제를 삭제할까요?\n기록된 거래는 그대로 남습니다.`)) return;
+    const ok = await confirm({
+      title: `"${s.name}" 정기결제를 삭제할까요?`,
+      danger: true,
+      confirmLabel: "삭제",
+      message: s.autoPost
+        ? "이미 기록된 거래는 그대로 남고, 다음 달부터 자동 등록이 멈춥니다."
+        : "이미 기록된 거래는 그대로 남습니다.",
+    });
+    if (!ok) return;
     try {
       await DeleteSubscription(s.id);
       if (f.id === s.id) reset();
@@ -218,6 +228,7 @@ export default function SubscriptionsPage({
 
   return (
     <div>
+      {confirmUI}
       <div className="toolbar wrap">
         <MonthPicker value={month} onChange={setMonth} />
         <span className="muted small">

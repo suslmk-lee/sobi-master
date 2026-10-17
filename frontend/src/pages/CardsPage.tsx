@@ -12,6 +12,7 @@ import Bars from "../Bars";
 import CardBenefits, { bpToPct as bpToPctLabel } from "../CardBenefits";
 import PmChip, { autoColor, CHIP_PALETTE } from "../PmChip";
 import { CardsSkeleton } from "../Skeleton";
+import { useConfirm } from "../ConfirmModal";
 
 const ISSUERS = [
   "신한카드",
@@ -290,6 +291,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
   const [editing, setEditing] = useState<FormState>({ ...EMPTY });
   // 선택은 id 로만 들고 있다가 목록에서 찾는다 — 카드 정보를 고쳐도 화면이 같이 갱신되도록
   const [selectedId, setSelectedId] = useState(0);
+  const [confirm, confirmUI] = useConfirm();
   const [breakdown, setBreakdown] = useState<store.CardBreakdown | null>(null);
   // 카드 타일에 대표 혜택을 미리 보여 주려고 전체를 한 번에 받아 둔다
   const [benefits, setBenefits] = useState<Record<number, store.CardBenefit[]>>({});
@@ -334,7 +336,13 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
     });
 
   const remove = async (st: store.CardStatus) => {
-    if (!window.confirm(`"${st.card.name}" 카드를 삭제할까요? 거래 기록은 남습니다.`)) return;
+    const ok = await confirm({
+      title: `"${st.card.name}" 카드를 삭제할까요?`,
+      danger: true,
+      confirmLabel: "삭제",
+      message: "이 카드로 기록된 거래는 그대로 남고 결제수단만 비워집니다. 카드 혜택 자료도 함께 삭제됩니다.",
+    });
+    if (!ok) return;
     await DeletePaymentMethod(st.card.id);
     if (selectedId === st.card.id) {
       setSelectedId(0);
@@ -346,6 +354,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
 
   return (
     <div>
+      {confirmUI}
       <CardForm
         initial={editing}
         onSaved={() => {

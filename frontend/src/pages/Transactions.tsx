@@ -30,6 +30,7 @@ import {
   today,
   won,
 } from "../lib";
+import { useConfirm } from "../ConfirmModal";
 import EditModal from "../EditModal";
 import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
@@ -355,6 +356,8 @@ export default function Transactions({
   setUnclassifiedOnly: (v: boolean) => void;
 }) {
   const [txs, setTxs] = useState<store.Transaction[]>([]);
+  // 삭제 등 되돌리기 어려운 동작 앞의 확인 모달
+  const [confirm, confirmUI] = useConfirm();
   const [loading, setLoading] = useState(true);
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
   // 정기결제로 등록할 거래 id (모달이 열려 있을 때만 값이 있다)
@@ -429,8 +432,35 @@ export default function Transactions({
     setSort((cur) => (cur === `${col}_desc` ? `${col}_asc` : `${col}_desc`));
   };
 
+  // 단건 삭제: 무엇을 지우는지 보여 주고 확인을 받는다(되돌리기로 복원 가능)
   const remove = async (t: store.Transaction) => {
+    const ok = await confirm({
+      title: "이 거래를 삭제할까요?",
+      danger: true,
+      confirmLabel: "삭제",
+      detail: (
+        <>
+          <span className="cf-d-main">{t.merchant || "(내용 없음)"}</span>
+          <span className={`cf-d-amt ${t.direction}`}>{won(t.amount)}</span>
+          <span className="cf-d-sub">
+            {t.date} · {DIRECTION_LABEL[t.direction] ?? t.direction}
+            {t.categoryName && ` · ${t.categoryName}`}
+            {t.memberName && ` · ${t.memberName}`}
+          </span>
+        </>
+      ),
+      message: t.subscriptionName ? (
+        <>
+          정기결제 <strong>{t.subscriptionName}</strong>의 이 달 결제입니다. 지우면 이 달은 다시 자동 등록되지
+          않습니다. 삭제 후 <strong>↩ 삭제 취소</strong>로 복원할 수 있습니다.
+        </>
+      ) : (
+        <>삭제 후 <strong>↩ 삭제 취소</strong>로 복원할 수 있습니다.</>
+      ),
+    });
+    if (!ok) return;
     await DeleteTransaction(t.id);
+    setMsg(`"${t.merchant || "거래"}" ${won(t.amount)}을(를) 삭제했습니다.`);
     load();
   };
 
@@ -486,7 +516,25 @@ export default function Transactions({
 
   const bulkDelete = async () => {
     if (selected.size === 0) return;
-    if (!window.confirm(`${selected.size}건을 삭제할까요? (되돌리기 가능)`)) return;
+    const picked = txs.filter((r) => selected.has(r.id));
+    const sum = picked.reduce((a, r) => a + r.amount, 0);
+    const ok = await confirm({
+      title: `${selected.size}건을 삭제할까요?`,
+      danger: true,
+      confirmLabel: `${selected.size}건 삭제`,
+      detail: (
+        <>
+          <span className="cf-d-main">선택한 거래 {selected.size}건</span>
+          <span className="cf-d-amt">{won(sum)}</span>
+          <span className="cf-d-sub">
+            {picked.slice(0, 3).map((r) => r.merchant || "(내용 없음)").join(", ")}
+            {picked.length > 3 && ` 외 ${picked.length - 3}건`}
+          </span>
+        </>
+      ),
+      message: <>삭제 후 <strong>↩ 삭제 취소</strong>로 복원할 수 있습니다.</>,
+    });
+    if (!ok) return;
     await BatchDelete([...selected]);
     setMsg(`${selected.size}건을 삭제했습니다.`);
     load();
@@ -495,6 +543,7 @@ export default function Transactions({
   return (
     <div>
       <ManualForm refs={refs} onAdded={load} />
+      {confirmUI}
 
       {/* 날짜 한 줄, 나머지 조건 한 줄로 나눠 어중간한 줄바꿈을 없앤다 */}
       <div className="filter-bar">
@@ -643,8 +692,17 @@ export default function Transactions({
                 {t.merchant || "-"}
                 {t.autoClassified && <span className="badge auto">자동</span>}
                 {t.source === "manual" && <span className="badge manual">수동</span>}
-                {t.source === "subscription" && (
-                  <span className="badge auto" title="정기결제 자동 등록으로 생긴 거래">정기</span>
+                {/* 정기결제의 한 달치로 연결된 거래(원본·직접 입력·자동 등록 모두) */}
+                {(t.subscriptionName || t.source === "subscription") && (
+                  <span
+                    className="badge sub"
+                    title={
+                      (t.subscriptionName ? `정기결제 "${t.subscriptionName}"` : "정기결제") +
+                      (t.source === "subscription" ? " · 자동 등록된 거래" : " · 이 달 결제로 연결됨")
+                    }
+                  >
+                    ↻ 정기{t.source === "subscription" ? " · 자동" : ""}
+                  </span>
                 )}
                 {t.excludePerf && (
                   <span className="badge shortfall" title="카드 실적 계산에서 제외됨">실적제외</span>
@@ -664,11 +722,12 @@ export default function Transactions({
               </td>
               <td className="actions">
                 {/* 지출만 정기결제가 될 수 있다 */}
-                {t.direction === "expense" && (
+                {/* 이미 정기결제에 연결된 거래는 다시 등록할 필요가 없어 버튼을 숨긴다 */}
+                {t.direction === "expense" && !t.subscriptionName && t.source !== "subscription" && (
                   <button
                     className="ghost"
                     onClick={() => setSubTxId(t.id)}
-                    title="다음 달부터 정기결제로 추적"
+                    title="다음 달부터 매달 자동 등록되는 정기결제로 만들기"
                   >
                     ↻
                   </button>
@@ -704,6 +763,7 @@ export default function Transactions({
           onClose={() => setSubTxId(null)}
           onSaved={(s) => {
             setSubTxId(null);
+            load(); // 원본 행에 정기 배지가 바로 붙게
             setMsg(`"${s.name}"을(를) ${s.startYm}부터 정기결제로 추적합니다. 정기결제 탭에서 확인하세요.`);
           }}
         />

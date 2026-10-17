@@ -74,10 +74,15 @@ func TestDraftSubscriptionFromTx(t *testing.T) {
 		}
 	})
 
-	t.Run("같은 가맹점 정기결제가 있으면 중복으로 알림", func(t *testing.T) {
+	t.Run("같은 가맹점: 금액이 같으면 중복, 다르면 별개", func(t *testing.T) {
 		// 대조 가맹점을 짧게 적어 둔 기존 정기결제 — 실제 대조처럼 부분 일치로 잡혀야 한다
 		if _, err := a.st.SaveSubscription(store.Subscription{
-			Name: "휴대폰 요금", Merchant: "LG유플러스", Amount: 50000, Cycle: "monthly", BillingDay: 25, Active: true,
+			Name: "휴대폰 요금", Merchant: "LG유플러스", Amount: 55000, Cycle: "monthly", BillingDay: 25, Active: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.st.SaveSubscription(store.Subscription{
+			Name: "인터넷", Merchant: "LG유플러스", Amount: 38280, Cycle: "monthly", BillingDay: 25, Active: true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +92,10 @@ func TestDraftSubscriptionFromTx(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(r.Duplicates) != 1 || r.Duplicates[0].Name != "휴대폰 요금" {
-			t.Fatalf("부분 일치 중복을 못 잡음: %+v", r.Duplicates)
+			t.Fatalf("금액이 같은 정기결제를 중복으로 못 잡음: %+v", r.Duplicates)
+		}
+		if len(r.Siblings) != 1 || r.Siblings[0].Name != "인터넷" {
+			t.Fatalf("금액이 다른 같은 가맹점 정기결제를 별개로 못 나눔: %+v", r.Siblings)
 		}
 	})
 }

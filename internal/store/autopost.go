@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"regexp"
 	"strings"
 
 	"sobi/internal/holiday"
@@ -95,6 +96,72 @@ UPDATE subscription_posts SET transaction_id=?, matched=? WHERE subscription_id=
 		return false, 0, err
 	}
 	return true, txID, nil
+}
+
+// LinkSubscriptionTx 는 이미 있는 거래를 정기결제의 그 달 결제로 연결한다.
+// 거래내역에서 "정기결제로 등록"할 때 원본 거래를 묶어, 그 행에 정기결제 표시가 붙고
+// 이후 대조에서 다른 정기결제가 그 거래를 가져가지 않게 한다.
+// 그 달이 이미 기록돼 있거나 거래가 다른 정기결제에 묶여 있으면 아무것도 하지 않는다.
+func (s *Store) LinkSubscriptionTx(subID, txID int64) (bool, error) {
+	t, err := s.GetTransaction(txID)
+	if err != nil {
+		return false, err
+	}
+	if len(t.Date) < 7 {
+		return false, nil
+	}
+	res, err := s.exec(`
+INSERT INTO subscription_posts(subscription_id, ym, transaction_id, matched, posted_at)
+SELECT ?, ?, ?, 1, ?
+WHERE NOT EXISTS (SELECT 1 FROM subscription_posts WHERE transaction_id = ?)
+ON CONFLICT (subscription_id, ym) DO NOTHING`,
+		subID, t.Date[:7], txID, nowFunc().Format("2006-01-02 15:04:05"), txID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// originMemo 는 거래에서 만든 정기결제의 메모("2026-10-08 거래에서 등록")에서 날짜를 꺼낸다.
+var originMemo = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}) 거래에서 등록`)
+
+// BackfillOriginLinks 는 원본 거래 연결이 생기기 전에 거래에서 만든 정기결제들을 원본과
+// 이어 준다. 메모의 날짜·대조 가맹점·금액이 모두 같은 거래 하나만 고른다(같은 가맹점
+// 회선이 여럿이어도 금액이 달라 섞이지 않는다). 여러 번 돌려도 결과가 같다.
+func (s *Store) BackfillOriginLinks() (int, error) {
+	subs, err := s.ListSubscriptions()
+	if err != nil {
+		return 0, err
+	}
+	linked := 0
+	for _, sub := range subs {
+		m := originMemo.FindStringSubmatch(sub.Memo)
+		if m == nil {
+			continue
+		}
+		date := m[1]
+		var txID int64
+		err := s.queryRow(`
+SELECT t.id FROM transactions t
+WHERE t.date = ? AND t.direction = 'expense' AND TRIM(t.merchant) = ? AND t.amount = ?
+  AND NOT EXISTS (SELECT 1 FROM subscription_posts sp WHERE sp.transaction_id = t.id)
+ORDER BY t.id LIMIT 1`, date, strings.TrimSpace(sub.MatchTarget()), sub.Amount).Scan(&txID)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return linked, err
+		}
+		ok, err := s.LinkSubscriptionTx(sub.ID, txID)
+		if err != nil {
+			return linked, err
+		}
+		if ok {
+			linked++
+		}
+	}
+	return linked, nil
 }
 
 // ---- 공휴일 정정 ----

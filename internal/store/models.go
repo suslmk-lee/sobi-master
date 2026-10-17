@@ -110,6 +110,8 @@ type Transaction struct {
 	CategoryName      string `json:"categoryName"`
 	PaymentMethodName string `json:"paymentMethodName"`
 	AutoClassified    bool   `json:"autoClassified"`
+	// SubscriptionName: 이 거래가 정기결제의 한 달치로 연결돼 있으면 그 정기결제 이름(아니면 "").
+	SubscriptionName string `json:"subscriptionName"`
 }
 
 // Rule 은 반복 거래 핑거프린트: 가맹점명 + 금액 구간이 일치하면

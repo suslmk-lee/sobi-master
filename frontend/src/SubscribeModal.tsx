@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { FormEvent, useEffect, useState } from "react";
-import { DraftSubscriptionFromTx, SaveSubscription } from "../wailsjs/go/main/App";
+import { DraftSubscriptionFromTx, LinkSubscriptionTx, SaveSubscription } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import { formatAmount, parseAmount, won } from "./lib";
 
@@ -18,6 +18,7 @@ export default function SubscribeModal({
 }) {
   const [draft, setDraft] = useState<store.Subscription | null>(null);
   const [dups, setDups] = useState<store.Subscription[]>([]);
+  const [siblings, setSiblings] = useState<store.Subscription[]>([]);
   const [f, setF] = useState({
     name: "",
     merchant: "",
@@ -37,6 +38,7 @@ export default function SubscribeModal({
         const d = r.draft;
         setDraft(d);
         setDups(r.duplicates ?? []);
+        setSiblings(r.siblings ?? []);
         setF({
           name: d.name,
           merchant: d.merchant,
@@ -80,6 +82,9 @@ export default function SubscribeModal({
           autoPost: f.autoPost,
         })
       );
+      // 원본 거래를 이 정기결제의 그 달 결제로 묶는다 — 거래내역의 그 행에 정기 표시가 붙고,
+      // 같은 가맹점의 다른 정기결제가 이 거래를 가져가지 않게 된다.
+      await LinkSubscriptionTx(saved.id, txId);
       onSaved(saved);
     } catch (e: any) {
       setErr(String(e));
@@ -105,10 +110,10 @@ export default function SubscribeModal({
                 : " 매달 정기결제 탭에서 실제로 빠졌는지·금액이 달라졌는지만 확인합니다."}
             </p>
 
-            {/* 같은 가맹점으로 이미 걸려 있으면 한 거래가 두 정기결제에 잡힌다 */}
+            {/* 같은 가맹점에 금액도 거의 같으면 같은 결제를 두 번 거는 것일 수 있다 */}
             {dups.length > 0 && (
               <div className="alert warn sub-dup">
-                <strong>같은 가맹점으로 등록된 정기결제가 있습니다</strong>
+                <strong>같은 결제가 이미 정기결제로 등록돼 있는 것 같습니다</strong>
                 {dups.map((d) => (
                   <span key={d.id} className="muted small">
                     {d.name} · {won(d.amount)} · 매{d.cycle === "yearly" ? "년" : "월"} {d.billingDay}일
@@ -116,7 +121,22 @@ export default function SubscribeModal({
                   </span>
                 ))}
                 <span className="muted small">
-                  새로 만들면 같은 거래가 양쪽에 모두 대조됩니다. 요금이 바뀐 거라면 기존 항목을 수정하세요.
+                  가맹점과 금액이 같습니다. 요금이 바뀐 거라면 새로 만들지 말고 기존 항목을 수정하세요.
+                </span>
+              </div>
+            )}
+
+            {/* 같은 가맹점이지만 금액이 다르면 다른 회선·상품으로 구분된다 — 안내만 */}
+            {siblings.length > 0 && (
+              <div className="alert info sub-dup">
+                <strong>같은 가맹점의 다른 정기결제 {siblings.length}건</strong>
+                {siblings.map((d) => (
+                  <span key={d.id} className="muted small">
+                    {d.name} · {won(d.amount)}
+                  </span>
+                ))}
+                <span className="muted small">
+                  금액으로 구분해 각자 자기 요금과 짝지으니 함께 등록해도 됩니다(회선이 여럿인 통신비 등).
                 </span>
               </div>
             )}
