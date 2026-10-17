@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
 import { MiniTrend } from "./charts";
@@ -14,6 +15,7 @@ export default function TxDrillModal({
   onPickMonth,
   onEdit,
   onClose,
+  heading,
 }: {
   title: string;
   ym: string; // "YYYY-MM"
@@ -23,6 +25,8 @@ export default function TxDrillModal({
   onPickMonth: (ym: string) => void;
   onEdit: (t: store.Transaction) => void;
   onClose: () => void;
+  // heading 을 주면 "항목 · N월" 대신 이 제목을 쓴다(지출 달력의 "10월 12일 (월)" 등)
+  heading?: string;
 }) {
   const active = months.indexOf(ym);
   const total = values.reduce((s, v) => s + v, 0);
@@ -31,13 +35,19 @@ export default function TxDrillModal({
     active > 0 && prev > 0 ? Math.round(((values[active] - prev) / prev) * 100) : null;
   const sum = txs.reduce((s, t) => s + t.amount, 0);
 
-  return (
+  // 모달은 body 로 띄운다. 페이지 안에 두면 조상의 transform/filter 가 position:fixed 의
+  // 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal drill-modal" onClick={(e) => e.stopPropagation()}>
         <div className="stats-head">
           <h3>
-            {title} · {Number(ym.slice(5))}월
-            <span className="muted small"> ({ym})</span>
+            {heading ?? (
+              <>
+                {title} · {Number(ym.slice(5))}월
+                <span className="muted small"> ({ym})</span>
+              </>
+            )}
           </h3>
           <button className="ghost" onClick={onClose}>✕</button>
         </div>
@@ -109,6 +119,7 @@ export default function TxDrillModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

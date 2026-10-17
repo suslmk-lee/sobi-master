@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { FormEvent, useState } from "react";
 import { ClassifyTransaction } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
@@ -60,7 +61,9 @@ export default function EditModal({
 
   const cats = categoryOptions(refs.categories, f.direction);
 
-  return (
+  // 모달은 body 로 띄운다. 페이지 안에 두면 조상의 transform/filter 가 position:fixed 의
+  // 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
         <h3>거래 수정</h3>
@@ -161,6 +164,7 @@ export default function EditModal({
           <button type="submit">저장</button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -109,6 +109,7 @@ the "reconnect" button recovers without a restart once the config is fixed.
 - `internal/store` — Supabase (Postgres) schema/queries; analytics & statistics (`analytics.go`,
   `stats.go`); budgets (`budget.go`); config/log paths; SQLite migration
 - `internal/classifier` — auto-classification rule learning/matching (±8% amount tolerance)
+- `internal/holiday` — Korean public-holiday calendar and next-business-day calculation (built-in table + user overrides)
 - `frontend/src/pages` — Dashboard / Transactions (incl. manual entry) / Cards / Subscriptions / Cashback / Statistics / Settings
 
 ## Tests
@@ -151,6 +152,19 @@ docker stop sobi-test-pg
   row can be marked **최대치 (headline maximum)** and **확인 필요 (details unverified)** — that way you
   can tell later how much to trust the number. The source URL and any caveats live on the card form.
   The app does not compute earnings from these rows; that is what the cashback settings do.
+- **Subscription**: register subscriptions and fixed costs and check each month whether they were
+  charged and whether the amount changed. The ↻ button on a transaction turns it into a subscription
+  starting next month. With **auto-post** on, the transaction is created on the billing day — moved to
+  the **next business day** when that falls on a weekend or public holiday, just as real card/bank
+  debits are (a billing day past month-end is clamped to the last day). Each month is posted exactly
+  once, even with two PCs sharing the database; if you already entered that month's charge by hand it
+  is linked instead of duplicated. Posting starts from the month auto-post was turned on — earlier
+  months are never backfilled — and deleting an auto-posted transaction keeps it from being recreated.
+  Missed months are caught up at startup and hourly while the app runs.
+- **Holiday**: the calendar used to defer billing days. 2025–2027 ship with lunar holidays (Seollal,
+  Chuseok, Buddha's Birthday), substitute holidays and election days; other years fall back to the fixed
+  solar holidays only. Add ad-hoc holidays — or mark a built-in date as a working day — under
+  **Settings → 공휴일**. Workers' Day (May 1) is not a statutory holiday and is not included.
 - **Budget**: an optional monthly spending limit per category; set a recurring default and
   override specific months in Settings; the dashboard tracks usage and flags overruns
 - **Rule**: learned automatically whenever you confirm a classification; on a match it takes

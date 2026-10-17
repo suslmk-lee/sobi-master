@@ -1,3 +1,13 @@
+/* =====================================================================
+   Aurora Glass — 소비마스터 디자인 시스템
+   ---------------------------------------------------------------------
+   배경: 정적 오로라 메시 + 미세한 결(노이즈). 움직이는 배경은 쓰지 않는다 —
+         유리 카드마다 backdrop-filter 가 걸려 있어 배경이 움직이면 카드 수만큼
+         매 프레임 블러를 다시 계산해 화면이 버벅인다.
+   유리: 방향성 있는 반투명 + 채도 부스트 블러 + 빛 닿는 쪽만 밝은 테두리 +
+         위쪽 반사광. 마우스를 따라 유리 표면에 빛이 비친다(App.tsx 가 좌표 공급).
+   ===================================================================== */
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -5,48 +15,103 @@
 
 :root {
   color-scheme: light;
-  --text: #2a2f45;
-  --muted: rgba(42, 47, 69, 0.55);
-  --line: rgba(255, 255, 255, 0.75);
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-strong: rgba(255, 255, 255, 0.72);
-  --accent: #4f74e3;
-  --income: #16a34a;
-  --expense: #e11d48;
-  --transfer: #9333ea;
+
+  /* 글자 */
+  --text: #1c2140;
+  --muted: rgba(28, 33, 64, 0.56);
+  --faint: rgba(28, 33, 64, 0.36);
+  --placeholder: rgba(28, 33, 64, 0.36);
+
+  /* 포인트 색 */
+  --accent: #5b6cff;
+  --accent-grad: linear-gradient(135deg, #5b6cff 0%, #8b5cf6 55%, #d946ef 120%);
+  --glow: rgba(91, 108, 255, 0.42);
+  --income: #0e9f6e;
+  --expense: #e5345b;
+  --transfer: #8b5cf6;
   --warn: #b45309;
-  --bg-grad: linear-gradient(135deg, #dde7fb 0%, #e9e3fa 45%, #fbe9f1 100%);
-  --field-bg: rgba(255, 255, 255, 0.65);
-  --th-bg: rgba(255, 255, 255, 0.45);
-  --modal-bg: rgba(255, 255, 255, 0.88);
-  --minicard-bg: rgba(255, 255, 255, 0.5);
-  --seg-active: #fff;
-  --track: rgba(90, 100, 150, 0.12);
-  --placeholder: rgba(42, 47, 69, 0.4);
+
+  /* 유리 */
+  --glass: rgba(255, 255, 255, 0.5);
+  --glass-strong: rgba(255, 255, 255, 0.74);
+  --glass-grad: linear-gradient(135deg, rgba(255, 255, 255, 0.74) 0%, rgba(255, 255, 255, 0.36) 100%);
+  --edge-hi: rgba(255, 255, 255, 0.98);
+  --edge-lo: rgba(255, 255, 255, 0.16);
+  --specular: rgba(255, 255, 255, 0.75);
+  --spot: rgba(255, 255, 255, 0.55);
+  --line: rgba(255, 255, 255, 0.66);
+  --hairline: rgba(28, 33, 64, 0.07);
+  --blur: 26px;
+  --shadow: 0 1px 1px rgba(17, 24, 64, 0.04), 0 12px 32px -14px rgba(40, 48, 120, 0.26),
+    0 32px 64px -36px rgba(40, 48, 120, 0.22);
+  --shadow-hover: 0 1px 1px rgba(17, 24, 64, 0.05), 0 18px 40px -14px rgba(40, 48, 120, 0.32),
+    0 40px 80px -36px rgba(91, 108, 255, 0.28);
+
+  /* 표면 */
+  --field-bg: rgba(255, 255, 255, 0.58);
+  --field-border: rgba(255, 255, 255, 0.85);
+  --th-bg: rgba(255, 255, 255, 0.4);
+  --modal-bg: rgba(250, 251, 255, 0.86);
+  --minicard-bg: rgba(255, 255, 255, 0.46);
+  --seg-active: #ffffff;
+  --track: rgba(40, 48, 120, 0.08);
   --option-bg: #ffffff;
+
+  /* 배경 오로라 */
+  --bg-base: #eef1fb;
+  --aurora: radial-gradient(60% 55% at 0% 0%, rgba(147, 197, 253, 0.7), transparent 62%),
+    radial-gradient(48% 50% at 100% 0%, rgba(196, 181, 253, 0.75), transparent 62%),
+    radial-gradient(52% 55% at 100% 100%, rgba(251, 207, 232, 0.75), transparent 62%),
+    radial-gradient(48% 46% at 0% 100%, rgba(167, 243, 208, 0.6), transparent 62%),
+    radial-gradient(34% 30% at 58% 42%, rgba(253, 230, 138, 0.3), transparent 72%);
+
+  --radius: 20px;
+  --radius-sm: 12px;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --text: #e7e9f3;
-  --muted: rgba(231, 233, 243, 0.55);
-  --line: rgba(255, 255, 255, 0.1);
-  --glass: rgba(38, 42, 64, 0.55);
-  --glass-strong: rgba(38, 42, 64, 0.72);
-  --accent: #8aa6ff;
-  --income: #34d077;
-  --expense: #fb6f8e;
-  --transfer: #c084fc;
+
+  --text: #e9ecfb;
+  --muted: rgba(233, 236, 251, 0.6);
+  --faint: rgba(233, 236, 251, 0.38);
+  --placeholder: rgba(233, 236, 251, 0.38);
+
+  --accent: #8e9cff;
+  --accent-grad: linear-gradient(135deg, #6370ff 0%, #9b6bff 55%, #e05bf5 120%);
+  --glow: rgba(120, 132, 255, 0.5);
+  --income: #34d399;
+  --expense: #fb7194;
+  --transfer: #c4a5ff;
   --warn: #fbbf24;
-  --bg-grad: linear-gradient(135deg, #161a2b 0%, #1f1a2e 45%, #271a24 100%);
+
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-strong: rgba(20, 24, 46, 0.8);
+  --glass-grad: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.03) 100%);
+  --edge-hi: rgba(255, 255, 255, 0.32);
+  --edge-lo: rgba(255, 255, 255, 0.04);
+  --specular: rgba(255, 255, 255, 0.14);
+  --spot: rgba(160, 170, 255, 0.16);
+  --line: rgba(255, 255, 255, 0.1);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 0 16px 40px -14px rgba(0, 0, 0, 0.6);
+  --shadow-hover: 0 1px 1px rgba(0, 0, 0, 0.35), 0 22px 50px -14px rgba(0, 0, 0, 0.7),
+    0 30px 70px -30px rgba(120, 132, 255, 0.35);
+
   --field-bg: rgba(255, 255, 255, 0.06);
-  --th-bg: rgba(255, 255, 255, 0.05);
-  --modal-bg: rgba(34, 38, 58, 0.95);
+  --field-border: rgba(255, 255, 255, 0.12);
+  --th-bg: rgba(255, 255, 255, 0.04);
+  --modal-bg: rgba(18, 22, 44, 0.9);
   --minicard-bg: rgba(255, 255, 255, 0.04);
   --seg-active: rgba(255, 255, 255, 0.16);
-  --track: rgba(255, 255, 255, 0.1);
-  --placeholder: rgba(231, 233, 243, 0.45);
-  --option-bg: #262a3c;
+  --track: rgba(255, 255, 255, 0.08);
+  --option-bg: #1b1f38;
+
+  --bg-base: #070a18;
+  --aurora: radial-gradient(58% 50% at 0% 0%, rgba(79, 70, 229, 0.5), transparent 62%),
+    radial-gradient(46% 48% at 100% 4%, rgba(14, 165, 233, 0.32), transparent 62%),
+    radial-gradient(52% 55% at 100% 100%, rgba(217, 70, 239, 0.32), transparent 62%),
+    radial-gradient(46% 42% at 0% 100%, rgba(16, 185, 129, 0.24), transparent 62%);
 }
 
 html,
@@ -55,103 +120,286 @@ body {
 }
 
 body {
-  background: var(--bg-grad) fixed;
+  background: var(--aurora), var(--bg-base);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  /* Pretendard 는 앱에 내장돼 있다(main.tsx). 아래는 혹시 못 불러올 때의 대체 글꼴 */
+  font-family: "Pretendard Variable", "Pretendard", -apple-system, "Apple SD Gothic Neo",
+    "Malgun Gothic", "Segoe UI", sans-serif;
   font-size: 14px;
+  /* 가변 글꼴이라 400 과 500 사이 값을 쓸 수 있다. 윈도우에서 400 은 가늘어 보여 조금 올린다 */
+  font-weight: 430;
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   position: relative;
 }
 
-/* 배경 빛 번짐 (유리 질감이 드러나도록) */
-body::before,
+/* 유리 결: 아주 옅은 노이즈를 깔아 매끈한 그라디언트가 "플라스틱"처럼 보이지 않게 한다 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 떠 있는 빛 덩어리 하나 — 유리 뒤에서 색이 번져 보이게 한다(정적) */
 body::after {
   content: "";
   position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
   z-index: -1;
   pointer-events: none;
+  width: 560px;
+  height: 560px;
+  top: 28%;
+  left: 58%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.22), transparent 65%);
+  filter: blur(40px);
 }
 
-body::before {
-  width: 480px;
-  height: 480px;
-  top: -120px;
-  right: -80px;
-  background: rgba(168, 140, 255, 0.35);
+:root[data-theme="dark"] body::after {
+  background: radial-gradient(circle, rgba(99, 112, 255, 0.22), transparent 65%);
 }
 
-body::after {
-  width: 420px;
-  height: 420px;
-  bottom: -140px;
-  left: -100px;
-  background: rgba(110, 170, 255, 0.35);
+::selection {
+  background: rgba(91, 108, 255, 0.25);
+}
+
+/* 스크롤바: 얇은 유리 막대 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 128, 180, 0.32);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 128, 180, 0.5);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 #app {
-  max-width: 1140px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 0 20px 40px;
+  padding: 0 24px 56px;
 }
 
-header {
+/* ---- 헤더: 스크롤해도 떠 있는 유리 바 ---- */
+
+.app-header {
+  position: sticky;
+  top: 12px;
+  z-index: 50;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 18px 0;
+  gap: 18px;
+  margin: 14px 0 22px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 22px;
+  background: var(--glass-grad);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow);
 }
 
-header h1 {
-  font-size: 20px;
-  background: linear-gradient(90deg, #4f74e3, #9333ea);
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+/* 로고: 빛나는 유리 타일 */
+.brand-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--accent-grad);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 20px -6px var(--glow);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px 2px 50% 2px;
+  border-radius: 10px 10px 18px 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0));
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+/* 로고 글자: 굵고 촘촘하게, 그라디언트 위에 은은한 빛 */
+.brand-text h1 {
+  font-size: 19px;
+  font-weight: 820;
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+  background: linear-gradient(115deg, #5b6cff 0%, #8b5cf6 48%, #d946ef 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 1px 8px rgba(139, 92, 246, 0.28));
 }
 
-nav {
+:root[data-theme="dark"] .brand-text h1 {
+  background: linear-gradient(115deg, #a5b0ff 0%, #c3a6ff 48%, #f0a6ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 1px 10px rgba(160, 140, 255, 0.35));
+}
+
+.brand-text span {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* 탭: 유리 홈에 박힌 알약. 고른 탭은 빛나는 알약이 된다 */
+.app-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--track);
+  box-shadow: inset 0 1px 2px rgba(17, 24, 64, 0.08);
+  overflow-x: auto;
+}
+
+.app-nav button {
+  height: 34px;
+  padding: 0 15px;
+  border-radius: 12px;
+  background: none;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app-nav button:hover:not(.active) {
+  color: var(--text);
+  background: var(--glass);
+}
+
+.app-nav button.active {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 16px -4px var(--glow);
+}
+
+/* 테마 전환: 둥근 유리 단추 */
+.theme-toggle {
+  margin-left: auto;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
   background: var(--glass);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 20px rgba(90, 100, 150, 0.1);
+  box-shadow: inset 0 1px 0 var(--specular);
+  font-size: 16px;
 }
 
-nav button {
-  background: none;
-  border: none;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--muted);
-  cursor: pointer;
-  box-shadow: none;
+.theme-toggle:hover:not(:disabled) {
+  background: var(--glass-strong);
+  filter: none;
 }
 
-nav button.active {
-  background: linear-gradient(135deg, #5b82f0, #9b5cff);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(91, 130, 240, 0.35);
-}
+/* ---- 유리 카드 (시그니처) ---- */
 
 .card {
-  background: var(--glass);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 16px 18px;
+  position: relative;
+  background: var(--glass-grad);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 18px 20px;
   margin-bottom: 16px;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 8px 32px rgba(90, 100, 150, 0.12);
+  backdrop-filter: blur(var(--blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow);
+  transition: box-shadow 0.3s ease;
+}
+
+/* 빛 닿는 쪽만 밝은 테두리: 왼쪽 위가 환하고 가운데로 갈수록 투명해진다.
+   카드가 backdrop-filter 로 스태킹 컨텍스트를 만들므로 z-index:-1 은 카드 배경과
+   내용 사이에 그려진다(내용·클릭을 가리지 않음). */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    145deg,
+    var(--edge-hi) 0%,
+    var(--edge-lo) 38%,
+    var(--edge-lo) 62%,
+    rgba(255, 255, 255, 0.5) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
+/* 마우스를 따라 유리 표면에 비치는 빛. --mx/--my 는 카드 안 좌표(App.tsx 가 넣는다) */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, -200px),
+    var(--spot),
+    transparent 46%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.card:hover {
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow-hover);
+}
+
+.card:hover::after {
+  opacity: 1;
 }
 
 .card h3 {
   font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin-bottom: 12px;
 }
 
@@ -162,28 +410,54 @@ nav button.active {
   margin-bottom: 16px;
 }
 
+/* ---- 요약 수치 카드: 의미 색이 유리 뒤에서 번져 나온다 ---- */
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 .card.stat {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 18px 20px 16px;
+}
+
+.card.stat > .muted:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .card.stat strong {
-  font-size: 20px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.card.stat:has(strong.income) {
+  background: radial-gradient(120% 100% at 100% 0%, rgba(16, 185, 129, 0.2), transparent 55%),
+    var(--glass-grad);
+}
+.card.stat:has(strong.expense) {
+  background: radial-gradient(120% 100% at 100% 0%, rgba(244, 63, 94, 0.18), transparent 55%),
+    var(--glass-grad);
+}
+.card.stat:has(strong.transfer) {
+  background: radial-gradient(120% 100% at 100% 0%, rgba(139, 92, 246, 0.2), transparent 55%),
+    var(--glass-grad);
 }
 
 .delta {
   font-size: 12px;
+  font-weight: 600;
 }
 
 .delta em {
   font-style: normal;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -194,7 +468,7 @@ nav button.active {
 .dash-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 .income { color: var(--income); }
@@ -204,6 +478,32 @@ nav button.active {
 .small { font-size: 12px; }
 .center { text-align: center; }
 .error { color: var(--expense); margin: 6px 0; }
+
+/* 탭을 바꾸면 화면이 부드럽게 나타난다.
+   주의: 여기에 transform 을 쓰거나 fill-mode 를 forwards/both 로 두면 안 된다.
+   transform 애니메이션이 걸린 요소는 (끝난 뒤에도 효과가 유지되는 동안) position:fixed
+   자손의 기준 상자가 되어, 화면 안의 모달이 창이 아니라 긴 페이지 한가운데로 가서
+   "흐려지기만 하고 모달이 안 보이는" 일이 생긴다. 투명도만, 끝나면 흔적 없이(backwards). */
+main > * {
+  animation: page-in 0.3s ease-out backwards;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > *,
+  .modal {
+    animation: none !important;
+  }
+  .card,
+  .card::after {
+    transition: none;
+  }
+}
 
 /* ---- 차트 ---- */
 
@@ -308,7 +608,7 @@ nav button.active {
 }
 
 .bar-fill {
-  background: linear-gradient(90deg, #5b82f0, #9b5cff);
+  background: var(--accent-grad);
   border-radius: 4px;
   height: 100%;
   min-width: 2px;
@@ -327,23 +627,55 @@ nav button.active {
 
 input,
 select,
-button {
+button,
+textarea {
   font-family: inherit;
   font-size: 13px;
+  letter-spacing: inherit;
 }
 
+/* 입력칸: 살짝 파인 유리 홈. 포커스하면 포인트 색 고리가 번진다 */
 input[type="text"],
 input[type="number"],
 input[type="date"],
+input[type="month"],
 select {
   height: 36px;
-  border: 1px solid rgba(120, 130, 170, 0.3);
-  border-radius: 10px;
-  padding: 0 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  padding: 0 11px;
   background: var(--field-bg);
   color: var(--text);
+  box-shadow: inset 0 1px 2px rgba(17, 24, 64, 0.07);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+input[type="text"]:hover,
+input[type="number"]:hover,
+input[type="date"]:hover,
+input[type="month"]:hover,
+select:hover {
+  background: var(--glass-strong);
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.2), inset 0 1px 2px rgba(17, 24, 64, 0.05);
+}
+
+/* select: 기본 화살표 대신 얇은 셰브론(라이트·다크 양쪽에서 보이는 중간 회색) */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238a90b4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
 }
 
 input::placeholder {
@@ -356,15 +688,39 @@ option {
   color: var(--text);
 }
 
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 주 버튼: 빛나는 그라디언트 알약 + 위쪽 반사광 */
 button {
   height: 36px;
-  background: linear-gradient(135deg, #5b82f0, #9b5cff);
+  background: var(--accent-grad);
   color: #fff;
+  font-weight: 600;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 0 16px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(91, 130, 240, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 6px 18px -6px var(--glow);
+  transition: filter 0.15s, box-shadow 0.2s, transform 0.08s, background 0.15s, color 0.15s;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.07) saturate(1.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36), 0 10px 24px -8px var(--glow);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -373,22 +729,50 @@ button:disabled {
 }
 
 button.warn {
-  background: rgba(251, 191, 36, 0.2);
+  background: rgba(251, 191, 36, 0.18);
   color: var(--warn);
-  border: 1px solid rgba(180, 83, 9, 0.3);
+  border: 1px solid rgba(180, 83, 9, 0.28);
   box-shadow: none;
 }
 
+/* 아이콘·보조 동작: 평소엔 글자만, 올리면 옅은 유리 바닥이 깔린다 */
 button.ghost {
   height: auto;
   background: none;
   color: var(--muted);
-  padding: 2px 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--track);
+  color: var(--text);
+  filter: none;
   box-shadow: none;
 }
 
-button.ghost:hover {
+/* 지우기는 올렸을 때만 위험 색 */
+button.ghost[title="삭제"]:hover:not(:disabled) {
   color: var(--expense);
+  background: rgba(229, 52, 91, 0.1);
+}
+
+/* 보조 버튼: 유리판 */
+.ghost-btn {
+  background: var(--glass);
+  color: var(--accent);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--specular);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ghost-btn:hover:not(:disabled) {
+  background: var(--glass-strong);
+  box-shadow: inset 0 1px 0 var(--specular), 0 6px 16px -8px var(--glow);
+  filter: none;
 }
 
 .form-row {
@@ -423,23 +807,29 @@ label.field select {
 
 /* ---- 표 ---- */
 
+/* 유리판 위에 줄이 떠 있는 표. 머리글은 한 단계 더 짙은 유리 */
 .tx-table {
   width: 100%;
-  border-collapse: collapse;
-  background: var(--glass);
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--glass-grad);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 8px 32px rgba(90, 100, 150, 0.12);
+  backdrop-filter: blur(var(--blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow);
 }
 
 .tx-table th,
 .tx-table td {
-  padding: 8px 10px;
+  padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid rgba(90, 100, 150, 0.12);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tx-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .tx-table th {
@@ -447,6 +837,15 @@ label.field select {
   color: var(--muted);
   font-weight: 600;
   font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.tx-table tbody tr {
+  transition: background 0.12s;
+}
+
+.tx-table tbody tr:hover {
+  background: rgba(91, 108, 255, 0.06);
 }
 
 .tx-table td.num,
@@ -458,7 +857,8 @@ label.field select {
 
 .tx-table select {
   height: 28px;
-  padding: 0 6px;
+  padding: 0 24px 0 8px;
+  background-position: right 7px center;
   max-width: 130px;
 }
 
@@ -484,34 +884,63 @@ label.field select {
   font-size: 10px;
 }
 
+/* 카드 안에 든 표는 카드가 이미 유리판이라 겹유리를 걷어 낸다 */
+.card .tx-table,
+.modal .tx-table {
+  background: none;
+  border-color: var(--hairline);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 /* ---- 수정 모달 ---- */
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(50, 55, 90, 0.35);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(14, 18, 44, 0.32);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
 }
 
+/* 두꺼운 서리 유리 판이 살짝 커지며 떠오른다 */
 .modal {
+  position: relative;
   width: 520px;
   max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: var(--modal-bg);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 20px 22px;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  box-shadow: 0 20px 60px rgba(50, 55, 90, 0.3);
+  border-radius: 24px;
+  padding: 22px 24px;
+  backdrop-filter: blur(36px) saturate(180%);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--specular), 0 2px 4px rgba(17, 24, 64, 0.06),
+    0 30px 80px -20px rgba(17, 24, 64, 0.45);
+  animation: modal-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .modal h3 {
-  font-size: 16px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin-bottom: 14px;
 }
 
@@ -570,44 +999,58 @@ label.field select {
 
 .modal-actions button.ghost {
   height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(120, 130, 170, 0.3);
-  border-radius: 10px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  color: var(--text);
 }
 
 .row-unclassified {
   background: rgba(251, 191, 36, 0.14);
 }
 
+/* 배지: 색 유리 알약. 테두리를 같은 색으로 얇게 둘러 배경 위에서도 또렷하다 */
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
-  border-radius: 5px;
-  padding: 1px 6px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 999px;
+  padding: 1px 8px;
   margin-left: 6px;
-  background: rgba(90, 100, 150, 0.12);
+  background: var(--track);
   color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .badge.auto {
-  background: rgba(91, 130, 240, 0.15);
+  background: rgba(91, 108, 255, 0.13);
   color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(91, 108, 255, 0.22);
 }
 
 .badge.manual {
-  background: rgba(22, 163, 74, 0.12);
+  background: rgba(14, 159, 110, 0.12);
   color: var(--income);
+  box-shadow: inset 0 0 0 1px rgba(14, 159, 110, 0.2);
 }
 
 .badge.achieved {
-  background: rgba(22, 163, 74, 0.12);
+  background: rgba(14, 159, 110, 0.13);
   color: var(--income);
+  box-shadow: inset 0 0 0 1px rgba(14, 159, 110, 0.22);
   margin-left: 0;
 }
 
 .badge.shortfall {
-  background: rgba(251, 191, 36, 0.2);
+  background: rgba(251, 191, 36, 0.18);
   color: var(--warn);
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.22);
   margin-left: 0;
 }
 
@@ -642,16 +1085,17 @@ label.field select {
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: var(--glass);
+  gap: 3px;
+  background: var(--glass-grad);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 8px;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 8px 32px rgba(90, 100, 150, 0.12);
+  backdrop-filter: blur(var(--blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow);
   position: sticky;
-  top: 12px;
+  /* 떠 있는 헤더(위 12px + 높이 약 58px) 바로 아래에 멈춘다 */
+  top: 86px;
 }
 
 .settings-nav button {
@@ -660,23 +1104,25 @@ label.field select {
   align-items: flex-start;
   gap: 2px;
   height: auto;
-  padding: 9px 12px;
+  padding: 10px 12px;
   background: none;
   border: none;
-  border-radius: 10px;
+  border-radius: 13px;
   color: var(--text);
   text-align: left;
   box-shadow: none;
 }
 
-.settings-nav button:hover {
-  background: rgba(91, 130, 240, 0.1);
+.settings-nav button:hover:not(.active):not(:disabled) {
+  background: var(--track);
+  filter: none;
+  box-shadow: none;
 }
 
 .settings-nav button.active {
-  background: linear-gradient(135deg, #5b82f0, #9b5cff);
+  background: var(--accent-grad);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(91, 130, 240, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 8px 20px -8px var(--glow);
 }
 
 .sn-label {
@@ -763,7 +1209,7 @@ label.field select {
 .cat-grip:hover,
 .cat-grip:focus-visible {
   color: var(--accent);
-  background: rgba(91, 130, 240, 0.14);
+  background: rgba(91, 108, 255, 0.14);
   outline: none;
 }
 
@@ -827,18 +1273,33 @@ label.field select {
   margin-bottom: 16px;
 }
 
+/* 카드 타일: 카드 고유색(--cc)이 오른쪽 위에서 유리 뒤로 번져 나온다.
+   실물 카드를 서리 유리 너머로 보는 느낌 — 타일마다 색이 달라 한눈에 구분된다. */
 .credit-card {
   cursor: pointer;
   margin-bottom: 0;
+  background: radial-gradient(
+      110% 85% at 100% 0%,
+      color-mix(in srgb, var(--cc, var(--accent)) 22%, transparent),
+      transparent 58%
+    ),
+    var(--glass-grad);
 }
 
 .credit-card:hover {
-  background: var(--glass-strong);
+  background: radial-gradient(
+      120% 95% at 100% 0%,
+      color-mix(in srgb, var(--cc, var(--accent)) 30%, transparent),
+      transparent 62%
+    ),
+    var(--glass-grad);
 }
 
+/* 고른 카드는 자기 색으로 테두리가 빛난다 */
 .credit-card.selected {
-  border-color: rgba(79, 116, 227, 0.5);
-  box-shadow: 0 0 0 2px rgba(79, 116, 227, 0.2), 0 8px 32px rgba(90, 100, 150, 0.12);
+  box-shadow: inset 0 1px 0 var(--specular),
+    0 0 0 2px color-mix(in srgb, var(--cc, var(--accent)) 55%, transparent),
+    0 14px 36px -12px color-mix(in srgb, var(--cc, var(--accent)) 45%, transparent);
 }
 
 .credit-card p {
@@ -1005,29 +1466,38 @@ label.field input {
   flex-wrap: wrap;
 }
 
+/* 세그먼트: 파인 홈 안에서 고른 칸만 유리 조각처럼 솟아오른다 */
 .seg {
   display: inline-flex;
   gap: 2px;
-  background: rgba(90, 100, 150, 0.1);
-  border-radius: 9px;
+  background: var(--track);
+  border-radius: 11px;
   padding: 3px;
+  box-shadow: inset 0 1px 2px rgba(17, 24, 64, 0.08);
 }
 
 .seg button {
   height: 28px;
   background: none;
   border: none;
-  border-radius: 7px;
-  padding: 0 11px;
+  border-radius: 8px;
+  padding: 0 12px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
+  box-shadow: none;
+}
+
+.seg button:hover:not(.active):not(:disabled) {
+  color: var(--text);
+  filter: none;
   box-shadow: none;
 }
 
 .seg button.active {
   background: var(--seg-active);
   color: var(--accent);
-  box-shadow: 0 1px 4px rgba(90, 100, 150, 0.18);
+  box-shadow: 0 1px 2px rgba(17, 24, 64, 0.1), 0 4px 10px -4px rgba(40, 48, 120, 0.25);
 }
 
 .legend.wrap {
@@ -1075,63 +1545,6 @@ label.field input {
   font-variant-numeric: tabular-nums;
 }
 
-.stacked-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.stacked-row {
-  display: grid;
-  grid-template-columns: 110px 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.stacked-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 13px;
-}
-
-.stacked-cell {
-  min-width: 0;
-}
-
-.stacked-track {
-  display: flex;
-  height: 16px;
-  border-radius: 5px;
-  overflow: hidden;
-  background: rgba(90, 100, 150, 0.12);
-}
-
-.stacked-seg {
-  height: 100%;
-  flex-shrink: 0;
-}
-
-.stacked-amount {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-}
-
-/* ---- 헤더 테마 토글 ---- */
-
-.theme-toggle {
-  margin-left: auto;
-  height: 36px;
-  width: 40px;
-  padding: 0;
-  background: var(--glass);
-  border: 1px solid var(--line);
-  box-shadow: none;
-  font-size: 16px;
-}
-
 /* ---- 알림 패널 (F6) ---- */
 
 .alerts {
@@ -1141,27 +1554,47 @@ label.field input {
   margin-bottom: 16px;
 }
 
+/* 알림: 색 유리 띠 + 왼쪽 빛줄기 */
 .alert {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 11px 16px 11px 18px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   flex-wrap: wrap;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: inset 0 1px 0 var(--specular);
+}
+
+.alert::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--alert-c, var(--accent));
+  box-shadow: 0 0 10px var(--alert-c, var(--accent));
 }
 
 .alert.danger {
-  background: rgba(225, 29, 72, 0.1);
-  border-color: rgba(225, 29, 72, 0.3);
+  --alert-c: var(--expense);
+  background: rgba(229, 52, 91, 0.09);
+  border-color: rgba(229, 52, 91, 0.22);
 }
 .alert.warn {
-  background: rgba(251, 191, 36, 0.14);
-  border-color: rgba(180, 83, 9, 0.25);
+  --alert-c: #f59e0b;
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(217, 119, 6, 0.22);
 }
 .alert.info {
-  background: rgba(91, 130, 240, 0.1);
-  border-color: rgba(91, 130, 240, 0.25);
+  --alert-c: var(--accent);
+  background: rgba(91, 108, 255, 0.09);
+  border-color: rgba(91, 108, 255, 0.2);
 }
 
 /* ---- 예산 (F1) ---- */
@@ -1300,13 +1733,6 @@ label.field input {
   width: 92px;
 }
 
-.ghost-btn {
-  background: var(--glass);
-  color: var(--accent);
-  border: 1px solid var(--line);
-  box-shadow: none;
-}
-
 .bulk-bar {
   display: flex;
   align-items: center;
@@ -1315,8 +1741,8 @@ label.field input {
   padding: 10px 14px;
   margin-bottom: 12px;
   border-radius: 12px;
-  background: rgba(91, 130, 240, 0.1);
-  border: 1px solid rgba(91, 130, 240, 0.25);
+  background: rgba(91, 108, 255, 0.1);
+  border: 1px solid rgba(91, 108, 255, 0.25);
 }
 
 .toast-line {
@@ -1331,11 +1757,11 @@ label.field input {
 }
 
 .row-selected {
-  background: rgba(91, 130, 240, 0.12);
+  background: rgba(91, 108, 255, 0.12);
 }
 
 .row-editing {
-  background: rgba(91, 130, 240, 0.14);
+  background: rgba(91, 108, 255, 0.14);
 }
 
 .member-total {
@@ -1389,47 +1815,6 @@ label.field input {
 }
 
 /* ---- 카테고리 × 월 히트맵 ---- */
-
-.heatmap-wrap {
-  overflow-x: auto;
-}
-
-.heatmap {
-  border-collapse: collapse;
-  font-size: 12px;
-  min-width: 100%;
-}
-
-.heatmap th,
-.heatmap td {
-  padding: 5px 8px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.heatmap thead th {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.heatmap .hm-name {
-  text-align: left;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text);
-}
-
-.heatmap td {
-  border-radius: 4px;
-  color: var(--text);
-}
-
-.heatmap .hm-total {
-  font-weight: 700;
-  color: var(--muted);
-}
 
 /* ---- 정기결제 ---- */
 
@@ -1552,7 +1937,7 @@ label.field input {
   line-height: 1;
   padding: 3px 6px;
   border-radius: 999px;
-  background: rgba(91, 130, 240, 0.18);
+  background: rgba(91, 108, 255, 0.18);
   color: var(--accent);
 }
 
@@ -1614,7 +1999,7 @@ label.field input {
 }
 
 .mp-m-btn:hover {
-  background: rgba(91, 130, 240, 0.18);
+  background: rgba(91, 108, 255, 0.18);
 }
 
 /* 이번 달은 테두리로, 선택한 달은 채움으로 구분한다 */
@@ -1624,7 +2009,7 @@ label.field input {
 }
 
 .mp-m-btn.sel {
-  background: linear-gradient(135deg, #5b82f0, #9b5cff);
+  background: var(--accent-grad);
   border-color: transparent;
   color: #fff;
   font-weight: 700;
@@ -1713,13 +2098,13 @@ label.field input {
 }
 
 .ac-list li:hover {
-  background: rgba(91, 130, 240, 0.16);
+  background: rgba(91, 108, 255, 0.16);
 }
 
 /* 키보드(↑/↓)로 짚고 있는 항목. 마우스 hover 보다 뚜렷하게 보여 준다. */
 .ac-list li.active {
-  background: rgba(91, 130, 240, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(91, 130, 240, 0.55);
+  background: rgba(91, 108, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(91, 108, 255, 0.55);
 }
 
 .ac-merchant {
@@ -1730,7 +2115,7 @@ label.field input {
 
 /* 기한이 남은 건 목록은 놓치면 안 되므로 눈에 띄게 */
 .cb-pending {
-  border-color: rgba(91, 130, 240, 0.35);
+  border-color: rgba(91, 108, 255, 0.35);
 }
 
 .cb-list {
@@ -1897,7 +2282,7 @@ label.field input {
 }
 
 .badge.benefit {
-  background: rgba(91, 130, 240, 0.13);
+  background: rgba(91, 108, 255, 0.13);
   color: var(--accent);
 }
 
@@ -1909,26 +2294,8 @@ label.field input {
 /* ---- 카테고리 월별 상세 (월 × 항목) ---- */
 /* 가맹점 이름이 길고 개월 수가 많아 가로로 넓어진다. 항목 열은 붙박이로 둔다. */
 
-.cat-monthly .heatmap .hm-name {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  max-width: 200px;
-  background: var(--glass-strong);
-}
-
 .cat-monthly > .ghost-btn {
   margin-top: 10px;
-}
-
-/* 히트맵 칸 클릭 → 그 달·그 항목의 거래 내역 */
-.heatmap td.hm-click {
-  cursor: pointer;
-}
-
-.heatmap td.hm-click:hover {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
 .drill-modal {
@@ -1973,7 +2340,7 @@ label.field input {
 
 /* .chart text 규칙이 회색으로 덮어쓰므로 강조 글자는 따로 지정한다 */
 .chart.mini-trend text.mt-on {
-  fill: #5b82f0;
+  fill: #5b6cff;
 }
 
 .mini-trend .mt-pick {
@@ -1982,5 +2349,1111 @@ label.field input {
 
 .mini-trend .mt-pick:hover circle {
   r: 5;
-  fill: #5b82f0;
+  fill: #5b6cff;
+}
+
+/* ---- 카테고리별 전월 대비 ---- */
+/* 가운데 0선 기준으로 늘어난 쪽은 오른쪽, 줄어든 쪽은 왼쪽으로 뻗는 막대. */
+
+.delta-bars {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.delta-bars li {
+  display: grid;
+  grid-template-columns: minmax(80px, 1.1fr) minmax(120px, 2fr) auto auto minmax(96px, auto);
+  align-items: center;
+  gap: 10px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.delta-bars li.pickable {
+  cursor: pointer;
+}
+
+.delta-bars li:hover {
+  background: var(--track);
+}
+
+.db-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-track {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--track);
+}
+
+.db-zero {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+
+.db-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+}
+
+.db-fill.up {
+  background: var(--expense);
+}
+
+.db-fill.down {
+  background: var(--income);
+}
+
+.db-delta,
+.db-pct,
+.db-amt {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.db-delta.bad {
+  color: var(--expense);
+}
+
+.db-delta.good {
+  color: var(--income);
+}
+
+.db-pct {
+  min-width: 52px;
+}
+
+/* 좁은 창에서는 막대를 접고 숫자만 남긴다 */
+@media (max-width: 820px) {
+  .delta-bars li {
+    grid-template-columns: minmax(70px, 1fr) auto auto;
+  }
+  .db-track,
+  .db-amt {
+    display: none;
+  }
+}
+
+/* 정기결제 등록 모달의 중복 경고 — 여러 줄을 세로로 쌓는다 */
+.alert.sub-dup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 12px;
+}
+
+/* ---- 정기결제 자동 등록 ---- */
+
+.auto-post-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 6px;
+  line-height: 1.45;
+}
+
+.auto-post-check input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.post-msg {
+  margin: 4px 0 10px;
+}
+
+/* 주말·공휴일로 밀린 까닭 */
+.shift-reason {
+  color: var(--warn);
+}
+
+/* ---- 공휴일 설정 ---- */
+
+.holiday-list li {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.holiday-list .hl-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 업무일로 정정한 날은 흐리게 + 취소선 */
+.holiday-list li.off .hl-date,
+.holiday-list li.off .hl-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.holiday-list li.off .badge {
+  text-decoration: none;
+}
+
+/* ---- 겹친 유리 ----
+   카드 안에 든 카드(요일별 평균, 카테고리 상세의 "무엇에/누가" 등)는 바깥 판에서
+   떠오르지 않고 살짝 파인 안쪽 판처럼 보이게 그림자를 걷어 낸다. */
+.card .card {
+  background: var(--minicard-bg);
+  box-shadow: inset 0 1px 0 var(--specular), inset 0 0 0 1px var(--hairline);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.card .card::before {
+  display: none;
+}
+
+.card .card:hover {
+  box-shadow: inset 0 1px 0 var(--specular), inset 0 0 0 1px var(--hairline);
+}
+
+/* ===================== 차트 공통: 십자선 + 유리 툴팁 ===================== */
+
+.lc-plot,
+.cmp-plot {
+  position: relative;
+}
+
+.lc-plot .chart,
+.cmp-plot .chart {
+  display: block;
+  cursor: crosshair;
+}
+
+.chart .lc-cross {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+/* 십자선이 닿은 점: 바탕색 고리로 선 위에서 떠 보이게 */
+.chart .lc-hot {
+  stroke: var(--modal-bg);
+  stroke-width: 2.5;
+}
+
+/* 툴팁: 값이 앞(굵게), 이름이 뒤(흐리게). 오른쪽 끝에선 왼쪽으로 뒤집힌다 */
+.chart-tip {
+  position: absolute;
+  top: 8px;
+  z-index: 5;
+  transform: translateX(14px);
+  min-width: 150px;
+  padding: 9px 12px 8px;
+  border-radius: 12px;
+  background: var(--modal-bg);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--specular), 0 12px 30px -10px rgba(17, 24, 64, 0.4);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  pointer-events: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.chart-tip.flip {
+  transform: translateX(calc(-100% - 14px));
+}
+
+.chart-tip .ct-head {
+  font-weight: 700;
+  margin-bottom: 5px;
+  color: var(--text);
+}
+
+.chart-tip .ct-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.75;
+}
+
+.chart-tip .ct-row i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.chart-tip .ct-row strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.chart-tip .ct-row span {
+  color: var(--muted);
+}
+
+.chart-tip .ct-row.sub strong {
+  font-weight: 500;
+}
+
+.chart-tip .ct-row.diff {
+  margin-top: 3px;
+  padding-top: 4px;
+  border-top: 1px solid var(--hairline);
+}
+
+.chart-tip .ct-row.diff.up strong {
+  color: var(--expense);
+}
+
+.chart-tip .ct-row.diff.down strong {
+  color: var(--income);
+}
+
+/* ===================== 전월 동일시점 비교 (대표 차트) ===================== */
+
+.cmp-card .stats-head {
+  align-items: baseline;
+}
+
+/* 숫자 네 개로 답부터 준다. 첫 칸(이번 달)이 가장 크다 */
+.cmp-figures {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+.cmp-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--minicard-bg);
+  box-shadow: inset 0 1px 0 var(--specular), inset 0 0 0 1px var(--hairline);
+}
+
+.cmp-fig strong {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 이번 달 칸: 포인트 색이 유리 뒤에서 번진다 */
+.cmp-fig.main {
+  background: radial-gradient(120% 120% at 0% 0%, rgba(91, 108, 255, 0.2), transparent 60%),
+    var(--minicard-bg);
+}
+
+.cmp-fig strong.cmp-hero-num {
+  font-size: 28px;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.cmp-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cmp-hero .dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.cmp-hero .dot.cur {
+  background: var(--accent-grad);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.cmp-hero .dot.prev {
+  background: #94a3b8;
+}
+
+/* 차트 안 요소 (.chart text 의 회색 규칙보다 구체적으로 써야 색이 산다) */
+.cmp-chart .cmp-weekend {
+  fill: var(--accent);
+  opacity: 0.045;
+}
+
+.cmp-chart .cmp-grid {
+  stroke: rgba(140, 145, 170, 0.18);
+  stroke-dasharray: 2 5;
+}
+
+.cmp-chart .cmp-axis {
+  stroke: rgba(140, 145, 170, 0.35);
+}
+
+.cmp-chart .cmp-cur-line {
+  filter: drop-shadow(0 6px 10px rgba(91, 108, 255, 0.4));
+}
+
+.cmp-chart .cmp-proj line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+.cmp-chart .cmp-proj circle {
+  fill: var(--modal-bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.85;
+}
+
+.chart.cmp-chart .cmp-proj text {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+.chart.cmp-chart text.cmp-prev-label {
+  font-weight: 600;
+}
+
+.cmp-chart .cmp-today {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  opacity: 0.4;
+}
+
+.chart.cmp-chart text.cmp-today-label {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+/* 오늘 지점의 두 선 간격: 더 썼으면 빨강, 덜 썼으면 초록 */
+.cmp-chart .cmp-gap {
+  stroke-width: 4;
+  stroke-linecap: round;
+  opacity: 0.75;
+}
+.cmp-chart .cmp-gap.up {
+  stroke: var(--expense);
+}
+.cmp-chart .cmp-gap.down {
+  stroke: var(--income);
+}
+
+.cmp-chart .cmp-dot-prev {
+  fill: var(--modal-bg);
+  stroke: #94a3b8;
+  stroke-width: 2.5;
+}
+
+.cmp-chart .cmp-dot-cur {
+  fill: var(--accent);
+  stroke: var(--modal-bg);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px var(--glow));
+}
+
+/* 차액 칩: 오늘 지점 옆에 떠 있는 색 유리 */
+.cmp-chip {
+  position: absolute;
+  z-index: 4;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 var(--specular), 0 8px 20px -10px rgba(17, 24, 64, 0.4);
+}
+
+.cmp-chip span {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.cmp-chip.up {
+  color: var(--expense);
+  background: rgba(229, 52, 91, 0.12);
+  border: 1px solid rgba(229, 52, 91, 0.28);
+}
+
+.cmp-chip.down {
+  color: var(--income);
+  background: rgba(14, 159, 110, 0.12);
+  border: 1px solid rgba(14, 159, 110, 0.28);
+}
+
+.cmp-legend2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cmp-legend2 span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmp-legend2 .dash {
+  width: 18px;
+  height: 0;
+  border-top: 2px dashed var(--accent);
+  opacity: 0.7;
+}
+
+.cmp-legend2 .wk {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.12;
+}
+
+@media (max-width: 900px) {
+  .cmp-figures {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* 대표 차트는 위쪽에 "오늘" 라벨이 있어 툴팁을 한 줄 아래에서 띄운다 */
+.cmp-plot .chart-tip {
+  top: 34px;
+}
+
+/* ===================== 지출 달력 ===================== */
+
+.spend-cal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sc-week,
+.sc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.sc-week span {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+
+.sc-week .sun {
+  color: var(--expense);
+}
+.sc-week .sat {
+  color: var(--accent);
+}
+
+/* 하루 칸: 쓴 금액만큼 포인트 색 유리가 짙어진다 */
+.sc-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  height: 54px;
+  padding: 5px 7px;
+  border-radius: 11px;
+  background: var(--minicard-bg);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  overflow: hidden;
+}
+
+.sc-day:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.sc-day.has {
+  box-shadow: inset 0 1px 0 var(--specular), inset 0 0 0 1px rgba(91, 108, 255, 0.18);
+}
+
+.sc-day.has:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 6px 16px -8px var(--glow);
+  transform: translateY(-1px);
+}
+
+.sc-num {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sc-day.red .sc-num {
+  color: var(--expense);
+}
+.sc-day.blue .sc-num {
+  color: var(--accent);
+}
+
+.sc-hol {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9.5px;
+  color: var(--expense);
+  opacity: 0.85;
+}
+
+.sc-amt {
+  align-self: flex-end;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* 가장 많이 쓴 날: 빛나는 테두리 */
+.sc-day.top {
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 14px -2px var(--glow);
+}
+
+/* 오늘 */
+.sc-day.today::after {
+  content: "오늘";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.sc-day.today.has::after {
+  display: none;
+}
+
+.sc-day.today {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 아직 오지 않은 날 */
+.sc-day.future {
+  opacity: 0.38;
+  background: transparent;
+}
+
+.sc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sc-foot strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===================== 요일별 평균 지출 ===================== */
+/* 옆 달력 카드와 높이를 맞춘다: 그리드가 두 카드를 같은 높이로 늘리고,
+   막대 영역(.wd-cols)이 남는 높이를 차지한다. */
+
+.wd-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.wd-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.wd-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.wd-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--minicard-bg);
+  box-shadow: inset 0 1px 0 var(--specular), inset 0 0 0 1px var(--hairline);
+}
+
+.wd-chip span {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.wd-chip strong {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wd-chip em {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.wd-chip em.up {
+  color: var(--expense);
+}
+.wd-chip em.down {
+  color: var(--income);
+}
+
+/* 세로 막대 7개 — 달력의 일~토 칸과 같은 방향 */
+.wd-cols {
+  flex: 1;
+  min-height: 150px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.wd-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  cursor: default;
+}
+
+.wd-val {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.wd-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  max-width: 38px;
+  border-radius: 10px;
+  background: var(--track);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.wd-bar {
+  width: 100%;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.85), rgba(91, 108, 255, 0.65));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: filter 0.15s;
+}
+
+.wd-col:hover .wd-bar {
+  filter: brightness(1.12);
+}
+
+/* 가장 많이 쓰는 요일: 진한 그라디언트 + 빛 */
+.wd-col.top .wd-bar {
+  background: var(--accent-grad);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 16px -2px var(--glow);
+}
+
+.wd-col.top .wd-val {
+  color: var(--accent);
+}
+
+.wd-name {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.wd-name.sun {
+  color: var(--expense);
+}
+.wd-name.sat {
+  color: var(--accent);
+}
+
+.wd-cnt {
+  margin-top: -3px;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wd-insight {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: rgba(91, 108, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(91, 108, 255, 0.16);
+}
+
+.wd-insight strong {
+  color: var(--text);
+}
+
+/* ===================== 항목 × 월 히트맵 ===================== */
+
+.heatmap-wrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px 2px;
+}
+
+/* 칸 사이를 띄워 타일이 떠 보이게 한다 */
+.heatmap {
+  border-collapse: separate;
+  border-spacing: 5px 4px;
+  min-width: 100%;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap th,
+.heatmap td {
+  padding: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* 머리글: 월 이름. 가장 최근 달은 포인트 알약 */
+.heatmap thead th {
+  padding-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.heatmap thead th span {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.heatmap thead th.hm-now span {
+  color: var(--accent);
+  background: rgba(91, 108, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(91, 108, 255, 0.22);
+}
+
+.heatmap .hm-corner,
+.heatmap .hm-sum-h {
+  text-align: left;
+  padding-left: 6px;
+}
+
+/* 이름 열: 순위 번호 + 이름. 가로 스크롤 때 붙박이로 남는 서리 유리 */
+.heatmap .hm-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 130px;
+  max-width: 210px;
+  padding: 0 10px 0 4px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text);
+  border-radius: 10px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.heatmap .hm-name > span {
+  vertical-align: middle;
+}
+
+.heatmap .hm-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--track);
+}
+
+/* 상위 3개는 순위 칩에 포인트 색 */
+.heatmap tbody tr:nth-child(-n + 3) .hm-rank {
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow: 0 4px 10px -4px var(--glow);
+}
+
+.heatmap .hm-label {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 타일 */
+.hm-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 9px;
+  font-weight: 650;
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 0 0 1px rgba(91, 108, 255, 0.12);
+  transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
+}
+
+/* 빈 칸: 아주 옅은 타일로 격자만 보이게 */
+.hm-cell.empty {
+  background: var(--track);
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+/* 진한 타일은 흰 글자(대비 확보) */
+.hm-cell.strong {
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(17, 24, 64, 0.25);
+}
+
+/* 가장 큰 칸: 빛나는 테두리 */
+.hm-cell.peak {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 1.5px rgba(139, 92, 246, 0.7),
+    0 6px 18px -6px var(--glow);
+}
+
+.hm-cell.click {
+  cursor: pointer;
+}
+
+.hm-cell.click:hover {
+  transform: translateY(-1px) scale(1.04);
+  filter: brightness(1.1);
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 8px 18px -8px var(--glow);
+}
+
+/* 마우스를 올린 줄은 이름이 포인트 색, 타일이 살짝 밝아진다 */
+.heatmap tbody tr:hover .hm-label {
+  color: var(--accent);
+}
+
+.heatmap tbody tr:hover .hm-cell:not(.empty) {
+  filter: brightness(1.06);
+}
+
+/* 합계 열: 비중 막대 + 금액 */
+.heatmap .hm-sum {
+  min-width: 130px;
+  padding-left: 8px;
+  text-align: left;
+}
+
+.hm-sum-bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 64px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.hm-sum-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-grad);
+}
+
+.hm-sum strong {
+  vertical-align: middle;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* ===================== 구성 적층 막대 ===================== */
+
+.sb {
+  position: relative;
+}
+
+/* 범례: 색 점 + 이름 + 합계. 올리면 그 항목만 남고 나머지는 흐려진다 */
+.sb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sb-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--minicard-bg);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  cursor: default;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.sb-key i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.sb-key em {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-key.on {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.sb-key.dim {
+  opacity: 0.45;
+}
+
+.sb-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 116px 1fr 104px;
+  align-items: center;
+  gap: 12px;
+}
+
+.sb-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-label i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sb-cell {
+  min-width: 0;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--track);
+  box-shadow: inset 0 1px 2px rgba(17, 24, 64, 0.08);
+}
+
+/* 막대: 조각 사이 2px 틈, 양끝 둥글게 */
+.sb-track {
+  display: flex;
+  gap: 2px;
+  height: 100%;
+  min-width: 6px;
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.sb-seg {
+  flex-basis: 0;
+  min-width: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: opacity 0.15s, filter 0.15s;
+}
+
+.sb-seg span {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-seg.dim {
+  opacity: 0.28;
+}
+
+.sb-seg.on {
+  filter: brightness(1.08) saturate(1.1);
+}
+
+.sb-amt {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 툴팁은 마우스를 따라다닌다(공통 .chart-tip 위에 위치만 바꿈) */
+.chart-tip.sb-tip {
+  top: auto;
 }

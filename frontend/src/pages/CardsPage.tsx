@@ -368,6 +368,8 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
             <div
               key={st.card.id}
               className={`card credit-card ${selectedId === st.card.id ? "selected" : ""}`}
+              // 카드 고유색을 유리 뒤에서 번지게 한다(실물 카드 색이 비치는 느낌)
+              style={{ "--cc": color } as React.CSSProperties}
               onClick={() => select(st)}
             >
               <div className="cc-head">

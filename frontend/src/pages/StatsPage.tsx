@@ -15,8 +15,8 @@ import {
   GetMemberStats,
   GetMemberTrend,
   GetRecurringStatus,
-  GetWeekdayAverages,
   GetYearSummary,
+  ListTransactions,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
 import { categoryOptions, Refs, won } from "../lib";
@@ -24,6 +24,9 @@ import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
 import EditModal from "../EditModal";
 import TxDrillModal from "../TxDrillModal";
+import CompareChart from "../CompareChart";
+import SpendCalendar from "../SpendCalendar";
+import WeekdayPanel from "../WeekdayPanel";
 import {
   Heatmap,
   LineChart,
@@ -55,7 +58,6 @@ const DIM_LABEL: { key: Dim; label: string }[] = [
   { key: "category", label: "카테고리" },
 ];
 
-const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
 // "2026-03" → "3월"
 const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
@@ -113,7 +115,6 @@ export default function StatsPage({
 
   const [dimData, setDimData] = useState<Record<string, store.DailyByDimension>>({});
   const [compare, setCompare] = useState<store.CumCompare | null>(null);
-  const [weekday, setWeekday] = useState<store.WeekdayAvg[]>([]);
   const [catTrend, setCatTrend] = useState<store.CategoryTrend | null>(null);
   const [cardCat, setCardCat] = useState<store.CardCategory[]>([]);
   const [paces, setPaces] = useState<store.CardPace[]>([]);
@@ -140,9 +141,13 @@ export default function StatsPage({
   const [catAll, setCatAll] = useState(false);
   // 표의 칸을 누르면 그 달·그 항목의 거래를 모달로 열어 고칠 수 있게 한다.
   // kind 로 어느 표에서 열렸는지 구분한다 (item = 월별 상세, matrix = 카테고리 히트맵).
-  const [drill, setDrill] = useState<{ kind: "item" | "matrix"; key: string; ym: string } | null>(
-    null
-  );
+  // day = 지출 달력에서 고른 하루(key 는 "YYYY-MM-DD", label 은 "10월 12일 (월)")
+  const [drill, setDrill] = useState<{
+    kind: "item" | "matrix" | "day";
+    key: string;
+    ym: string;
+    label?: string;
+  } | null>(null);
   const [drillTx, setDrillTx] = useState<store.Transaction[]>([]);
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
   const [bump, setBump] = useState(0); // 수정 후 표·상세를 다시 읽기 위한 카운터
@@ -154,13 +159,12 @@ export default function StatsPage({
     setLoading(true);
     try {
       const [y, m] = month.split("-").map(Number);
-      const [pmD, memD, catD, cmp, wd, ct, cc, pc, rec, yr, mcat, mtr, mst, cmem, mtx] =
+      const [pmD, memD, catD, cmp, ct, cc, pc, rec, yr, mcat, mtr, mst, cmem, mtx] =
         await Promise.all([
           GetDailyByDimension(y, m, "paymentMethod"),
           GetDailyByDimension(y, m, "member"),
           GetDailyByDimension(y, m, catLevel === "sub" ? "categorySub" : "category"),
           GetCumulativeCompare(y, m),
-          GetWeekdayAverages(y, m),
           GetCategoryTrend(y, m, 6, catLevel),
           GetCardCategoryBreakdown(y, m),
           GetCardPaces(),
@@ -174,7 +178,6 @@ export default function StatsPage({
         ]);
       setDimData({ paymentMethod: pmD, member: memD, category: catD });
       setCompare(cmp);
-      setWeekday(wd);
       setCatTrend(ct);
       setCardCat(cc);
       setPaces(pc);
@@ -232,7 +235,11 @@ export default function StatsPage({
     if (!drill) return;
     try {
       setDrillTx(
-        drill.kind === "matrix"
+        drill.kind === "day"
+          ? await ListTransactions(
+              new store.TxFilter({ from: drill.key, to: drill.key, direction: "expense", sort: "amount_desc" })
+            )
+          : drill.kind === "matrix"
           ? await GetMatrixCellTx(drill.ym, drill.key, catLevel)
           : catId === 0
           ? []
@@ -263,20 +270,7 @@ export default function StatsPage({
     color: dim === "paymentMethod" ? s.color || autoColor(s.name) : undefined,
     values: s.values,
   }));
-  const dayLabels = Array.from({ length: days }, (_, i) => String(i + 1));
-
-  // 전월 동일시점 비교
-  const cmpDay = compare?.compareDay ?? 0;
-  const curAt = compare ? compare.current[cmpDay - 1] ?? 0 : 0;
-  const prevAt = compare ? compare.previous[cmpDay - 1] ?? 0 : 0;
-  const cmpDelta = prevAt ? Math.round(((curAt - prevAt) / prevAt) * 100) : 0;
-
-  // 요일별 평균 → Bars 행
-  const weekdayRows = weekday.map((w) => ({
-    name: WD[w.weekday] + "요일",
-    kind: "expense",
-    amount: w.avg,
-  }));
+  const dayLabels = Array.from({ length: days }, (_, i) => `${i + 1}일`);
 
   // 카테고리 추이
   const catSeries: LineSeries[] = (catTrend?.series ?? []).map((s) => ({
@@ -294,7 +288,7 @@ export default function StatsPage({
 
   // 카테고리 상세: 월별 추이 단일 시리즈
   const detailTrend: LineSeries[] = detail
-    ? [{ name: detail.category, color: "#5b82f0", values: detail.trend }]
+    ? [{ name: detail.category, color: "#5b6cff", values: detail.trend }]
     : [];
   const detailLabels = (detail?.months ?? []).map(monthLabel);
   // 월 × 항목 표에 실제로 그릴 줄 (총액순으로 이미 정렬돼 온다)
@@ -325,6 +319,15 @@ export default function StatsPage({
         />
       </div>
 
+      {/* 대표 차트: 이번 달 지금까지를 지난달 이맘때와 견준다 */}
+      <div className="card cmp-card">
+        <div className="stats-head">
+          <h3>전월 동일시점 누적 비교</h3>
+          <span className="muted small">이번 달 지금까지 쓴 돈을 지난달 같은 날까지와 견줍니다</span>
+        </div>
+        {loading || !compare ? <Sk h={420} r={14} /> : <CompareChart data={compare} />}
+      </div>
+
       <div className="card">
         <div className="stats-head">
           <h3>일별 · 누적 지출 추이</h3>
@@ -341,54 +344,41 @@ export default function StatsPage({
           </div>
         </div>
         {loading ? (
-          <Sk h={220} r={12} />
+          <Sk h={240} r={12} />
         ) : (
           <LineChart
             series={dimSeries}
             xLabels={dayLabels}
             cumulative={mode === "cumulative"}
+            height={240}
           />
         )}
       </div>
 
       <div className="dash-grid">
-        <div className="card">
-          <h3>전월 동일시점 누적 비교</h3>
-          {loading || !compare ? (
-            <Sk h={200} r={12} />
-          ) : (
-            <>
-              <LineChart
-                series={[
-                  { name: `${monthLabel(compare.curMonth)} (이번 달)`, color: "#5b82f0", values: compare.current },
-                  { name: `${monthLabel(compare.prevMonth)} (전월)`, color: "#94a3b8", values: compare.previous },
-                ]}
-                xLabels={Array.from({ length: compare.days }, (_, i) => String(i + 1))}
-                height={200}
-                marker={{ x: cmpDay, label: `${cmpDay}일` }}
-                showLegend={false}
-              />
-              <div className="cmp-legend">
-                <span>
-                  <i style={{ background: "#5b82f0" }} /> 이번 달 {cmpDay}일까지{" "}
-                  <strong>{won(curAt)}</strong>
-                </span>
-                <span>
-                  <i style={{ background: "#94a3b8" }} /> 전월 같은 기간 {won(prevAt)}
-                </span>
-                {prevAt > 0 && (
-                  <span className={`delta ${cmpDelta > 0 ? "bad" : "good"}`}>
-                    {cmpDelta > 0 ? "▲" : "▼"} {Math.abs(cmpDelta)}% <em>전월 대비</em>
-                  </span>
-                )}
-              </div>
-            </>
-          )}
+        {/* 옆 달력과 높이를 맞춘다(카드가 늘어나고 막대 영역이 남는 높이를 채움) */}
+        <div className="card wd-card">
+          <div className="stats-head">
+            <h3>요일별 평균 지출</h3>
+            <span className="muted small">지나간 날 기준 하루 평균</span>
+          </div>
+          {loading || !compare ? <Sk h={280} r={12} /> : <WeekdayPanel data={compare} />}
         </div>
 
+        {/* 요일별 평균을 날짜 단위로 펼친 달력. 날짜를 누르면 그날 내역이 열린다 */}
         <div className="card">
-          <h3>요일별 평균 지출</h3>
-          {loading ? <Sk h={200} r={12} /> : <Bars title="" rows={weekdayRows} />}
+          <div className="stats-head">
+            <h3>지출 달력</h3>
+            <span className="muted small">날짜를 누르면 그날 쓴 내역</span>
+          </div>
+          {loading || !compare ? (
+            <Sk h={280} r={12} />
+          ) : (
+            <SpendCalendar
+              data={compare}
+              onPickDay={(date, label) => setDrill({ kind: "day", key: date, ym: date.slice(0, 7), label })}
+            />
+          )}
         </div>
       </div>
 
@@ -689,12 +679,13 @@ export default function StatsPage({
       </div>
 
       {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
-      {drill && drillView && (
+      {drill && (drillView || drill.kind === "day") && (
         <TxDrillModal
           title={drill.key}
           ym={drill.ym}
-          months={drillView.months}
-          values={drillView.values}
+          heading={drill.kind === "day" ? `${drill.label} 지출` : undefined}
+          months={drillView?.months ?? []}
+          values={drillView?.values ?? []}
           txs={drillTx}
           onPickMonth={(ym) => setDrill({ ...drill, ym })}
           onEdit={setEditTx}

@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   DeleteSubscription,
   GetSubscriptionMonth,
+  PostDueSubscriptions,
   SaveSubscription,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
@@ -27,10 +28,18 @@ const BLANK = {
   paymentMethodId: "",
   memo: "",
   active: true,
+  autoPost: false,
 };
 type Form = typeof BLANK;
 
 const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
+
+// "2026-10-26" → "10/26(월)"
+const WD = ["일", "월", "화", "수", "목", "금", "토"];
+const dayLabel = (d: string) => {
+  const t = new Date(d + "T00:00:00");
+  return `${t.getMonth() + 1}/${t.getDate()}(${WD[t.getDay()]})`;
+};
 
 // "YYYY-MM" 입력칸. 비울 수 있어야 해서 MonthPicker 대신 체크박스 + 선택기 조합을 쓴다.
 function OptionalMonth({
@@ -79,6 +88,7 @@ export default function SubscriptionsPage({
   const [editing, setEditing] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [postMsg, setPostMsg] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +130,7 @@ export default function SubscriptionsPage({
       paymentMethodId: s.paymentMethodId ? String(s.paymentMethodId) : "",
       memo: s.memo,
       active: s.active,
+      autoPost: s.autoPost,
     });
     setEditing(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -148,6 +159,7 @@ export default function SubscriptionsPage({
           paymentMethodId: f.paymentMethodId ? Number(f.paymentMethodId) : undefined,
           memo: f.memo,
           active: f.active,
+          autoPost: f.autoPost,
         })
       );
       reset();
@@ -162,6 +174,26 @@ export default function SubscriptionsPage({
     try {
       await DeleteSubscription(s.id);
       if (f.id === s.id) reset();
+      load();
+    } catch (e: any) {
+      setErr(String(e));
+    }
+  };
+
+  // 결제일이 지났는데 아직 안 들어간 자동 등록분을 지금 만든다.
+  // (앱이 켜질 때와 한 시간마다 저절로 돌지만, 바로 확인하고 싶을 때 누른다)
+  const postNow = async () => {
+    setErr("");
+    setPostMsg("");
+    try {
+      const r = await PostDueSubscriptions();
+      const parts: string[] = [];
+      if (r.created) parts.push(`새로 ${r.created}건 등록`);
+      if (r.matched) parts.push(`이미 입력된 ${r.matched}건에 연결`);
+      setPostMsg(
+        (parts.length ? parts.join(", ") : "새로 등록할 정기결제가 없습니다") +
+          (r.warnings?.length ? ` · ${r.warnings.join(" ")}` : "")
+      );
       load();
     } catch (e: any) {
       setErr(String(e));
@@ -189,11 +221,16 @@ export default function SubscriptionsPage({
       <div className="toolbar wrap">
         <MonthPicker value={month} onChange={setMonth} />
         <span className="muted small">
-          등록한 정기결제를 실제 거래와 대조합니다. 거래를 자동으로 만들지는 않습니다.
+          등록한 정기결제를 실제 거래와 대조합니다. "자동 등록"을 켠 항목은 결제일(주말·공휴일이면
+          다음 업무일)에 거래가 저절로 생깁니다.
         </span>
+        <button className="ghost-btn" onClick={postNow} title="결제일이 지난 자동 등록분을 지금 반영">
+          자동 등록 지금 반영
+        </button>
       </div>
 
       {err && <p className="error">{err}</p>}
+      {postMsg && <p className="muted small post-msg">{postMsg}</p>}
 
       {loading ? (
         <Sk h={92} r={16} />
@@ -366,6 +403,21 @@ export default function SubscriptionsPage({
             )}
           </div>
 
+          <label className="check auto-post-check">
+            <input
+              type="checkbox"
+              checked={f.autoPost}
+              onChange={(e) => setF({ ...f, autoPost: e.target.checked })}
+            />
+            <span>
+              <strong>매달 거래 자동 등록</strong>
+              <span className="muted small">
+                {" "}— 결제일에 거래를 만들어 줍니다. 주말·공휴일이면 다음 업무일로 밀고, 그 달 결제를
+                이미 입력해 뒀으면 새로 만들지 않고 연결만 합니다. 켠 달부터 적용됩니다(지난 달은 소급하지 않음).
+              </span>
+            </span>
+          </label>
+
           <div className="form-row">
             <button type="submit">{editing ? "수정 저장" : "등록"}</button>
             {editing && (
@@ -388,9 +440,20 @@ export default function SubscriptionsPage({
                 <span className="sub-name">
                   {i.sub.name}
                   {i.sub.cycle === "yearly" && <span className="badge">연 결제</span>}
+                  {i.sub.autoPost && <span className="badge auto">자동 등록</span>}
                 </span>
                 <span className="sub-meta muted small">
-                  매월 {i.sub.billingDay}일
+                  {/* 주말·공휴일로 밀리면 원래 날짜와 실제 결제일을 같이 보여 준다 */}
+                  {i.chargeDate && i.chargeDate !== i.plannedDate ? (
+                    <>
+                      {dayLabel(i.plannedDate)} → <strong>{dayLabel(i.chargeDate)}</strong>
+                      <span className="shift-reason"> ({i.shiftReason})</span>
+                    </>
+                  ) : i.chargeDate ? (
+                    dayLabel(i.chargeDate)
+                  ) : (
+                    `매월 ${i.sub.billingDay}일`
+                  )}
                   {i.sub.categoryName && ` · ${i.sub.categoryName}`}
                   {i.sub.paymentMethodName && ` · ${i.sub.paymentMethodName}`}
                   {i.sub.endYm && ` · ${i.sub.endYm}까지`}
@@ -407,8 +470,16 @@ export default function SubscriptionsPage({
                       </em>
                     )}
                   </span>
+                ) : i.postState === "deleted" ? (
+                  // 자동으로 만들었는데 사용자가 지운 달 — 다시 만들지 않는다는 걸 알려 준다
+                  <span className="badge" title="자동으로 만든 거래를 지웠습니다. 이 달은 다시 만들지 않습니다.">
+                    지움 · 다시 안 만듦
+                  </span>
                 ) : (
-                  <span className="badge shortfall">예정</span>
+                  <span className="badge shortfall">{i.sub.autoPost ? "자동 등록 예정" : "예정"}</span>
+                )}
+                {i.postState === "matched" && (
+                  <span className="badge" title="이미 입력된 거래를 이 달 결제로 연결했습니다">기존 거래 연결</span>
                 )}
                 <button className="ghost" title="수정" onClick={() => edit(i.sub)}>수정</button>
                 <button className="ghost" title="끄기" onClick={() => toggleActive(i.sub)}>끄기</button>
@@ -458,7 +529,7 @@ export default function SubscriptionsPage({
         ) : (
           <LineChart
             xLabels={(data.trendMonths ?? []).map(monthLabel)}
-            series={[{ name: "정기결제", color: "#5b82f0", values: data.trend }]}
+            series={[{ name: "정기결제", color: "#5b6cff", values: data.trend }]}
           />
         )}
       </div>

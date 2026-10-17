@@ -31,6 +31,7 @@ import {
   won,
 } from "../lib";
 import EditModal from "../EditModal";
+import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
@@ -356,6 +357,8 @@ export default function Transactions({
   const [txs, setTxs] = useState<store.Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
+  // 정기결제로 등록할 거래 id (모달이 열려 있을 때만 값이 있다)
+  const [subTxId, setSubTxId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [canUndo, setCanUndo] = useState(false);
   const [msg, setMsg] = useState("");
@@ -640,6 +643,9 @@ export default function Transactions({
                 {t.merchant || "-"}
                 {t.autoClassified && <span className="badge auto">자동</span>}
                 {t.source === "manual" && <span className="badge manual">수동</span>}
+                {t.source === "subscription" && (
+                  <span className="badge auto" title="정기결제 자동 등록으로 생긴 거래">정기</span>
+                )}
                 {t.excludePerf && (
                   <span className="badge shortfall" title="카드 실적 계산에서 제외됨">실적제외</span>
                 )}
@@ -657,6 +663,16 @@ export default function Transactions({
                 />
               </td>
               <td className="actions">
+                {/* 지출만 정기결제가 될 수 있다 */}
+                {t.direction === "expense" && (
+                  <button
+                    className="ghost"
+                    onClick={() => setSubTxId(t.id)}
+                    title="다음 달부터 정기결제로 추적"
+                  >
+                    ↻
+                  </button>
+                )}
                 <button className="ghost" onClick={() => setEditTx(t)} title="수정">✎</button>
                 <button className="ghost" onClick={() => remove(t)} title="삭제">✕</button>
               </td>
@@ -678,6 +694,17 @@ export default function Transactions({
           onSaved={() => {
             setEditTx(null);
             load();
+          }}
+        />
+      )}
+
+      {subTxId !== null && (
+        <SubscribeModal
+          txId={subTxId}
+          onClose={() => setSubTxId(null)}
+          onSaved={(s) => {
+            setSubTxId(null);
+            setMsg(`"${s.name}"을(를) ${s.startYm}부터 정기결제로 추적합니다. 정기결제 탭에서 확인하세요.`);
           }}
         />
       )}

@@ -34,6 +34,7 @@ import {
   thisMonth,
   won,
 } from "../lib";
+import HolidaySection from "../HolidaySection";
 import MonthPicker from "../MonthPicker";
 
 const KIND_LABEL: Record<string, string> = {
@@ -620,7 +621,7 @@ function BackupSection() {
 }
 
 // 설정 하위 메뉴. 한 번에 한 섹션만 넓게 보여 가독성을 높인다.
-type Section = "categories" | "members" | "payments" | "budget" | "rules" | "backup";
+type Section = "categories" | "members" | "payments" | "budget" | "rules" | "holidays" | "backup";
 
 const SECTIONS: { key: Section; label: string; desc: string }[] = [
   { key: "categories", label: "카테고리", desc: "주/부 분류 체계" },
@@ -628,6 +629,7 @@ const SECTIONS: { key: Section; label: string; desc: string }[] = [
   { key: "payments", label: "결제수단", desc: "카드·현금·계좌" },
   { key: "budget", label: "예산", desc: "카테고리별 한도" },
   { key: "rules", label: "자동 분류 규칙", desc: "학습된 핑거프린트" },
+  { key: "holidays", label: "공휴일", desc: "정기결제 결제일 미루기" },
   { key: "backup", label: "로컬 백업", desc: "SQLite 스냅샷" },
 ];
 
@@ -651,6 +653,7 @@ export default function SettingsPage({
     payments: refs.paymentMethods.length,
     budget: null,
     rules: null,
+    holidays: null,
     backup: null,
   };
 
@@ -724,6 +727,7 @@ export default function SettingsPage({
 
         {section === "budget" && <BudgetSection refs={refs} />}
         {section === "rules" && <RuleSection refs={refs} />}
+        {section === "holidays" && <HolidaySection />}
         {section === "backup" && <BackupSection />}
       </div>
     </div>

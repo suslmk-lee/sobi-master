@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { GetDashboard } from "../../wailsjs/go/main/App";
+import { GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
 import { won } from "../lib";
 import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
-import { DailyChart, Donut, TrendChart } from "../charts";
+import { DailyChart, DeltaBars, Donut, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
-import { DashboardSkeleton } from "../Skeleton";
+import { DashboardSkeleton, Sk } from "../Skeleton";
+
+// 카테고리별 전월 대비에서 기본으로 보여 줄 줄 수(나머지는 접는다)
+const CMP_ROWS = 8;
 
 // 전월 대비 증감 배지. prev 가 0이면 비교 불가로 표시하지 않는다.
 function Delta({ cur, prev, goodWhenDown }: { cur: number; prev: number; goodWhenDown?: boolean }) {
@@ -41,6 +44,10 @@ export default function Dashboard({
   const [budgets, setBudgets] = useState<store.BudgetStatus[]>([]);
   // 결제수단 이름 → 표시 색 (지정 색 우선, 없으면 자동 색)
   const [pmColors, setPmColors] = useState<Record<string, string>>({});
+  // 카테고리별 전월 대비 (집계 기준·펼침 여부가 바뀌면 따로 조회)
+  const [cmp, setCmp] = useState<store.CategoryCompare | null>(null);
+  const [cmpLevel, setCmpLevel] = useState<"main" | "sub">("main");
+  const [cmpAll, setCmpAll] = useState(false);
 
   const [err, setErr] = useState("");
 
@@ -70,6 +77,14 @@ export default function Dashboard({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const [y, m] = month.split("-").map(Number);
+    setCmpAll(false);
+    GetCategoryCompare(y, m, cmpLevel)
+      .then(setCmp)
+      .catch(() => setCmp(null));
+  }, [month, cmpLevel]);
 
   if (err)
     return (
@@ -127,6 +142,55 @@ export default function Dashboard({
           <strong className={net >= 0 ? "income" : "expense"}>{won(net)}</strong>
           <Delta cur={net} prev={prevNet} />
         </div>
+      </div>
+
+      {/* 총액이 왜 늘었는지는 카테고리를 쪼개야 보인다 */}
+      <div className="card">
+        <div className="stats-head">
+          <h3>카테고리별 전월 대비</h3>
+          <div className="seg-row">
+            <div className="seg">
+              <button
+                className={cmpLevel === "main" ? "active" : ""}
+                onClick={() => setCmpLevel("main")}
+              >
+                주
+              </button>
+              <button
+                className={cmpLevel === "sub" ? "active" : ""}
+                onClick={() => setCmpLevel("sub")}
+              >
+                부
+              </button>
+            </div>
+          </div>
+        </div>
+        {!cmp ? (
+          <Sk h={200} r={12} />
+        ) : (
+          <>
+            <p className="muted small">
+              {Number(cmp.prevMonth.slice(5))}월 {won(cmp.prevTotal)} →{" "}
+              {Number(cmp.month.slice(5))}월 <strong>{won(cmp.total)}</strong>
+              {cmp.prevTotal > 0 && (
+                <>
+                  {" "}
+                  <span className={`delta ${cmp.total > cmp.prevTotal ? "bad" : "good"}`}>
+                    {cmp.total > cmp.prevTotal ? "▲" : "▼"}{" "}
+                    {won(Math.abs(cmp.total - cmp.prevTotal))}
+                  </span>
+                </>
+              )}
+              {" · 증감이 큰 순"}
+            </p>
+            <DeltaBars rows={cmpAll ? cmp.rows : cmp.rows.slice(0, CMP_ROWS)} />
+            {cmp.rows.length > CMP_ROWS && (
+              <button className="ghost-btn" onClick={() => setCmpAll((v) => !v)}>
+                {cmpAll ? "변화 큰 항목만 보기" : `나머지 ${cmp.rows.length - CMP_ROWS}개 더 보기`}
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       <div className="card">
