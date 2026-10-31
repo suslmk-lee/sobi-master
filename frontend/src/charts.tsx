@@ -1,37 +1,48 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  Area,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceDot,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
 import { autoColor } from "./PmChip";
+import { useThemeColors } from "./appearance/AppearanceContext";
 
-const C_INCOME = "#22c55e";
-const C_EXPENSE = "#f43f5e";
-const C_TRANSFER = "#a855f7";
-// 격자/축선은 라이트·다크 양쪽에서 보이도록 중립 회색. 텍스트 색은 CSS(.chart text)가 테마에 맞게 덮어쓴다.
-const C_GRID = "rgba(140,145,170,0.22)";
-const C_TEXT = "rgba(140,145,170,0.7)";
-const C_TARGET = "#d08a2c";
+// 차트 공통 규격(DESIGN_SYSTEM §11). 색은 useThemeColors() 또는 테마 CSS 변수(--c-*)에서만 얻는다.
 
-export const PALETTE = [
-  "#5b6cff",
-  "#f43f5e",
-  "#22c55e",
-  "#eab308",
-  "#a855f7",
-  "#06b6d4",
-  "#f97316",
-  "#64748b",
-];
+// 테마 CSS 변수를 SVG/인라인 스타일에서 쓰는 색 문자열로. 예: cv("emerald-400"), cv("mint-400", 0.3)
+export const cv = (name: string, alpha?: number) =>
+  alpha === undefined ? `rgb(var(--c-${name}))` : `rgb(var(--c-${name}) / ${alpha})`;
 
+// 이 앱의 의미색: 수입 = emerald, 지출 = rose, 경고 = amber
+const INCOME = cv("emerald-400");
+const EXPENSE = cv("rose-400");
+
+// 축 숫자(§11.5). 값 표시는 풀 포맷(won), 축은 compact.
 export const compact = (n: number) =>
   n >= 100000000
     ? `${(n / 100000000).toFixed(1)}억`
     : n >= 10000
-    ? `${Math.round(n / 10000)}만`
-    : String(n);
+    ? `${Math.round(n / 10000).toLocaleString()}만`
+    : Math.round(n).toLocaleString("ko-KR");
 
-// useChartWidth 는 차트를 그릴 실제 폭(px)을 잰다.
-// 고정 viewBox 를 컨테이너에 맞춰 늘리면 넓은 카드에선 축 글자가 커지고 반쪽 카드에선
-// 깨알처럼 작아진다. 폭을 재서 1단위 = 1px 로 그리면 어느 카드에서든 글자 크기가 같다.
+// 축 눈금 글자 규격: 11px mono
+export function useAxisTick() {
+  const tc = useThemeColors();
+  return { fontSize: 11, fill: tc.axis, fontFamily: "var(--font-mono)" };
+}
+
+// useChartWidth 는 차트를 그릴 실제 폭(px)을 잰다. (직접 그리는 SVG 용)
 export function useChartWidth(fallback = 660) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(fallback);
@@ -47,132 +58,156 @@ export function useChartWidth(fallback = 660) {
   return [ref, w] as const;
 }
 
+// 빈 데이터 문구
+export function ChartEmpty({ children = "데이터 없음" }: { children?: ReactNode }) {
+  return <p className="label-mono text-zinc-500 text-center py-8 normal-case">{children}</p>;
+}
+
+// 범례 점
+export function LegendDot({ color, dashed, faint }: { color: string; dashed?: boolean; faint?: boolean }) {
+  return dashed ? (
+    <i className="inline-block w-3.5 border-t-2 border-dashed" style={{ borderColor: color }} />
+  ) : (
+    <i
+      className="inline-block w-2 h-2 rounded-full shrink-0"
+      style={{ background: color, opacity: faint ? 0.5 : 1 }}
+    />
+  );
+}
+
+export type TipRow = { color?: string; value: string; name?: string; dashed?: boolean; faint?: boolean; sub?: boolean };
+
+// 테마 툴팁(§11.1): 라벨 + 계열별 줄
+export function ChartTip({ head, rows }: { head: ReactNode; rows: TipRow[] }) {
+  const tc = useThemeColors();
+  return (
+    <div style={{ ...tc.tooltip.contentStyle, padding: "10px 12px", pointerEvents: "none" }}>
+      <div style={{ ...tc.tooltip.labelStyle, marginBottom: 4 }}>{head}</div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2 num" style={{ color: r.color ?? tc.tooltip.itemStyle.color, opacity: r.sub ? 0.7 : 1 }}>
+          {r.color ? <LegendDot color={r.color} dashed={r.dashed} faint={r.faint} /> : <i className="w-2" />}
+          <strong className="font-semibold">{r.value}</strong>
+          {r.name && <span style={tc.tooltip.labelStyle}>{r.name}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const safeId = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "");
+
 // 최근 n개월 수입/지출 막대 추이
 export function TrendChart({ points }: { points: store.MonthPoint[] }) {
-  const [ref, W] = useChartWidth();
-  const H = 240;
-  const padX = 44;
-  const padY = 26;
-  const max = Math.max(1, ...points.map((p) => Math.max(p.income, p.expense)));
-  const slot = (W - padX * 2) / Math.max(1, points.length);
-  const bw = Math.min(26, slot / 3.2);
-  const scaleY = (v: number) => ((H - padY * 2) * v) / max;
-
+  const tc = useThemeColors();
+  const tick = useAxisTick();
+  const data = points.map((p) => ({ label: `${Number(p.month.slice(5))}월`, income: p.income, expense: p.expense }));
   return (
-    <div ref={ref}>
-      <div className="legend">
-        <span><i style={{ background: C_INCOME }} /> 수입</span>
-        <span><i style={{ background: C_EXPENSE }} /> 지출</span>
+    <div>
+      <div className="flex gap-4 mb-2 text-[11px]" style={{ color: tc.muted }}>
+        <span className="inline-flex items-center gap-1.5"><LegendDot color={INCOME} /> 수입</span>
+        <span className="inline-flex items-center gap-1.5"><LegendDot color={EXPENSE} /> 지출</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart">
-        {[0.25, 0.5, 0.75, 1].map((f) => (
-          <g key={f}>
-            <line
-              x1={padX} x2={W - padX}
-              y1={H - padY - (H - padY * 2) * f}
-              y2={H - padY - (H - padY * 2) * f}
-              stroke={C_GRID}
+      <div className="h-60">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barGap={4}>
+            <CartesianGrid stroke={tc.grid} strokeOpacity={0.4} vertical={false} />
+            <XAxis dataKey="label" tick={tick} axisLine={{ stroke: tc.grid }} tickLine={false} />
+            <YAxis tick={tick} domain={[0, "auto"]} width={55} axisLine={false} tickLine={false} tickFormatter={compact} />
+            <Tooltip
+              cursor={{ fill: tc.text, fillOpacity: 0.05 }}
+              content={({ active, payload, label }) =>
+                active && payload?.length ? (
+                  <ChartTip
+                    head={label}
+                    rows={[
+                      { color: INCOME, value: won(Number(payload.find((p) => p.dataKey === "income")?.value ?? 0)), name: "수입" },
+                      { color: EXPENSE, value: won(Number(payload.find((p) => p.dataKey === "expense")?.value ?? 0)), name: "지출" },
+                    ]}
+                  />
+                ) : null
+              }
             />
-            <text x={4} y={H - padY - (H - padY * 2) * f + 4} fontSize={11} fill={C_TEXT}>
-              {compact(max * f)}
-            </text>
-          </g>
-        ))}
-        <line x1={padX} x2={W - padX} y1={H - padY} y2={H - padY} stroke={C_GRID} />
-        {points.map((p, i) => {
-          const cx = padX + i * slot + slot / 2;
-          const hi = scaleY(p.income);
-          const he = scaleY(p.expense);
-          return (
-            <g key={p.month}>
-              <rect x={cx - bw - 2} y={H - padY - hi} width={bw} height={hi} rx={Math.min(6, bw / 3)} fill={C_INCOME} opacity={0.9} />
-              <rect x={cx + 2} y={H - padY - he} width={bw} height={he} rx={Math.min(6, bw / 3)} fill={C_EXPENSE} opacity={0.9} />
-              <text x={cx} y={H - 7} fontSize={12} fill={C_TEXT} textAnchor="middle">
-                {Number(p.month.slice(5))}월
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+            <Bar dataKey="income" fill={INCOME} radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false} />
+            <Bar dataKey="expense" fill={EXPENSE} radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
 
 // 이번 달 일별 지출 영역 그래프 + 누적선
 export function DailyChart({ points }: { points: store.DayPoint[] }) {
-  const [ref, W] = useChartWidth();
-  const H = 200;
-  const padX = 36;
-  const padY = 22;
-  const n = points.length || 1;
-  const max = Math.max(1, ...points.map((p) => p.amount));
+  const tc = useThemeColors();
+  const tick = useAxisTick();
+  const gid = safeId(useId());
   let acc = 0;
-  const cum = points.map((p) => (acc += p.amount));
-  const cumMax = Math.max(1, acc);
-
-  const x = (i: number) => padX + ((W - padX * 2) * i) / Math.max(1, n - 1);
-  const y = (v: number) => H - padY - ((H - padY * 2) * v) / max;
-  const yCum = (v: number) => H - padY - ((H - padY * 2) * v) / cumMax;
-
-  const area =
-    `M ${x(0)} ${H - padY} ` +
-    points.map((p, i) => `L ${x(i)} ${y(p.amount)}`).join(" ") +
-    ` L ${x(n - 1)} ${H - padY} Z`;
-  const cumLine = cum.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${yCum(v)}`).join(" ");
-
+  const data = points.map((p) => ({ day: p.day, amount: p.amount, cum: (acc += p.amount) }));
+  const cumColor = tc.palette[1] ?? tc.axis;
   return (
-    <div ref={ref}>
-      <div className="legend">
-        <span><i style={{ background: C_EXPENSE }} /> 일별 지출</span>
-        <span><i style={{ background: C_TRANSFER }} /> 누적 (이번 달 총 {won(acc)})</span>
+    <div>
+      <div className="flex flex-wrap gap-4 mb-2 text-[11px]" style={{ color: tc.muted }}>
+        <span className="inline-flex items-center gap-1.5"><LegendDot color={EXPENSE} /> 일별 지출</span>
+        <span className="inline-flex items-center gap-1.5">
+          <LegendDot color={cumColor} dashed /> 누적 (이번 달 총 <span className="num">{won(acc)}</span>)
+        </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart">
-        <defs>
-          <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C_EXPENSE} stopOpacity={0.55} />
-            <stop offset="100%" stopColor={C_EXPENSE} stopOpacity={0.05} />
-          </linearGradient>
-        </defs>
-        {[0.5, 1].map((f) => (
-          <line
-            key={f}
-            x1={padX} x2={W - padX}
-            y1={H - padY - (H - padY * 2) * f}
-            y2={H - padY - (H - padY * 2) * f}
-            stroke={C_GRID}
-          />
-        ))}
-        <line x1={padX} x2={W - padX} y1={H - padY} y2={H - padY} stroke={C_GRID} />
-        <path d={area} fill="url(#dailyFill)" stroke={C_EXPENSE} strokeWidth={1.5} />
-        <path d={cumLine} fill="none" stroke={C_TRANSFER} strokeWidth={2} strokeDasharray="5 4" />
-        {points.map((p, i) =>
-          i % 5 === 0 || i === n - 1 ? (
-            <text key={i} x={x(i)} y={H - 6} fontSize={11} fill={C_TEXT} textAnchor="middle">
-              {p.day}
-            </text>
-          ) : null
-        )}
-        <text x={4} y={padY + 4} fontSize={11} fill={C_TEXT}>{compact(max)}</text>
-      </svg>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`${gid}-d`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={EXPENSE} stopOpacity={0.32} />
+                <stop offset="100%" stopColor={EXPENSE} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={tc.grid} strokeOpacity={0.4} vertical={false} />
+            <XAxis dataKey="day" tick={tick} minTickGap={30} axisLine={{ stroke: tc.grid }} tickLine={false} />
+            <YAxis yAxisId="a" tick={tick} domain={[0, "auto"]} width={55} axisLine={false} tickLine={false} tickFormatter={compact} />
+            <YAxis yAxisId="c" hide domain={[0, "auto"]} />
+            <Tooltip
+              cursor={{ stroke: tc.axis, strokeDasharray: "3 3" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const row = payload[0].payload as { day: number; amount: number; cum: number };
+                return (
+                  <ChartTip
+                    head={`${row.day}일`}
+                    rows={[
+                      { color: EXPENSE, value: won(row.amount), name: "지출" },
+                      { color: cumColor, value: won(row.cum), name: "누적", dashed: true },
+                    ]}
+                  />
+                );
+              }}
+            />
+            <Area yAxisId="a" type="monotone" dataKey="amount" stroke={EXPENSE} strokeWidth={1.75} fill={`url(#${gid}-d)`} dot={false} isAnimationActive={false} />
+            <Line yAxisId="c" type="monotone" dataKey="cum" stroke={cumColor} strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
 
-// 도넛 차트: 상위 7개 + 기타
+// 도넛 차트: 상위 7개 + 기타 (팔레트를 돌려 쓰지 않는다)
 export function Donut({ rows, centerLabel }: { rows: store.NamedAmount[]; centerLabel: string }) {
+  const tc = useThemeColors();
   const total = rows.reduce((s, r) => s + r.amount, 0);
-  if (total === 0) return <p className="muted">데이터 없음</p>;
-  const top = rows.slice(0, 7);
-  const rest = rows.slice(7).reduce((s, r) => s + r.amount, 0);
+  if (total === 0) return <ChartEmpty />;
+  const topN = Math.min(7, tc.palette.length);
+  const top = rows.slice(0, topN);
+  const rest = rows.slice(topN).reduce((s, r) => s + r.amount, 0);
   const segs = rest > 0 ? [...top, { name: "기타", kind: "expense", amount: rest }] : top;
+  const colorOf = (i: number, name: string) => (name === "기타" && rest > 0 && i === segs.length - 1 ? tc.axis : tc.palette[i] ?? tc.axis);
 
   const R = 62;
   const CIRC = 2 * Math.PI * R;
   let offset = 0;
 
   return (
-    <div className="donut-wrap">
-      <svg viewBox="0 0 170 170" className="donut">
+    <div className="flex flex-wrap items-center gap-5">
+      <svg viewBox="0 0 170 170" className="w-40 h-40 shrink-0">
         {segs.map((s, i) => {
           const frac = s.amount / total;
           const el = (
@@ -180,7 +215,7 @@ export function Donut({ rows, centerLabel }: { rows: store.NamedAmount[]; center
               key={i}
               cx={85} cy={85} r={R}
               fill="none"
-              stroke={PALETTE[i % PALETTE.length]}
+              stroke={colorOf(i, s.name)}
               strokeWidth={24}
               strokeDasharray={`${frac * CIRC} ${CIRC}`}
               strokeDashoffset={-offset * CIRC}
@@ -191,18 +226,18 @@ export function Donut({ rows, centerLabel }: { rows: store.NamedAmount[]; center
           offset += frac;
           return el;
         })}
-        <text x={85} y={80} textAnchor="middle" fontSize={11} fill={C_TEXT}>{centerLabel}</text>
-        <text x={85} y={98} textAnchor="middle" fontSize={13} fontWeight={700} className="donut-total">
+        <text x={85} y={80} textAnchor="middle" fontSize={11} fill={tc.axis} fontFamily="var(--font-mono)">{centerLabel}</text>
+        <text x={85} y={98} textAnchor="middle" fontSize={13} fontWeight={700} fill={tc.text} fontFamily="var(--font-mono)">
           {compact(total)}원
         </text>
       </svg>
-      <ul className="donut-legend">
+      <ul className="flex-1 min-w-[180px] space-y-1.5 text-xs">
         {segs.map((s, i) => (
-          <li key={i}>
-            <i style={{ background: PALETTE[i % PALETTE.length] }} />
-            <span className="dl-name">{s.name}</span>
-            <span className="dl-pct">{Math.round((s.amount / total) * 100)}%</span>
-            <span className="dl-amt">{won(s.amount)}</span>
+          <li key={i} className="flex items-center gap-2">
+            <LegendDot color={colorOf(i, s.name)} />
+            <span className="flex-1 truncate text-zinc-300">{s.name}</span>
+            <span className="num text-zinc-500">{Math.round((s.amount / total) * 100)}%</span>
+            <span className="num text-white w-24 text-right">{won(s.amount)}</span>
           </li>
         ))}
       </ul>
@@ -213,9 +248,6 @@ export function Donut({ rows, centerLabel }: { rows: store.NamedAmount[]; center
 export type LineSeries = { name: string; color?: string; values: number[] };
 
 // monotonePath 는 점들을 지나는 부드러운 곡선(단조 3차 보간, Fritsch–Carlson).
-// 일반 곡선 보간(Catmull-Rom 등)은 계단처럼 꺾이는 곳에서 위아래로 출렁이는데,
-// 누적 지출이 잠깐 줄어드는 것처럼 보이면 거짓 정보다. 단조 보간은 두 점 사이에서
-// 값을 넘어서지 않아 꺾은선과 같은 사실을 유지하면서 모양만 부드러워진다.
 export function monotonePath(pts: [number, number][]): string {
   const n = pts.length;
   if (n === 0) return "";
@@ -256,8 +288,7 @@ export function monotonePath(pts: [number, number][]): string {
   return d;
 }
 
-// niceMax 는 축 최댓값을 보기 좋은 수(1·2·2.5·5 ×10ⁿ)로 올린다. 눈금이 17만·34만 같은
-// 어정쩡한 수로 찍히면 읽기 어렵다.
+// niceMax 는 축 최댓값을 보기 좋은 수(1·2·2.5·5 ×10ⁿ)로 올린다.
 export function niceMax(v: number): number {
   if (v <= 0) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(v)));
@@ -287,215 +318,164 @@ export function LineChart({
   showLegend?: boolean;
   valueFmt?: (n: number) => string;
 }) {
-  const [ref, W] = useChartWidth();
-  const [hi, setHi] = useState<number | null>(null);
-  const gid = useId();
-  const H = height;
-  const padL = 46;
-  const padR = 16;
-  const padT = 14;
-  const padB = 26;
+  const tc = useThemeColors();
+  const tick = useAxisTick();
+  const gid = safeId(useId());
   const n = xLabels.length;
+  const color = (i: number) => series[i].color || tc.palette[i] || tc.axis;
 
   const plotted = series.map((s) => {
     if (!cumulative) return s.values;
     let acc = 0;
     return s.values.map((v) => (acc += v));
   });
-  const max = niceMax(Math.max(1, ...plotted.flatMap((vals) => vals)));
   const totals = series.map((s) => s.values.reduce((a, b) => a + b, 0));
-
-  const step = (W - padL - padR) / Math.max(1, n - 1);
-  const x = (i: number) => padL + step * i;
-  const y = (v: number) => H - padB - ((H - padT - padB) * v) / max;
-  const color = (i: number) => series[i].color || PALETTE[i % PALETTE.length];
-
   const hasData = totals.some((t) => t > 0);
-  const labelEvery = n <= 12 ? 1 : n <= 20 ? 2 : 5;
-  // 시리즈가 하나면 아래에 옅은 면을 깔아 모양을 살린다(여럿이면 겹쳐서 지저분해진다)
   const single = series.length === 1;
+  const interval = n <= 12 ? 0 : n <= 20 ? 1 : 4;
 
-  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - r.left) / r.width) * W;
-    setHi(Math.max(0, Math.min(n - 1, Math.round((px - padL) / step))));
-  };
-
-  // 툴팁: 값이 큰 순으로, 값이 앞에 굵게 오고 이름은 뒤에 흐리게
-  const tipRows =
-    hi === null
-      ? []
-      : series
-          .map((s, si) => ({ name: s.name, color: color(si), v: plotted[si][hi] ?? 0 }))
-          .sort((a, b) => b.v - a.v)
-          .slice(0, 8);
-  const tipLeft = hi === null ? 0 : x(hi);
-  const tipFlip = tipLeft > W * 0.62;
+  const data = xLabels.map((_, i) => {
+    const row: Record<string, number> = { i };
+    plotted.forEach((vals, si) => (row[`s${si}`] = vals[i] ?? 0));
+    return row;
+  });
 
   return (
-    <div ref={ref} className="lc-wrap">
+    <div>
       {showLegend && (
-        <div className="legend wrap">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 text-[11px]" style={{ color: tc.muted }}>
           {series.map((s, i) => (
-            <span key={i}>
-              <i style={{ background: color(i) }} /> {s.name}
-              <em className="lc-total">{valueFmt(totals[i])}</em>
+            <span key={i} className="inline-flex items-center gap-1.5">
+              <LegendDot color={color(i)} /> {s.name}
+              <em className="not-italic num text-zinc-500">{valueFmt(totals[i])}</em>
             </span>
           ))}
         </div>
       )}
       {!hasData ? (
-        <p className="muted">데이터 없음</p>
+        <ChartEmpty />
       ) : (
-        <div className="lc-plot">
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            className="chart"
-            onPointerMove={onMove}
-            onPointerLeave={() => setHi(null)}
-          >
-            {single && (
+        <div style={{ height }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 14, right: 16, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id={`lc-${gid}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color(0)} stopOpacity={0.28} />
-                  <stop offset="100%" stopColor={color(0)} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-            )}
-            {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-              <g key={f}>
-                <line
-                  x1={padL} x2={W - padR}
-                  y1={y(max * f)} y2={y(max * f)}
-                  stroke={C_GRID}
-                  strokeDasharray={f === 0 ? undefined : "2 4"}
-                />
-                <text x={padL - 8} y={y(max * f) + 4} fontSize={11} fill={C_TEXT} textAnchor="end">
-                  {compact(max * f)}
-                </text>
-              </g>
-            ))}
-            {marker && marker.x >= 1 && marker.x <= n && (
-              <g>
-                <line
-                  x1={x(marker.x - 1)} x2={x(marker.x - 1)}
-                  y1={padT} y2={H - padB}
-                  stroke={C_TEXT} strokeWidth={1} strokeDasharray="3 3"
-                />
-                {marker.label && (
-                  <text x={x(marker.x - 1)} y={padT - 3} fontSize={11} fill={C_TEXT} textAnchor="middle">
-                    {marker.label}
-                  </text>
+                {single && (
+                  <linearGradient id={`${gid}-a`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color(0)} stopOpacity={0.32} />
+                    <stop offset="100%" stopColor={color(0)} stopOpacity={0} />
+                  </linearGradient>
                 )}
-              </g>
-            )}
-            {plotted.map((vals, si) => {
-              const pts = vals.map((v, i) => [x(i), y(v)] as [number, number]);
-              const d = monotonePath(pts);
-              const last = pts[pts.length - 1];
-              return (
-                <g key={si}>
-                  {single && last && (
-                    <path d={`${d} L ${last[0]} ${H - padB} L ${pts[0][0]} ${H - padB} Z`} fill={`url(#lc-${gid})`} />
-                  )}
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke={color(si)}
-                    strokeWidth={2}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    opacity={hi === null ? 1 : 0.9}
-                  />
-                  {/* 끝점만 찍는다 — 모든 점에 동그라미를 달면 선이 구슬 목걸이가 된다 */}
-                  {last && <circle cx={last[0]} cy={last[1]} r={3} fill={color(si)} />}
-                </g>
-              );
-            })}
-            {xLabels.map((lab, i) =>
-              i % labelEvery === 0 || i === n - 1 ? (
-                <text key={i} x={x(i)} y={H - 7} fontSize={11} fill={C_TEXT} textAnchor="middle">
-                  {lab}
-                </text>
-              ) : null
-            )}
-            {hi !== null && (
-              <g pointerEvents="none">
-                <line x1={x(hi)} x2={x(hi)} y1={padT} y2={H - padB} className="lc-cross" />
-                {plotted.map((vals, si) => (
-                  <circle
+              </defs>
+              <CartesianGrid stroke={tc.grid} strokeOpacity={0.4} vertical={false} />
+              <XAxis
+                dataKey="i"
+                tick={tick}
+                interval={interval}
+                tickFormatter={(i: number) => xLabels[i] ?? ""}
+                axisLine={{ stroke: tc.grid }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={tick}
+                width={55}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={compact}
+                tickCount={5}
+                domain={[0, (max: number) => niceMax(Math.max(1, max))]}
+              />
+              {marker && marker.x >= 1 && marker.x <= n && (
+                <ReferenceLine
+                  x={marker.x - 1}
+                  stroke={tc.axis}
+                  strokeDasharray="3 3"
+                  label={marker.label ? { value: marker.label, position: "top", fill: tc.axis, fontSize: 11 } : undefined}
+                />
+              )}
+              <Tooltip
+                cursor={{ stroke: tc.axis, strokeDasharray: "3 3" }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const i = (payload[0].payload as { i: number }).i;
+                  const rows = series
+                    .map((s, si) => ({ name: s.name, color: color(si), v: plotted[si][i] ?? 0 }))
+                    .sort((a, b) => b.v - a.v)
+                    .slice(0, 8);
+                  return <ChartTip head={xLabels[i]} rows={rows.map((r) => ({ color: r.color, value: valueFmt(r.v), name: r.name }))} />;
+                }}
+              />
+              {series.map((_, si) =>
+                single ? (
+                  <Area
                     key={si}
-                    cx={x(hi)} cy={y(vals[hi] ?? 0)} r={4.5}
-                    fill={color(si)}
-                    className="lc-hot"
+                    type="monotone"
+                    dataKey={`s${si}`}
+                    stroke={color(si)}
+                    strokeWidth={1.75}
+                    fill={`url(#${gid}-a)`}
+                    isAnimationActive={false}
+                    dot={(p: { cx?: number; cy?: number; index?: number }) =>
+                      p.index === n - 1 && p.cx !== undefined ? (
+                        <circle key="end" cx={p.cx} cy={p.cy} r={3} fill={color(si)} />
+                      ) : (
+                        <g key={`d${p.index}`} />
+                      )
+                    }
                   />
-                ))}
-              </g>
-            )}
-          </svg>
-          {hi !== null && (
-            <div
-              className={`chart-tip${tipFlip ? " flip" : ""}`}
-              style={{ left: tipLeft }}
-            >
-              <div className="ct-head">{xLabels[hi]}</div>
-              {tipRows.map((r) => (
-                <div className="ct-row" key={r.name}>
-                  <i style={{ background: r.color }} />
-                  <strong>{valueFmt(r.v)}</strong>
-                  <span>{r.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
+                ) : (
+                  <Line
+                    key={si}
+                    type="monotone"
+                    dataKey={`s${si}`}
+                    stroke={color(si)}
+                    strokeWidth={1.75}
+                    isAnimationActive={false}
+                    dot={(p: { cx?: number; cy?: number; index?: number }) =>
+                      p.index === n - 1 && p.cx !== undefined ? (
+                        <circle key="end" cx={p.cx} cy={p.cy} r={3} fill={color(si)} />
+                      ) : (
+                        <g key={`d${p.index}`} />
+                      )
+                    }
+                  />
+                )
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>
   );
 }
 
-// inkOn 은 색 위에 올릴 글자색(밝은 바탕이면 진한 남색, 어두운 바탕이면 흰색).
-// 노랑 위의 흰 글자처럼 대비가 무너지지 않게 바탕 밝기로 고른다.
-function inkOn(hex: string): string {
-  const h = hex.replace("#", "");
-  if (h.length !== 6) return "#fff";
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.6 ? "#1c2140" : "#fff";
-}
-
 const OTHER = "기타";
-const OTHER_COLOR = "#94a3b8";
 
 // 그룹별 구성 적층 막대(카테고리별 귀속자, 귀속자별 카테고리, 카드별 카테고리).
-//   - 막대 길이 = 그룹 총액(최댓값 대비), 조각 = 구성 항목.
-//   - 항목 색은 전 그룹 공통이고 합계 큰 순으로 정한다. 팔레트(8색)를 넘으면 색을 돌려 쓰지
-//     않고 상위 7개 + "기타"(회색)로 묶는다 — 같은 색이 두 항목을 뜻하면 읽을 수 없다.
-//   - 조각 사이 2px 틈으로 경계를 또렷하게, 폭이 넉넉한 조각에는 이름을 직접 쓴다.
-//   - 조각(또는 범례)에 마우스를 올리면 같은 항목이 모든 줄에서 함께 밝아지고 툴팁이 뜬다.
+//   - 막대 길이 = 그룹 총액(최댓값 대비), 조각 = 구성 항목. 조각마다 호버/강조가 있어
+//     Recharts 보다 직접 그린 HTML 이 정확하다(커스텀 구현 유지).
+//   - 항목 색은 전 그룹 공통이고 합계 큰 순. 팔레트를 넘으면 돌려 쓰지 않고 상위 N-1 + "기타".
 export function StackedBars({ data }: { data: store.CardCategory[] }) {
+  const tc = useThemeColors();
   const [focus, setFocus] = useState<string | null>(null);
-  const [tip, setTip] = useState<{ x: number; y: number; row: string; seg: string; amt: number; share: number } | null>(
-    null
-  );
+  const [tip, setTip] = useState<{ x: number; y: number; row: string; seg: string; amt: number; share: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  if (data.length === 0) return <p className="muted">데이터 없음</p>;
+  if (data.length === 0) return <ChartEmpty />;
 
+  const palette = tc.palette;
   const totals: Record<string, number> = {};
   for (const d of data) for (const c of d.categories) totals[c.name] = (totals[c.name] || 0) + c.amount;
   const sorted = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
-  const fold = sorted.length > PALETTE.length;
-  const keep = fold ? sorted.slice(0, PALETTE.length - 1) : sorted;
+  const fold = sorted.length > palette.length;
+  const keep = fold ? sorted.slice(0, palette.length - 1) : sorted;
   const keepSet = new Set(keep);
-  const color = (name: string) => (keepSet.has(name) ? PALETTE[keep.indexOf(name)] : OTHER_COLOR);
+  const color = (name: string) => (keepSet.has(name) ? palette[keep.indexOf(name)] : tc.axis);
   const series = fold
-    ? [...keep, OTHER].map((n) => ({
-        name: n,
-        total: n === OTHER ? sorted.slice(keep.length).reduce((a, k) => a + totals[k], 0) : totals[n],
+    ? [...keep, OTHER].map((nm) => ({
+        name: nm,
+        total: nm === OTHER ? sorted.slice(keep.length).reduce((a, k) => a + totals[k], 0) : totals[nm],
       }))
-    : keep.map((n) => ({ name: n, total: totals[n] }));
+    : keep.map((nm) => ({ name: nm, total: totals[nm] }));
 
-  // 줄마다 "기타"로 묶은 조각 목록
   const rows = data.map((d) => {
     const segs: { name: string; amount: number }[] = [];
     let other = 0;
@@ -508,45 +488,60 @@ export function StackedBars({ data }: { data: store.CardCategory[] }) {
   });
   const max = Math.max(1, ...data.map((d) => d.total));
 
+  // 색 위에 올릴 글자색: 바탕 밝기로 고른다 (라이트 테마에서 white 토큰은 어두운 색)
+  const inkOn = (hex: string) => {
+    const h = hex.replace("#", "");
+    if (h.length !== 6) return cv("paper");
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    const light = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6;
+    if (!light) return cv("paper");
+    return tc.mode === "dark" ? cv("ink-950") : cv("white");
+  };
+
   const move = (e: React.MouseEvent, row: string, seg: string, amt: number, total: number) => {
     const r = boxRef.current?.getBoundingClientRect();
     if (!r) return;
     setTip({ x: e.clientX - r.left, y: e.clientY - r.top, row, seg, amt, share: total ? amt / total : 0 });
   };
+  const boxW = boxRef.current?.clientWidth ?? 0;
 
   return (
-    <div className="sb" ref={boxRef} onMouseLeave={() => { setFocus(null); setTip(null); }}>
-      <div className="sb-legend">
+    <div ref={boxRef} className="relative" onMouseLeave={() => { setFocus(null); setTip(null); }}>
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
         {series.map((s) => (
           <span
             key={s.name}
-            className={`sb-key${focus === s.name ? " on" : focus ? " dim" : ""}`}
+            className={`inline-flex items-center gap-1.5 text-[11px] text-zinc-300 transition-opacity cursor-default ${
+              focus && focus !== s.name ? "opacity-40" : ""
+            }`}
             onMouseEnter={() => setFocus(s.name)}
             onMouseLeave={() => setFocus(null)}
           >
-            <i style={{ background: s.name === OTHER ? OTHER_COLOR : color(s.name) }} />
+            <LegendDot color={color(s.name)} />
             {s.name}
-            <em>{compact(s.total)}</em>
+            <em className="not-italic num text-zinc-500">{compact(s.total)}</em>
           </span>
         ))}
       </div>
-      <div className="sb-rows">
+      <div className="space-y-2">
         {rows.map((d) => (
-          <div className="sb-row" key={d.card}>
-            <span className="sb-label" title={d.card}>
-              {d.color && <i style={{ background: d.color }} />}
-              {d.card}
+          <div key={d.card} className="grid grid-cols-[minmax(80px,120px)_1fr_auto] items-center gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-zinc-300 truncate" title={d.card}>
+              {d.color && <i className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />}
+              <span className="truncate">{d.card}</span>
             </span>
-            <div className="sb-cell">
-              <div className="sb-track" style={{ width: `${(d.total / max) * 100}%` }}>
+            <div className="min-w-0">
+              <div className="flex gap-[2px] h-7" style={{ width: `${(d.total / max) * 100}%` }}>
                 {d.segs.map((c) => {
-                  const bg = c.name === OTHER ? OTHER_COLOR : color(c.name);
+                  const bg = color(c.name);
                   const wide = c.amount / max >= 0.09;
                   return (
                     <div
                       key={c.name}
-                      className={`sb-seg${focus && focus !== c.name ? " dim" : ""}${focus === c.name ? " on" : ""}`}
-                      style={{ flexGrow: c.amount, background: bg, color: inkOn(bg) }}
+                      className={`min-w-[2px] rounded-[4px] flex items-center justify-center text-[10px] font-medium overflow-hidden whitespace-nowrap transition-opacity ${
+                        focus && focus !== c.name ? "opacity-30" : ""
+                      }`}
+                      style={{ flexGrow: c.amount, flexBasis: 0, background: bg, color: inkOn(bg) }}
                       onMouseEnter={(e) => { setFocus(c.name); move(e, d.card, c.name, c.amount, d.total); }}
                       onMouseMove={(e) => move(e, d.card, c.name, c.amount, d.total)}
                     >
@@ -556,21 +551,19 @@ export function StackedBars({ data }: { data: store.CardCategory[] }) {
                 })}
               </div>
             </div>
-            <span className="sb-amt">{won(d.total)}</span>
+            <span className="num text-xs text-white text-right">{won(d.total)}</span>
           </div>
         ))}
       </div>
       {tip && (
         <div
-          className={`chart-tip sb-tip${tip.x > (boxRef.current?.clientWidth ?? 0) * 0.62 ? " flip" : ""}`}
-          style={{ left: tip.x, top: tip.y + 16 }}
+          className="absolute z-10"
+          style={{ left: tip.x, top: tip.y + 16, transform: tip.x > boxW * 0.62 ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
         >
-          <div className="ct-head">{tip.row}</div>
-          <div className="ct-row">
-            <i style={{ background: tip.seg === OTHER ? OTHER_COLOR : color(tip.seg) }} />
-            <strong>{won(tip.amt)}</strong>
-            <span>{tip.seg} · {Math.round(tip.share * 100)}%</span>
-          </div>
+          <ChartTip
+            head={tip.row}
+            rows={[{ color: color(tip.seg), value: won(tip.amt), name: `${tip.seg} · ${Math.round(tip.share * 100)}%` }]}
+          />
         </div>
       )}
     </div>
@@ -578,8 +571,9 @@ export function StackedBars({ data }: { data: store.CardCategory[] }) {
 }
 
 // 카드 실적기간 누적 진행 스파크라인: 누적선(실선) + 목표선(가로) + 이상 페이스(대각선).
-// 누적선이 대각선 위에 있으면 목표 달성 페이스.
+// 누적선이 대각선 위에 있으면 목표 달성 페이스. 작은 고정 SVG 라 직접 그린다.
 export function PaceSparkline({ pace }: { pace: store.CardPace }) {
+  const tc = useThemeColors();
   const W = 300;
   const H = 96;
   const padX = 6;
@@ -590,18 +584,16 @@ export function PaceSparkline({ pace }: { pace: store.CardPace }) {
   const y = (v: number) => H - padY - ((H - padY * 2) * v) / max;
   const c = pace.card.color || autoColor(pace.card.name);
 
-  const cumPath = pace.cumulative
-    .map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`)
-    .join(" ");
+  const cumPath = pace.cumulative.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
   const last = pace.cumulative.length - 1;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart pace">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block">
       {/* 목표선 */}
-      <line x1={padX} x2={W - padX} y1={y(pace.target)} y2={y(pace.target)} stroke={C_TARGET} strokeWidth={1} strokeDasharray="4 3" />
-      <text x={W - padX} y={y(pace.target) - 3} fontSize={8} fill={C_TARGET} textAnchor="end">목표</text>
+      <line x1={padX} x2={W - padX} y1={y(pace.target)} y2={y(pace.target)} stroke={tc.restricted} strokeWidth={1} strokeDasharray="4 3" />
+      <text x={W - padX} y={y(pace.target) - 3} fontSize={8} fill={tc.restricted} textAnchor="end" fontFamily="var(--font-mono)">목표</text>
       {/* 이상 페이스 대각선 (기간말에 목표 도달) */}
-      <line x1={x(0)} x2={x(days - 1)} y1={y(0)} y2={y(pace.target)} stroke={C_TEXT} strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+      <line x1={x(0)} x2={x(days - 1)} y1={y(0)} y2={y(pace.target)} stroke={tc.axis} strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
       {/* 실제 누적 */}
       {last >= 0 && (
         <>
@@ -613,8 +605,8 @@ export function PaceSparkline({ pace }: { pace: store.CardPace }) {
   );
 }
 
-// 전월 대비 증감 막대. 가운데 0선을 두고 늘어난 쪽은 오른쪽(빨강), 줄어든 쪽은 왼쪽(초록)으로
-// 뻗는다. 금액순이 아니라 증감 큰 순으로 와야 "무엇이 총액을 끌어올렸나"가 위에서부터 읽힌다.
+// 전월 대비 증감 막대. 가운데 0선을 두고 늘어난 쪽은 오른쪽(rose), 줄어든 쪽은 왼쪽(emerald)으로 뻗는다.
+// 금액순이 아니라 증감 큰 순.
 export function DeltaBars({
   rows,
   onPick,
@@ -622,39 +614,41 @@ export function DeltaBars({
   rows: store.CategoryDelta[];
   onPick?: (name: string) => void;
 }) {
-  if (rows.length === 0) return <p className="muted">비교할 지출이 없습니다.</p>;
+  if (rows.length === 0) return <ChartEmpty>비교할 지출이 없습니다.</ChartEmpty>;
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.delta)));
 
   return (
-    <ul className="delta-bars">
+    <ul className="space-y-1">
       {rows.map((r) => {
         const up = r.delta > 0;
         const w = (Math.abs(r.delta) / max) * 50; // 한쪽 최대 50%
         return (
           <li
             key={r.name}
-            className={onPick ? "pickable" : undefined}
+            className={`grid grid-cols-[minmax(70px,110px)_1fr_auto] md:grid-cols-[minmax(70px,110px)_1fr_100px_52px_130px] items-center gap-3 px-2 py-1.5 rounded-lg text-xs ${
+              onPick ? "cursor-pointer hover:bg-white/[0.05] transition-colors" : ""
+            }`}
             onClick={onPick ? () => onPick(r.name) : undefined}
           >
-            <span className="db-name" title={r.name}>{r.name}</span>
-            <span className="db-track">
-              <i className="db-zero" />
+            <span className="truncate text-zinc-300" title={r.name}>{r.name}</span>
+            <span className="relative h-2.5 rounded-full bg-white/[0.04]">
+              <i className="absolute left-1/2 top-[-3px] bottom-[-3px] w-px bg-white/20" />
               <i
-                className={`db-fill ${up ? "up" : "down"}`}
+                className={`absolute top-0 bottom-0 ${up ? "rounded-r-full bg-rose-400" : "rounded-l-full bg-emerald-400"}`}
                 style={up ? { left: "50%", width: `${w}%` } : { right: "50%", width: `${w}%` }}
               />
             </span>
-            <span className={`db-delta ${up ? "bad" : r.delta < 0 ? "good" : "flat"}`}>
+            <span className={`num text-right ${up ? "text-rose-400" : r.delta < 0 ? "text-emerald-400" : "text-zinc-500"}`}>
               {r.delta > 0 ? "+" : ""}
               {won(r.delta)}
             </span>
-            <span className="db-pct muted">
+            <span className="num text-right text-zinc-500 hidden md:block">
               {r.isNew ? "신규" : r.gone ? "없어짐" : r.prev === 0 ? "—" : `${r.pct > 0 ? "+" : ""}${r.pct}%`}
             </span>
-            <span className="db-amt">
-              <span className="muted">{compact(r.prev)}</span>
+            <span className="num text-right text-zinc-500 hidden md:block">
+              {compact(r.prev)}
               {" → "}
-              <strong>{compact(r.current)}</strong>
+              <strong className="font-semibold text-white">{compact(r.current)}</strong>
             </span>
           </li>
         );
@@ -676,107 +670,103 @@ export function MiniTrend({
   active: number; // 강조할 달의 인덱스
   onPick?: (i: number) => void;
 }) {
-  const gid = useId(); // 그라디언트 id 충돌 방지
-  const W = 1000;
-  const H = 170;
-  const padL = 10;
-  const padR = 10;
-  const padT = 30; // 강조 지점 위 금액 라벨 자리
-  const padB = 24; // 월 라벨 자리
+  const tc = useThemeColors();
+  const tick = useAxisTick();
+  const gid = safeId(useId());
   const n = values.length;
   if (n === 0) return null;
 
-  const max = Math.max(1, ...values);
   const avg = values.reduce((s, v) => s + v, 0) / n;
-  const x = (i: number) => (n === 1 ? W / 2 : padL + ((W - padL - padR) * i) / (n - 1));
-  const y = (v: number) => H - padB - ((H - padT - padB) * v) / max;
-
-  const line = values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
-  const area = `${line} L ${x(n - 1)} ${H - padB} L ${x(0)} ${H - padB} Z`;
-  const ay = y(avg);
+  const data = values.map((v, i) => ({ i, v, label: `${Number(months[i].slice(5))}월` }));
+  const pickable = (i: number) => !!onPick && (values[i] ?? 0) > 0 && i !== active;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart mini-trend">
-      <defs>
-        <linearGradient id={`mt-${gid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#5b6cff" stopOpacity={0.36} />
-          <stop offset="100%" stopColor="#5b6cff" stopOpacity={0.02} />
-        </linearGradient>
-      </defs>
-
-      {/* 바닥선과 평균선 — 평균 위아래로 어느 달이 튀는지 한눈에 */}
-      <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke={C_GRID} strokeWidth={1} />
-      {avg > 0 && (
-        <>
-          <line x1={padL} x2={W - padR} y1={ay} y2={ay} stroke={C_TEXT} strokeWidth={1} strokeDasharray="3 4" />
-          <text x={W - padR} y={ay - 4} fontSize={9} fill={C_TEXT} textAnchor="end">
-            평균 {compact(Math.round(avg))}
-          </text>
-        </>
-      )}
-
-      <path d={area} fill={`url(#mt-${gid})`} />
-      <path d={line} fill="none" stroke="#5b6cff" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-
-      {values.map((v, i) => {
-        const on = i === active;
-        const pickable = !!onPick && v > 0 && !on;
-        // 양 끝 라벨은 가운데 정렬하면 그림 밖으로 밀려 잘린다
-        const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
-        return (
-          <g
-            key={i}
-            className={pickable ? "mt-pick" : undefined}
-            onClick={pickable ? () => onPick!(i) : undefined}
-          >
-            {/* 넓은 투명 히트 영역 — 점이 작아도 누르기 쉽게 */}
-            <rect
-              x={x(i) - (W - padL - padR) / (2 * Math.max(1, n - 1))}
-              y={0}
-              width={(W - padL - padR) / Math.max(1, n - 1)}
-              height={H}
-              fill="transparent"
-            >
-              <title>{`${Number(months[i].slice(5))}월 · ${won(v)}`}</title>
-            </rect>
-            {on && <line x1={x(i)} x2={x(i)} y1={y(v)} y2={H - padB} stroke="#5b6cff" strokeWidth={1} opacity={0.45} />}
-            <circle
-              cx={x(i)}
-              cy={y(v)}
-              r={on ? 5 : 3}
-              fill={on ? "#5b6cff" : "var(--glass-strong)"}
-              stroke="#5b6cff"
-              strokeWidth={on ? 2.5 : 1.5}
+    <div className="h-44">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={data}
+          margin={{ top: 28, right: 24, left: 24, bottom: 0 }}
+          onClick={(s) => {
+            const i = Number(s?.activeTooltipIndex);
+            if (Number.isInteger(i) && pickable(i)) onPick!(i);
+          }}
+          style={{ cursor: onPick ? "pointer" : undefined }}
+        >
+          <defs>
+            <linearGradient id={`${gid}-m`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={tc.accent} stopOpacity={0.32} />
+              <stop offset="100%" stopColor={tc.accent} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis
+            dataKey="label"
+            tick={tick}
+            interval={0}
+            axisLine={{ stroke: tc.grid }}
+            tickLine={false}
+            padding={{ left: 8, right: 8 }}
+          />
+          <YAxis hide domain={[0, (max: number) => Math.max(1, max)]} />
+          {avg > 0 && (
+            <ReferenceLine
+              y={avg}
+              stroke={tc.axis}
+              strokeDasharray="3 4"
+              label={{ value: `평균 ${compact(Math.round(avg))}`, position: "insideTopRight", fill: tc.axis, fontSize: 10, fontFamily: "var(--font-mono)" }}
             />
-            {on && (
-              <text className="mt-on" x={x(i)} y={y(v) - 12} fontSize={12} fontWeight={700} textAnchor={anchor}>
-                {won(v)}
-              </text>
-            )}
-            <text
-              x={x(i)}
-              y={H - 7}
-              fontSize={10}
-              className={on ? "mt-on" : undefined}
-              fontWeight={on ? 700 : 400}
-              textAnchor={anchor}
-            >
-              {Number(months[i].slice(5))}월
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+          )}
+          <Tooltip
+            cursor={{ stroke: tc.axis, strokeDasharray: "3 3" }}
+            content={({ active: a, payload }) => {
+              if (!a || !payload?.length) return null;
+              const row = payload[0].payload as { i: number; v: number; label: string };
+              return <ChartTip head={row.label} rows={[{ color: tc.accent, value: won(row.v) }]} />;
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="v"
+            stroke={tc.accent}
+            strokeWidth={1.75}
+            fill={`url(#${gid}-m)`}
+            isAnimationActive={false}
+            dot={(p: { cx?: number; cy?: number; index?: number }) => {
+              const on = p.index === active;
+              return p.cx === undefined ? (
+                <g key={`d${p.index}`} />
+              ) : (
+                <circle
+                  key={`d${p.index}`}
+                  cx={p.cx}
+                  cy={p.cy}
+                  r={on ? 5 : 3}
+                  fill={on ? tc.accent : tc.surface}
+                  stroke={tc.accent}
+                  strokeWidth={on ? 2.5 : 1.5}
+                />
+              );
+            }}
+            activeDot={false}
+          />
+          {active >= 0 && active < n && (
+            <ReferenceDot
+              x={data[active].label}
+              y={values[active]}
+              r={0}
+              ifOverflow="visible"
+              label={{ value: won(values[active]), position: "top", fill: tc.text, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-mono)" }}
+            />
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
 // 항목 × 월 히트맵. 행 = 항목(총액 큰 순), 열 = 월, 칸 = 그 달 금액.
-//   - 칸은 간격을 띄운 둥근 유리 타일. 진하기는 제곱근 척도라 큰 칸 하나가 나머지를 모두
-//     흐리게 만들지 않는다. 진한 타일은 글자를 흰색으로 바꿔 대비를 지킨다.
-//   - 빈 칸도 옅은 타일로 남겨 격자가 읽히게 한다.
-//   - 합계 열에는 비중 막대를 붙여 어느 항목이 큰지 숫자를 읽지 않아도 보이게 한다.
-//   - 이름 열은 가로 스크롤 때 붙박이로 남되, 불투명 판 대신 서리 유리라 밑으로 지나가는
-//     칸이 흐리게 비친다.
+//   - 칸은 2px 간격의 둥근(4px) 타일. 진하기는 강조색(mint) 알파 단계, 제곱근 척도라
+//     큰 칸 하나가 나머지를 모두 흐리게 만들지 않는다. 빈 칸은 bg-white/[0.03].
+//   - 합계 열에는 비중 막대. 이름 열은 가로 스크롤 때 붙박이.
 export function Heatmap({
   rows,
   months,
@@ -787,51 +777,54 @@ export function Heatmap({
   // 값이 있는 칸을 누르면 그 달·그 항목의 거래를 열어 보게 한다
   onCell?: (name: string, ym: string) => void;
 }) {
-  if (rows.length === 0) return <p className="muted">데이터 없음</p>;
+  const tc = useThemeColors();
+  if (rows.length === 0) return <ChartEmpty />;
   const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
   // 전체 최댓값 기준으로 진하기를 정한다(항목 간 크기 비교가 되도록)
   const max = Math.max(1, ...rows.flatMap((r) => r.values));
   const maxTotal = Math.max(1, ...rows.map((r) => r.total));
   const last = months.length - 1;
+  const strongText = tc.mode === "dark" ? "text-ink-950" : "text-white";
 
   return (
-    <div className="heatmap-wrap">
-      <table className="heatmap">
+    <div className="overflow-x-auto scrollbar-hide">
+      <table className="border-separate [border-spacing:2px] w-full text-[11px]">
         <thead>
           <tr>
-            <th className="hm-corner">항목</th>
+            <th className="sticky left-0 z-[1] text-left font-normal label-mono px-2 py-1 bg-ink-900/70 backdrop-blur-md rounded-[4px]">항목</th>
             {months.map((m, i) => (
-              <th key={m} className={i === last ? "hm-now" : undefined}>
-                <span>{monthLabel(m)}</span>
+              <th key={m} className={`font-normal label-mono px-1 py-1 min-w-[44px] ${i === last ? "!text-mint-400" : ""}`}>
+                {monthLabel(m)}
               </th>
             ))}
-            <th className="hm-sum-h">합계</th>
+            <th className="font-normal label-mono px-2 py-1 min-w-[96px] text-left">합계</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, ri) => (
             <tr key={r.name}>
-              <th className="hm-name" title={r.name}>
-                <span className="hm-rank">{ri + 1}</span>
-                <span className="hm-label">{r.name}</span>
+              <th
+                className="sticky left-0 z-[1] text-left font-normal px-2 py-1 bg-ink-900/70 backdrop-blur-md rounded-[4px] max-w-[140px]"
+                title={r.name}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="num text-[10px] text-zinc-500 w-4 shrink-0">{ri + 1}</span>
+                  <span className="truncate text-zinc-200">{r.name}</span>
+                </span>
               </th>
               {r.values.map((v, i) => {
                 const lv = v > 0 ? Math.sqrt(v / max) : 0;
                 const clickable = !!onCell && v > 0;
-                const cls = [
-                  "hm-cell",
-                  v > 0 ? "" : "empty",
-                  lv > 0.55 ? "strong" : "",
-                  v === max && v > 0 ? "peak" : "",
-                  clickable ? "click" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
+                const peak = v === max && v > 0;
                 return (
-                  <td key={i}>
+                  <td key={i} className="p-0">
                     <span
-                      className={cls}
-                      style={v > 0 ? { background: `rgba(91,108,255,${0.1 + 0.8 * lv})` } : undefined}
+                      className={`num flex items-center justify-center h-8 rounded-[4px] ${
+                        v > 0 ? (lv > 0.55 ? `${strongText} font-semibold` : "text-white") : "bg-white/[0.03]"
+                      } ${peak ? "ring-1 ring-mint-300" : ""} ${
+                        clickable ? "cursor-pointer hover:ring-1 hover:ring-white/40 transition-shadow" : ""
+                      }`}
+                      style={v > 0 ? { background: cv("mint-400", Number((0.1 + 0.8 * lv).toFixed(2))) } : undefined}
                       title={
                         v > 0
                           ? `${r.name} · ${monthLabel(months[i])} · ${won(v)}${clickable ? " — 눌러서 내역 보기" : ""}`
@@ -844,11 +837,13 @@ export function Heatmap({
                   </td>
                 );
               })}
-              <td className="hm-sum">
-                <span className="hm-sum-bar">
-                  <i style={{ width: `${(r.total / maxTotal) * 100}%` }} />
+              <td className="px-2">
+                <span className="flex items-center gap-2">
+                  <span className="flex-1 h-1.5 rounded-full bg-white/[0.04] overflow-hidden min-w-[30px]">
+                    <i className="block h-full rounded-full bg-mint-400/70" style={{ width: `${(r.total / maxTotal) * 100}%` }} />
+                  </span>
+                  <strong className="num font-semibold text-white">{compact(r.total)}</strong>
                 </span>
-                <strong>{compact(r.total)}</strong>
               </td>
             </tr>
           ))}
