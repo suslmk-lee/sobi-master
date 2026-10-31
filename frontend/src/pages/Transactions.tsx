@@ -36,6 +36,8 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
+import { Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Trash2, Undo2, Wand2 } from "lucide-react";
+import IconTile from "../components/ui/IconTile";
 
 const EMPTY_FORM = {
   date: today(),
@@ -200,15 +202,20 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
   const cats = categoryOptions(refs.categories, f.direction);
 
   return (
-    <form className="card manual-form" onSubmit={submit}>
-      <h3>수동 등록</h3>
-      <div className="form-row">
+    <form className="surface p-5 mb-5" onSubmit={submit}>
+      <div className="flex items-center gap-3 mb-4">
+        <IconTile icon={PlusCircle} tone="mint" size="sm" />
+        <h3 className="section-title">수동 등록</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
         <input
           type="date"
+          className="input-field"
           value={f.date}
           onChange={(e) => setF({ ...f, date: e.target.value })}
         />
         <select
+          className="input-field"
           value={f.direction}
           onChange={(e) => setF({ ...f, direction: e.target.value, categoryId: "" })}
         >
@@ -219,13 +226,15 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         <input
           type="text"
           inputMode="numeric"
+          className="input-field num"
           placeholder="금액 (원)"
           value={f.amount}
           onChange={(e) => setF({ ...f, amount: formatAmount(e.target.value) })}
         />
-        <div className="autocomplete">
+        <div className="relative">
           <input
             type="text"
+            className="input-field"
             placeholder="내용 / 가맹점 (예: 동창회 회비)"
             value={f.merchant}
             onChange={(e) => onMerchant(e.target.value)}
@@ -239,27 +248,35 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
             aria-activedescendant={activeSug >= 0 ? `ac-merchant-${activeSug}` : undefined}
           />
           {showSug && (
-            <ul className="ac-list" id="ac-merchant-list" role="listbox" ref={sugListRef}>
+            <ul
+              className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-auto rounded-xl border border-white/10 bg-ink-800 p-1 shadow-2xl"
+              id="ac-merchant-list"
+              role="listbox"
+              ref={sugListRef}
+            >
               {sug.map((s, i) => (
                 <li
                   key={i}
                   id={`ac-merchant-${i}`}
                   role="option"
                   aria-selected={i === activeSug}
-                  className={i === activeSug ? "active" : undefined}
+                  className={`flex cursor-pointer items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-sm ${
+                    i === activeSug ? "bg-mint-500/10 text-mint-300" : "text-zinc-200"
+                  }`}
                   onMouseDown={() => pickSug(s)}
                   onMouseEnter={() => setActiveSug(i)}
                 >
-                  <span className="ac-merchant">{s.merchant}</span>
-                  {sugMeta(s) && <span className="ac-meta muted small">{sugMeta(s)}</span>}
+                  <span className="truncate">{s.merchant}</span>
+                  {sugMeta(s) && <span className="label-mono shrink-0">{sugMeta(s)}</span>}
                 </li>
               ))}
             </ul>
           )}
         </div>
       </div>
-      <div className="form-row">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
         <select
+          className="input-field"
           value={f.memberId}
           onChange={(e) => setF({ ...f, memberId: e.target.value })}
         >
@@ -269,6 +286,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           ))}
         </select>
         <select
+          className="input-field"
           value={f.categoryId}
           onChange={(e) => setF({ ...f, categoryId: e.target.value })}
         >
@@ -278,6 +296,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           ))}
         </select>
         <select
+          className="input-field"
           value={f.paymentMethodId}
           onChange={(e) => setF({ ...f, paymentMethodId: e.target.value })}
         >
@@ -288,27 +307,37 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         </select>
         <input
           type="text"
+          className="input-field"
           placeholder="메모"
           value={f.memo}
           onChange={(e) => setF({ ...f, memo: e.target.value })}
         />
-        <label className="check" title="세금·공과금처럼 카드사가 실적에 넣어주지 않는 결제">
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <label
+          className="flex items-center gap-2 text-sm text-zinc-300"
+          title="세금·공과금처럼 카드사가 실적에 넣어주지 않는 결제"
+        >
           <input
             type="checkbox"
+            className="accent-mint-500"
             checked={f.excludePerf}
             onChange={(e) => setF({ ...f, excludePerf: e.target.checked })}
           />
           실적 제외
         </label>
-        <button type="submit">등록</button>
+        <button type="submit" className="btn-primary ml-auto">
+          <Plus className="h-4 w-4" />
+          등록
+        </button>
       </div>
-      {err && <p className="error">{err}</p>}
-      <p className="muted small">
+      {err && <p className="mt-3 text-sm text-rose-300">{err}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
         이미 학습된 가맹점·금액이면 규칙대로 자동 분류됩니다(기본 귀속자보다 규칙이 우선).
         새 거래는 카테고리까지 골라 등록하면 다음부터 자동 분류되도록 규칙으로 학습됩니다.
         규칙과 다르게 처리하려면 등록 후 해당 행을 수정하세요.
         <br />
-        <strong>실적 제외</strong>를 켜면 이 결제는 카드 실적 계산에서만 빠지고, 지출 통계에는 그대로 포함됩니다.
+        <strong className="text-zinc-300">실적 제외</strong>를 켜면 이 결제는 카드 실적 계산에서만 빠지고, 지출 통계에는 그대로 포함됩니다.
       </p>
     </form>
   );
@@ -332,12 +361,14 @@ function SortTh({
   const arrow = !active ? "" : sort.endsWith("_asc") ? " ▲" : " ▼";
   return (
     <th
-      className={`sortable ${num ? "num" : ""} ${active ? "sorted" : ""}`}
+      className={`cursor-pointer select-none px-3 py-3 font-normal ${num ? "text-right" : "text-left"} ${
+        active ? "text-mint-300" : ""
+      }`}
       onClick={() => onSort(col)}
       title="클릭하여 정렬"
     >
       {children}
-      <span className="sort-arrow">{arrow}</span>
+      <span>{arrow}</span>
     </th>
   );
 }
@@ -540,210 +571,299 @@ export default function Transactions({
     load();
   };
 
+  const amtColor: Record<string, string> = {
+    income: "text-emerald-300",
+    expense: "text-rose-300",
+    transfer: "text-sky-300",
+  };
+  const selCls = "input-field !w-auto min-w-[8rem]";
+
   return (
     <div>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconTile icon={Receipt} tone="mint" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-light tracking-tight text-white">거래 내역</h2>
+            <p className="label-mono num">{txs.length} items</p>
+          </div>
+        </div>
+      </div>
+
       <ManualForm refs={refs} onAdded={load} />
       {confirmUI}
 
       {/* 날짜 한 줄, 나머지 조건 한 줄로 나눠 어중간한 줄바꿈을 없앤다 */}
-      <div className="filter-bar">
-        <div className="filter-row filter-row-date">
+      <div className="surface mb-4 space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-3">
           <MonthPicker value={month} onChange={setMonth} />
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={unclassifiedOnly}
-              onChange={(e) => setUnclassifiedOnly(e.target.checked)}
-            />
-            미분류만
-          </label>
-          <button className="ghost filter-reset" onClick={resetFilters}>필터 초기화</button>
+          <div className="glass-pill inline-flex p-1">
+            <button
+              type="button"
+              aria-pressed={unclassifiedOnly}
+              className={`pill-item ${unclassifiedOnly ? "pill-item-active" : ""}`}
+              onClick={() => setUnclassifiedOnly(!unclassifiedOnly)}
+            >
+              미분류만
+            </button>
+          </div>
+          <button className="btn-ghost ml-auto" onClick={resetFilters}>
+            <RotateCcw className="h-4 w-4" />
+            필터 초기화
+          </button>
         </div>
-        <div className="filter-row filter-row-cond">
-        <input
-          type="text"
-          className="search"
-          placeholder="가맹점·메모 검색"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <select value={direction} onChange={(e) => setDirection(e.target.value)}>
-          <option value="">구분 전체</option>
-          <option value="expense">지출</option>
-          <option value="income">수입</option>
-          <option value="transfer">이체</option>
-        </select>
-        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          {/* 주를 고르면 하위 부 거래까지 함께 조회된다 */}
-          <option value="">카테고리 전체</option>
-          {categoryOptions(refs.categories).map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
-        </select>
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          <option value="">귀속자 전체</option>
-          {refs.members.map((m) => (
-            <option key={m.id} value={m.id}>{m.name}</option>
-          ))}
-        </select>
-        <select value={pmId} onChange={(e) => setPmId(e.target.value)}>
-          <option value="">결제수단 전체</option>
-          {refs.paymentMethods.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          inputMode="numeric"
-          className="amt"
-          placeholder="최소액"
-          value={amountMin}
-          onChange={(e) => setAmountMin(formatAmount(e.target.value))}
-        />
-        <input
-          type="text"
-          inputMode="numeric"
-          className="amt"
-          placeholder="최대액"
-          value={amountMax}
-          onChange={(e) => setAmountMax(formatAmount(e.target.value))}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[12rem] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              className="input-field !pl-9"
+              placeholder="가맹점·메모 검색"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <select className={selCls} value={direction} onChange={(e) => setDirection(e.target.value)}>
+            <option value="">구분 전체</option>
+            <option value="expense">지출</option>
+            <option value="income">수입</option>
+            <option value="transfer">이체</option>
+          </select>
+          <select className={selCls} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            {/* 주를 고르면 하위 부 거래까지 함께 조회된다 */}
+            <option value="">카테고리 전체</option>
+            {categoryOptions(refs.categories).map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+          <select className={selCls} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            <option value="">귀속자 전체</option>
+            {refs.members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <select className={selCls} value={pmId} onChange={(e) => setPmId(e.target.value)}>
+            <option value="">결제수단 전체</option>
+            {refs.paymentMethods.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            inputMode="numeric"
+            className="input-field num !w-28"
+            placeholder="최소액"
+            value={amountMin}
+            onChange={(e) => setAmountMin(formatAmount(e.target.value))}
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="input-field num !w-28"
+            placeholder="최대액"
+            value={amountMax}
+            onChange={(e) => setAmountMax(formatAmount(e.target.value))}
+          />
         </div>
       </div>
 
-      <div className="toolbar wrap">
-        <span className="muted">{txs.length}건</span>
-        <button className="warn" onClick={applyRules}>규칙으로 미분류 분류</button>
-        <button className="ghost-btn" onClick={exportCsv}>CSV 내보내기</button>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <span className="chip num">{txs.length}건</span>
+        <button
+          className="btn-ghost !border-amber-400/25 !bg-amber-500/10 !text-amber-200 hover:!bg-amber-500/20"
+          onClick={applyRules}
+        >
+          <Wand2 className="h-4 w-4" />
+          규칙으로 미분류 분류
+        </button>
+        <button className="btn-ghost" onClick={exportCsv}>
+          <Download className="h-4 w-4" />
+          CSV 내보내기
+        </button>
         {canUndo && (
-          <button className="ghost-btn" onClick={undo}>↩ 삭제 취소</button>
+          <button className="btn-ghost" onClick={undo}>
+            <Undo2 className="h-4 w-4" />
+            ↩ 삭제 취소
+          </button>
         )}
       </div>
 
-      {msg && <p className="muted small toast-line">{msg}</p>}
+      {msg && (
+        <div role="status" className="surface mb-3 flex items-start gap-3 p-3.5">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-mint-400" />
+          <p className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-300">{msg}</p>
+        </div>
+      )}
 
       {selected.size > 0 && (
-        <div className="bulk-bar">
-          <span><strong>{selected.size}건</strong> 선택됨</span>
-          <select value={bulkMember} onChange={(e) => setBulkMember(e.target.value)}>
+        <div className="surface mb-3 flex flex-wrap items-center gap-3 p-3.5">
+          <span className="text-sm text-zinc-300">
+            <strong className="num text-mint-300">{selected.size}건</strong> 선택됨
+          </span>
+          <select className={selCls} value={bulkMember} onChange={(e) => setBulkMember(e.target.value)}>
             <option value="">귀속자 변경</option>
             {refs.members.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
-          <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+          <select className={selCls} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
             <option value="">카테고리 변경</option>
             {categoryOptions(refs.categories).map((c) => (
               <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </select>
-          <label className="check small">
+          <label className="flex items-center gap-2 text-xs text-zinc-300">
             <input
               type="checkbox"
+              className="accent-mint-500"
               checked={bulkLearn}
               onChange={(e) => setBulkLearn(e.target.checked)}
             />
             규칙 학습
           </label>
-          <button onClick={bulkClassify} disabled={!bulkMember && !bulkCategory}>일괄 적용</button>
-          <button className="ghost-btn" onClick={() => bulkExclude(true)} title="세금·공과금 등을 카드 실적에서 빼기">
+          <button className="btn-primary" onClick={bulkClassify} disabled={!bulkMember && !bulkCategory}>
+            일괄 적용
+          </button>
+          <button className="btn-ghost" onClick={() => bulkExclude(true)} title="세금·공과금 등을 카드 실적에서 빼기">
             실적 제외
           </button>
-          <button className="ghost-btn" onClick={() => bulkExclude(false)}>실적 포함</button>
-          <button className="warn" onClick={bulkDelete}>일괄 삭제</button>
-          <button className="ghost" onClick={() => setSelected(new Set())}>선택 해제</button>
+          <button className="btn-ghost" onClick={() => bulkExclude(false)}>실적 포함</button>
+          <button className="btn-danger" onClick={bulkDelete}>
+            <Trash2 className="h-4 w-4" />
+            일괄 삭제
+          </button>
+          <button className="btn-ghost ml-auto" onClick={() => setSelected(new Set())}>선택 해제</button>
         </div>
       )}
 
-      <table className="tx-table">
-        <thead>
-          <tr>
-            <th className="chk">
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
-            </th>
-            <SortTh col="date" sort={sort} onSort={toggleSort}>날짜</SortTh>
-            <SortTh col="merchant" sort={sort} onSort={toggleSort}>내용</SortTh>
-            <SortTh col="amount" sort={sort} onSort={toggleSort} num>금액</SortTh>
-            <SortTh col="direction" sort={sort} onSort={toggleSort}>구분</SortTh>
-            <SortTh col="member" sort={sort} onSort={toggleSort}>귀속자</SortTh>
-            <SortTh col="category" sort={sort} onSort={toggleSort}>카테고리</SortTh>
-            <SortTh col="payment" sort={sort} onSort={toggleSort}>결제수단</SortTh>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && txs.length === 0 && <TableSkeleton cols={9} />}
-          {txs.map((t) => (
-            <tr
-              key={t.id}
-              className={`${!t.memberId || !t.categoryId ? "row-unclassified" : ""} ${
-                selected.has(t.id) ? "row-selected" : ""
-              }`}
-            >
-              <td className="chk">
+      <div className="surface overflow-x-auto">
+        <table className="w-full text-sm text-zinc-200">
+          <thead>
+            <tr className="table-head border-b border-white/[0.07]">
+              <th className="w-10 px-3 py-3">
                 <input
                   type="checkbox"
-                  checked={selected.has(t.id)}
-                  onChange={() => toggle(t.id)}
+                  className="accent-mint-500"
+                  checked={allChecked}
+                  onChange={toggleAll}
                 />
-              </td>
-              <td>{t.date}</td>
-              <td>
-                {t.merchant || "-"}
-                {t.autoClassified && <span className="badge auto">자동</span>}
-                {t.source === "manual" && <span className="badge manual">수동</span>}
-                {/* 정기결제의 한 달치로 연결된 거래(원본·직접 입력·자동 등록 모두) */}
-                {(t.subscriptionName || t.source === "subscription") && (
-                  <span
-                    className="badge sub"
-                    title={
-                      (t.subscriptionName ? `정기결제 "${t.subscriptionName}"` : "정기결제") +
-                      (t.source === "subscription" ? " · 자동 등록된 거래" : " · 이 달 결제로 연결됨")
-                    }
-                  >
-                    ↻ 정기{t.source === "subscription" ? " · 자동" : ""}
-                  </span>
-                )}
-                {t.excludePerf && (
-                  <span className="badge shortfall" title="카드 실적 계산에서 제외됨">실적제외</span>
-                )}
-                {t.memo && <div className="muted small">{t.memo}</div>}
-              </td>
-              <td className={`num ${t.direction}`}>{won(t.amount)}</td>
-              <td>{DIRECTION_LABEL[t.direction]}</td>
-              <td>{t.memberName || <span className="muted">미지정</span>}</td>
-              <td>{t.categoryName || <span className="muted">미분류</span>}</td>
-              <td>
-                <PmChip
-                  name={t.paymentMethodName}
-                  type={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.type}
-                  color={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.color}
-                />
-              </td>
-              <td className="actions">
-                {/* 지출만 정기결제가 될 수 있다 */}
-                {/* 이미 정기결제에 연결된 거래는 다시 등록할 필요가 없어 버튼을 숨긴다 */}
-                {t.direction === "expense" && !t.subscriptionName && t.source !== "subscription" && (
-                  <button
-                    className="ghost"
-                    onClick={() => setSubTxId(t.id)}
-                    title="다음 달부터 매달 자동 등록되는 정기결제로 만들기"
-                  >
-                    ↻
-                  </button>
-                )}
-                <button className="ghost" onClick={() => setEditTx(t)} title="수정">✎</button>
-                <button className="ghost" onClick={() => remove(t)} title="삭제">✕</button>
-              </td>
+              </th>
+              <SortTh col="date" sort={sort} onSort={toggleSort}>날짜</SortTh>
+              <SortTh col="merchant" sort={sort} onSort={toggleSort}>내용</SortTh>
+              <SortTh col="amount" sort={sort} onSort={toggleSort} num>금액</SortTh>
+              <SortTh col="direction" sort={sort} onSort={toggleSort}>구분</SortTh>
+              <SortTh col="member" sort={sort} onSort={toggleSort}>귀속자</SortTh>
+              <SortTh col="category" sort={sort} onSort={toggleSort}>카테고리</SortTh>
+              <SortTh col="payment" sort={sort} onSort={toggleSort}>결제수단</SortTh>
+              <th className="px-3 py-3"></th>
             </tr>
-          ))}
-          {!loading && txs.length === 0 && (
-            <tr>
-              <td colSpan={9} className="muted center">거래가 없습니다</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {loading && txs.length === 0 && <TableSkeleton cols={9} />}
+            {txs.map((t) => {
+              const unclassified = !t.memberId || !t.categoryId;
+              const isSel = selected.has(t.id);
+              return (
+                <tr
+                  key={t.id}
+                  className={`table-row ${
+                    isSel
+                      ? "bg-mint-500/[0.08]"
+                      : unclassified
+                      ? "bg-amber-400/[0.06] shadow-[inset_2px_0_0_0] shadow-amber-400/60"
+                      : ""
+                  }`}
+                >
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="accent-mint-500"
+                      checked={isSel}
+                      onChange={() => toggle(t.id)}
+                    />
+                  </td>
+                  <td className="num whitespace-nowrap px-3 py-2.5 text-zinc-400">{t.date}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span>{t.merchant || "-"}</span>
+                      {t.autoClassified && <span className="badge bg-sky-500/10 text-sky-300">자동</span>}
+                      {t.source === "manual" && <span className="badge bg-white/[0.06] text-zinc-300">수동</span>}
+                      {/* 정기결제의 한 달치로 연결된 거래(원본·직접 입력·자동 등록 모두) */}
+                      {(t.subscriptionName || t.source === "subscription") && (
+                        <span
+                          className="badge bg-mint-500/10 text-mint-300"
+                          title={
+                            (t.subscriptionName ? `정기결제 "${t.subscriptionName}"` : "정기결제") +
+                            (t.source === "subscription" ? " · 자동 등록된 거래" : " · 이 달 결제로 연결됨")
+                          }
+                        >
+                          <Repeat className="h-3 w-3" />
+                          정기{t.source === "subscription" ? " · 자동" : ""}
+                        </span>
+                      )}
+                      {t.excludePerf && (
+                        <span className="badge bg-amber-500/10 text-amber-300" title="카드 실적 계산에서 제외됨">
+                          실적제외
+                        </span>
+                      )}
+                    </div>
+                    {t.memo && <div className="mt-0.5 text-xs text-zinc-500">{t.memo}</div>}
+                  </td>
+                  <td className={`num whitespace-nowrap px-3 py-2.5 text-right font-medium ${amtColor[t.direction] ?? ""}`}>
+                    {won(t.amount)}
+                  </td>
+                  <td className="px-3 py-2.5 text-zinc-300">{DIRECTION_LABEL[t.direction]}</td>
+                  <td className="px-3 py-2.5">
+                    {t.memberName || <span className="text-zinc-500">미지정</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {t.categoryName || <span className="text-amber-300">미분류</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <PmChip
+                      name={t.paymentMethodName}
+                      type={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.type}
+                      color={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.color}
+                    />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      {/* 지출만 정기결제가 될 수 있다 */}
+                      {/* 이미 정기결제에 연결된 거래는 다시 등록할 필요가 없어 버튼을 숨긴다 */}
+                      {t.direction === "expense" && !t.subscriptionName && t.source !== "subscription" && (
+                        <button
+                          className="btn-icon"
+                          onClick={() => setSubTxId(t.id)}
+                          title="다음 달부터 매달 자동 등록되는 정기결제로 만들기"
+                          aria-label="정기결제로 등록"
+                        >
+                          <Repeat className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button className="btn-icon" onClick={() => setEditTx(t)} title="수정" aria-label="수정">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="btn-icon hover:!border-rose-400/30 hover:!text-rose-300"
+                        onClick={() => remove(t)}
+                        title="삭제"
+                        aria-label="삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && txs.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-3 py-10 text-center text-zinc-500">거래가 없습니다</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {editTx && (
         <EditModal

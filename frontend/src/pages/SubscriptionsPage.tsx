@@ -11,6 +11,9 @@ import MonthPicker from "../MonthPicker";
 import { LineChart } from "../charts";
 import { Sk } from "../Skeleton";
 import { useConfirm } from "../ConfirmModal";
+import { AlertCircle, CalendarClock, CalendarOff, Check, Pencil, Plus, PlusCircle, Power, RefreshCw, Repeat, Trash2, TrendingUp } from "lucide-react";
+import IconTile from "../components/ui/IconTile";
+import { useThemeColors } from "../appearance/AppearanceContext";
 
 const BLANK = {
   id: 0,
@@ -57,10 +60,11 @@ function OptionalMonth({
   const on = value !== "";
   const thisYm = new Date().toISOString().slice(0, 7);
   return (
-    <div className="sub-optional">
-      <label className="check">
+    <div className="surface-inset flex flex-wrap items-center gap-3 px-3.5 py-2.5">
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
         <input
           type="checkbox"
+          className="accent-mint-500"
           checked={on}
           onChange={(e) => onChange(e.target.checked ? thisYm : "")}
         />
@@ -69,7 +73,7 @@ function OptionalMonth({
       {on ? (
         <MonthPicker value={value} onChange={onChange} />
       ) : (
-        <span className="muted small">{hint}</span>
+        <span className="text-xs text-zinc-500">{hint}</span>
       )}
     </div>
   );
@@ -91,6 +95,7 @@ export default function SubscriptionsPage({
   const [loading, setLoading] = useState(true);
   const [postMsg, setPostMsg] = useState("");
   const [confirm, confirmUI] = useConfirm();
+  const theme = useThemeColors();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -226,66 +231,95 @@ export default function SubscriptionsPage({
   const ending = items.filter((i) => i.ending);
   const changing = items.filter((i) => i.changingYm);
 
+  const statCls = "surface p-4 flex flex-col gap-1";
+
   return (
-    <div>
+    <div className="space-y-5">
       {confirmUI}
-      <div className="toolbar wrap">
-        <MonthPicker value={month} onChange={setMonth} />
-        <span className="muted small">
-          등록한 정기결제를 실제 거래와 대조합니다. "자동 등록"을 켠 항목은 결제일(주말·공휴일이면
-          다음 업무일)에 거래가 저절로 생깁니다.
-        </span>
-        <button className="ghost-btn" onClick={postNow} title="결제일이 지난 자동 등록분을 지금 반영">
-          자동 등록 지금 반영
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconTile icon={Repeat} tone="mint" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-light tracking-tight text-white">정기결제</h2>
+            <p className="label-mono num">{items.length} items</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <MonthPicker value={month} onChange={setMonth} />
+          <button className="btn-ghost" onClick={postNow} title="결제일이 지난 자동 등록분을 지금 반영">
+            <RefreshCw className="h-4 w-4" />
+            자동 등록 지금 반영
+          </button>
+        </div>
       </div>
 
-      {err && <p className="error">{err}</p>}
-      {postMsg && <p className="muted small post-msg">{postMsg}</p>}
+      <p className="text-xs leading-relaxed text-zinc-500">
+        등록한 정기결제를 실제 거래와 대조합니다. "자동 등록"을 켠 항목은 결제일(주말·공휴일이면
+        다음 업무일)에 거래가 저절로 생깁니다.
+      </p>
+
+      {err && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-400/25 bg-rose-500/10 p-3.5 text-sm text-rose-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="min-w-0 flex-1">{err}</p>
+        </div>
+      )}
+      {postMsg && (
+        <div role="status" className="surface flex items-start gap-3 p-3.5">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-mint-400" />
+          <p className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-300">{postMsg}</p>
+        </div>
+      )}
 
       {loading ? (
         <Sk h={92} r={16} />
       ) : (
-        <div className="stat-grid">
-          <div className="card stat">
-            <span className="muted">이번 달 예정</span>
-            <strong className="expense">{won(data?.planned ?? 0)}</strong>
-            <span className="muted small">{data?.dueCount ?? 0}건</span>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className={statCls}>
+            <span className="label-mono">이번 달 예정</span>
+            <strong className="num text-xl font-semibold text-rose-300">{won(data?.planned ?? 0)}</strong>
+            <span className="label-mono num">{data?.dueCount ?? 0}건</span>
           </div>
-          <div className="card stat">
-            <span className="muted">실제 빠진 금액</span>
-            <strong>{won(data?.seenTotal ?? 0)}</strong>
-            <span className="muted small">
+          <div className={statCls}>
+            <span className="label-mono">실제 빠진 금액</span>
+            <strong className="num text-xl font-semibold text-white">{won(data?.seenTotal ?? 0)}</strong>
+            <span className="label-mono num">
               {data?.seenCount ?? 0} / {data?.dueCount ?? 0}건 확인
             </span>
           </div>
-          <div className="card stat">
-            <span className="muted">월 환산 (연결제 ÷12 포함)</span>
-            <strong>{won(data?.monthlyEquivalent ?? 0)}</strong>
+          <div className={statCls}>
+            <span className="label-mono">월 환산 (연결제 ÷12 포함)</span>
+            <strong className="num text-xl font-semibold text-white">{won(data?.monthlyEquivalent ?? 0)}</strong>
           </div>
-          <div className="card stat">
-            <span className="muted">연간 예상</span>
-            <strong>{won(data?.yearlyProjection ?? 0)}</strong>
+          <div className={statCls}>
+            <span className="label-mono">연간 예상</span>
+            <strong className="num text-xl font-semibold text-white">{won(data?.yearlyProjection ?? 0)}</strong>
           </div>
         </div>
       )}
 
       {(ending.length > 0 || changing.length > 0) && (
-        <div className="alerts">
+        <div className="space-y-2">
           {ending.map((i) => (
-            <div className="alert warn" key={`e${i.sub.id}`}>
-              <strong>{i.sub.name} — 이번 달이 마지막</strong>
-              <span className="muted small">
+            <div
+              className="flex flex-col gap-0.5 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3.5"
+              key={`e${i.sub.id}`}
+            >
+              <strong className="text-sm text-amber-200">{i.sub.name} — 이번 달이 마지막</strong>
+              <span className="text-xs text-zinc-400">
                 {i.sub.endYm} 이후로는 결제되지 않습니다.
               </span>
             </div>
           ))}
           {changing.map((i) => (
-            <div className="alert info" key={`c${i.sub.id}`}>
-              <strong>
+            <div
+              className="flex flex-col gap-0.5 rounded-xl border border-sky-400/25 bg-sky-500/10 p-3.5"
+              key={`c${i.sub.id}`}
+            >
+              <strong className="num text-sm text-sky-200">
                 {i.sub.name} — {i.changingYm}부터 {won(i.changingAmount)}
               </strong>
-              <span className="muted small">
+              <span className="num text-xs text-zinc-400">
                 현재 {won(i.amount)} → {won(i.changingAmount)} (
                 {i.changingAmount > i.amount ? "인상" : "인하"})
               </span>
@@ -294,18 +328,23 @@ export default function SubscriptionsPage({
         </div>
       )}
 
-      <div className="card">
-        <h3>{editing ? "정기결제 수정" : "정기결제 등록"}</h3>
-        <form onSubmit={submit}>
-          <div className="form-row">
+      <div className="surface p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <IconTile icon={editing ? Pencil : PlusCircle} tone="mint" size="sm" />
+          <h3 className="section-title">{editing ? "정기결제 수정" : "정기결제 등록"}</h3>
+        </div>
+        <form onSubmit={submit} className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
               type="text"
+              className="input-field"
               placeholder="이름 (예: 구글 제미나이)"
               value={f.name}
               onChange={(e) => setF({ ...f, name: e.target.value })}
             />
             <input
               type="text"
+              className="input-field"
               placeholder="대조할 가맹점명 (비우면 이름으로 대조)"
               value={f.merchant}
               onChange={(e) => setF({ ...f, merchant: e.target.value })}
@@ -313,39 +352,48 @@ export default function SubscriptionsPage({
             <input
               type="text"
               inputMode="numeric"
-              className="amt"
+              className="input-field num"
               placeholder="요금"
               value={f.amount}
               onChange={(e) => setF({ ...f, amount: formatAmount(e.target.value) })}
             />
-            <select value={f.cycle} onChange={(e) => setF({ ...f, cycle: e.target.value })}>
-              <option value="monthly">매월</option>
-              <option value="yearly">매년</option>
-            </select>
-            {f.cycle === "yearly" && (
+            <div className="flex gap-3">
               <select
-                value={f.billingMonth}
-                onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
-                title="결제 월"
+                className="input-field"
+                value={f.cycle}
+                onChange={(e) => setF({ ...f, cycle: e.target.value })}
               >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <option key={m} value={m}>{m}월</option>
+                <option value="monthly">매월</option>
+                <option value="yearly">매년</option>
+              </select>
+              {f.cycle === "yearly" && (
+                <select
+                  className="input-field"
+                  value={f.billingMonth}
+                  onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
+                  title="결제 월"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+              )}
+              <select
+                className="input-field"
+                value={f.billingDay}
+                onChange={(e) => setF({ ...f, billingDay: e.target.value })}
+                title="결제일"
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}일</option>
                 ))}
               </select>
-            )}
-            <select
-              value={f.billingDay}
-              onChange={(e) => setF({ ...f, billingDay: e.target.value })}
-              title="결제일"
-            >
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                <option key={d} value={d}>{d}일</option>
-              ))}
-            </select>
+            </div>
           </div>
 
-          <div className="form-row">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <select
+              className="input-field"
               value={f.categoryId}
               onChange={(e) => setF({ ...f, categoryId: e.target.value })}
             >
@@ -355,6 +403,7 @@ export default function SubscriptionsPage({
               ))}
             </select>
             <select
+              className="input-field"
               value={f.memberId}
               onChange={(e) => setF({ ...f, memberId: e.target.value })}
             >
@@ -364,6 +413,7 @@ export default function SubscriptionsPage({
               ))}
             </select>
             <select
+              className="input-field"
               value={f.paymentMethodId}
               onChange={(e) => setF({ ...f, paymentMethodId: e.target.value })}
             >
@@ -374,13 +424,14 @@ export default function SubscriptionsPage({
             </select>
             <input
               type="text"
+              className="input-field"
               placeholder="메모"
               value={f.memo}
               onChange={(e) => setF({ ...f, memo: e.target.value })}
             />
           </div>
 
-          <div className="form-row sub-schedule">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <OptionalMonth
               label="시작 월"
               value={f.startYm}
@@ -395,7 +446,7 @@ export default function SubscriptionsPage({
             />
           </div>
 
-          <div className="form-row sub-schedule">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <OptionalMonth
               label="요금 변경 예정"
               value={f.nextAmountYm}
@@ -406,7 +457,7 @@ export default function SubscriptionsPage({
               <input
                 type="text"
                 inputMode="numeric"
-                className="amt"
+                className="input-field num"
                 placeholder="변경 후 요금"
                 value={f.nextAmount}
                 onChange={(e) => setF({ ...f, nextAmount: formatAmount(e.target.value) })}
@@ -414,87 +465,137 @@ export default function SubscriptionsPage({
             )}
           </div>
 
-          <label className="check auto-post-check">
+          <label className="surface-inset flex items-start gap-3 p-3.5">
             <input
               type="checkbox"
+              className="mt-1 accent-mint-500"
               checked={f.autoPost}
               onChange={(e) => setF({ ...f, autoPost: e.target.checked })}
             />
-            <span>
-              <strong>매달 거래 자동 등록</strong>
-              <span className="muted small">
+            <span className="text-sm text-zinc-200">
+              <strong className="font-medium text-white">매달 거래 자동 등록</strong>
+              <span className="text-xs leading-relaxed text-zinc-500">
                 {" "}— 결제일에 거래를 만들어 줍니다. 주말·공휴일이면 다음 업무일로 밀고, 그 달 결제를
                 이미 입력해 뒀으면 새로 만들지 않고 연결만 합니다. 켠 달부터 적용됩니다(지난 달은 소급하지 않음).
               </span>
             </span>
           </label>
 
-          <div className="form-row">
-            <button type="submit">{editing ? "수정 저장" : "등록"}</button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="submit" className="btn-primary">
+              {editing ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editing ? "수정 저장" : "등록"}
+            </button>
             {editing && (
-              <button type="button" className="ghost-btn" onClick={reset}>취소</button>
+              <button type="button" className="btn-ghost" onClick={reset}>취소</button>
             )}
           </div>
         </form>
       </div>
 
-      <div className="card">
-        <h3>이번 달 결제 예정 ({monthLabel(month)})</h3>
+      <div className="surface p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <IconTile icon={CalendarClock} tone="mint" size="sm" />
+          <h3 className="section-title">이번 달 결제 예정 ({monthLabel(month)})</h3>
+          <span className="chip num">{due.length}</span>
+        </div>
         {loading ? (
           <Sk h={120} r={12} />
         ) : due.length === 0 ? (
-          <p className="muted">이번 달에 빠질 정기결제가 없습니다.</p>
+          <p className="text-sm text-zinc-500">이번 달에 빠질 정기결제가 없습니다.</p>
         ) : (
-          <ul className="sub-list">
+          <ul className="space-y-2">
             {due.map((i) => (
-              <li key={i.sub.id} className={i.seen ? "seen" : "pending"}>
-                <span className="sub-name">
-                  {i.sub.name}
-                  {i.sub.cycle === "yearly" && <span className="badge">연 결제</span>}
-                  {i.sub.autoPost && <span className="badge auto">자동 등록</span>}
-                </span>
-                <span className="sub-meta muted small">
-                  {/* 주말·공휴일로 밀리면 원래 날짜와 실제 결제일을 같이 보여 준다 */}
-                  {i.chargeDate && i.chargeDate !== i.plannedDate ? (
-                    <>
-                      {dayLabel(i.plannedDate)} → <strong>{dayLabel(i.chargeDate)}</strong>
-                      <span className="shift-reason"> ({i.shiftReason})</span>
-                    </>
-                  ) : i.chargeDate ? (
-                    dayLabel(i.chargeDate)
-                  ) : (
-                    `매월 ${i.sub.billingDay}일`
-                  )}
-                  {i.sub.categoryName && ` · ${i.sub.categoryName}`}
-                  {i.sub.paymentMethodName && ` · ${i.sub.paymentMethodName}`}
-                  {i.sub.endYm && ` · ${i.sub.endYm}까지`}
-                </span>
-                <span className="sub-amount">{won(i.amount)}</span>
-                {i.seen ? (
-                  <span className="badge achieved">
-                    빠짐 · {won(i.seenAmount)}
-                    {i.seenDate ? ` (${i.seenDate.slice(5)})` : ""}
-                    {i.diff !== 0 && (
-                      <em className={i.diff > 0 ? "over" : ""}>
-                        {i.diff > 0 ? " +" : " "}
-                        {won(i.diff)}
-                      </em>
+              <li
+                key={i.sub.id}
+                className={`surface-inset flex flex-wrap items-center gap-x-4 gap-y-2 p-3.5 ${
+                  i.seen ? "" : "border-l-2 border-l-sky-400/60"
+                }`}
+              >
+                <div className="min-w-[10rem] flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-white">
+                    {i.sub.name}
+                    {i.sub.cycle === "yearly" && (
+                      <span className="badge bg-white/[0.06] text-zinc-300">연 결제</span>
                     )}
-                  </span>
-                ) : i.postState === "deleted" ? (
-                  // 자동으로 만들었는데 사용자가 지운 달 — 다시 만들지 않는다는 걸 알려 준다
-                  <span className="badge" title="자동으로 만든 거래를 지웠습니다. 이 달은 다시 만들지 않습니다.">
-                    지움 · 다시 안 만듦
-                  </span>
-                ) : (
-                  <span className="badge shortfall">{i.sub.autoPost ? "자동 등록 예정" : "예정"}</span>
-                )}
-                {i.postState === "matched" && (
-                  <span className="badge" title="이미 입력된 거래를 이 달 결제로 연결했습니다">기존 거래 연결</span>
-                )}
-                <button className="ghost" title="수정" onClick={() => edit(i.sub)}>수정</button>
-                <button className="ghost" title="끄기" onClick={() => toggleActive(i.sub)}>끄기</button>
-                <button className="ghost" title="삭제" onClick={() => remove(i.sub)}>✕</button>
+                    {i.sub.autoPost && (
+                      <span className="badge bg-mint-500/10 text-mint-300">
+                        <Repeat className="h-3 w-3" />
+                        자동 등록
+                      </span>
+                    )}
+                  </div>
+                  <div className="num mt-1 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                    {/* 주말·공휴일로 밀리면 원래 날짜와 실제 결제일을 같이 보여 준다 */}
+                    {i.chargeDate && i.chargeDate !== i.plannedDate ? (
+                      <>
+                        <span>{dayLabel(i.plannedDate)} →</span>
+                        <strong className="font-medium text-zinc-200">{dayLabel(i.chargeDate)}</strong>
+                        <span className="chip">{i.shiftReason}</span>
+                      </>
+                    ) : i.chargeDate ? (
+                      <span>{dayLabel(i.chargeDate)}</span>
+                    ) : (
+                      <span>{`매월 ${i.sub.billingDay}일`}</span>
+                    )}
+                    {i.sub.categoryName && <span>{`· ${i.sub.categoryName}`}</span>}
+                    {i.sub.paymentMethodName && <span>{`· ${i.sub.paymentMethodName}`}</span>}
+                    {i.sub.endYm && <span>{`· ${i.sub.endYm}까지`}</span>}
+                  </div>
+                </div>
+                <span className="num text-sm font-medium text-rose-300">{won(i.amount)}</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {i.seen ? (
+                    <span className="badge bg-emerald-500/10 text-emerald-300">
+                      <span className="num">
+                        빠짐 · {won(i.seenAmount)}
+                        {i.seenDate ? ` (${i.seenDate.slice(5)})` : ""}
+                      </span>
+                      {i.diff !== 0 && (
+                        <em className={`num not-italic ${i.diff > 0 ? "text-rose-300" : "text-emerald-300"}`}>
+                          {i.diff > 0 ? " +" : " "}
+                          {won(i.diff)}
+                        </em>
+                      )}
+                    </span>
+                  ) : i.postState === "deleted" ? (
+                    // 자동으로 만들었는데 사용자가 지운 달 — 다시 만들지 않는다는 걸 알려 준다
+                    <span
+                      className="badge bg-amber-500/10 text-amber-300"
+                      title="자동으로 만든 거래를 지웠습니다. 이 달은 다시 만들지 않습니다."
+                    >
+                      지움 · 다시 안 만듦
+                    </span>
+                  ) : (
+                    <span className="badge bg-sky-500/10 text-sky-300">
+                      {i.sub.autoPost ? "자동 등록 예정" : "예정"}
+                    </span>
+                  )}
+                  {i.postState === "matched" && (
+                    <span
+                      className="badge bg-sky-500/10 text-sky-300"
+                      title="이미 입력된 거래를 이 달 결제로 연결했습니다"
+                    >
+                      기존 거래 연결
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button className="btn-icon" title="수정" aria-label="수정" onClick={() => edit(i.sub)}>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button className="btn-icon" title="끄기" aria-label="끄기" onClick={() => toggleActive(i.sub)}>
+                    <Power className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="btn-icon hover:!border-rose-400/30 hover:!text-rose-300"
+                    title="삭제"
+                    aria-label="삭제"
+                    onClick={() => remove(i.sub)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -502,13 +603,20 @@ export default function SubscriptionsPage({
       </div>
 
       {off.length > 0 && (
-        <div className="card">
-          <h3>이번 달 해당 없음 <span className="muted small">종료·시작 전·연결제 비결제월·꺼둠</span></h3>
-          <ul className="sub-list">
+        <div className="surface p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <IconTile icon={CalendarOff} tone="amber" size="sm" />
+            <h3 className="section-title">이번 달 해당 없음</h3>
+            <span className="label-mono">종료·시작 전·연결제 비결제월·꺼둠</span>
+          </div>
+          <ul className="space-y-2">
             {off.map((i) => (
-              <li key={i.sub.id} className="inactive">
-                <span className="sub-name">{i.sub.name}</span>
-                <span className="sub-meta muted small">
+              <li
+                key={i.sub.id}
+                className="surface-inset flex flex-wrap items-center gap-x-4 gap-y-2 p-3.5 opacity-70"
+              >
+                <span className="min-w-[8rem] text-sm text-zinc-300">{i.sub.name}</span>
+                <span className="min-w-[8rem] flex-1 text-xs text-zinc-500">
                   {!i.sub.active
                     ? "꺼둠"
                     : i.sub.endYm && month > i.sub.endYm
@@ -519,28 +627,47 @@ export default function SubscriptionsPage({
                     ? `매년 ${i.sub.billingMonth}월 결제`
                     : ""}
                 </span>
-                <span className="sub-amount muted">{won(i.amount)}</span>
-                <button className="ghost" onClick={() => edit(i.sub)}>수정</button>
-                <button className="ghost" onClick={() => toggleActive(i.sub)}>
-                  {i.sub.active ? "끄기" : "켜기"}
-                </button>
-                <button className="ghost" onClick={() => remove(i.sub)}>✕</button>
+                <span className="num text-sm text-zinc-500">{won(i.amount)}</span>
+                <div className="flex items-center gap-1">
+                  <button className="btn-icon" title="수정" aria-label="수정" onClick={() => edit(i.sub)}>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    title={i.sub.active ? "끄기" : "켜기"}
+                    aria-label={i.sub.active ? "끄기" : "켜기"}
+                    onClick={() => toggleActive(i.sub)}
+                  >
+                    <Power className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="btn-icon hover:!border-rose-400/30 hover:!text-rose-300"
+                    title="삭제"
+                    aria-label="삭제"
+                    onClick={() => remove(i.sub)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="card">
-        <h3>정기결제 지출 추이 (최근 {data?.trend?.length ?? 6}개월)</h3>
+      <div className="surface p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <IconTile icon={TrendingUp} tone="sky" size="sm" />
+          <h3 className="section-title">정기결제 지출 추이 (최근 {data?.trend?.length ?? 6}개월)</h3>
+        </div>
         {loading ? (
           <Sk h={180} r={12} />
         ) : !data?.trend?.length ? (
-          <p className="muted">추이를 만들 데이터가 없습니다.</p>
+          <p className="text-sm text-zinc-500">추이를 만들 데이터가 없습니다.</p>
         ) : (
           <LineChart
             xLabels={(data.trendMonths ?? []).map(monthLabel)}
-            series={[{ name: "정기결제", color: "#5b6cff", values: data.trend }]}
+            series={[{ name: "정기결제", color: theme.accent, values: data.trend }]}
           />
         )}
       </div>
