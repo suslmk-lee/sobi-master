@@ -36,7 +36,8 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
-import { Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Trash2, Undo2, Wand2 } from "lucide-react";
+import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Trash2, Undo2, Wand2, X } from "lucide-react";
+import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
 
 const EMPTY_FORM = {
@@ -52,9 +53,22 @@ const EMPTY_FORM = {
 };
 
 // 수동 등록 폼: 현금 지출, 회비, 경조사처럼 내역서에 안 잡히는 거래를 직접 입력한다.
-function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
+// 수동 등록 팝업. 금액만 바꿔 연달아 넣는 경우가 많아 등록 후에도 닫지 않고 금액만 비운다.
+// 닫기: Esc · 바깥 클릭 · X (자동완성 목록이 떠 있을 때 Esc 는 목록만 닫는다)
+function ManualForm({ refs, onAdded, onClose }: { refs: Refs; onAdded: () => void; onClose: () => void }) {
   const [f, setF] = useState({ ...EMPTY_FORM });
   const [err, setErr] = useState("");
+  const [done, setDone] = useState(""); // 방금 등록한 거래 요약
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    amountRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   // 내용(가맹점) 자동완성
   const [sug, setSug] = useState<store.MerchantSuggestion[]>([]);
@@ -113,6 +127,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
     if (e.key === "Escape") {
       if (showSug) {
         e.preventDefault();
+        e.stopPropagation(); // 팝업 닫기(Esc)까지 가지 않게
         closeSug();
       }
       return;
@@ -193,6 +208,8 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
       // 금액만 바꿔 연속 입력하는 경우가 많아 금액만 비우고 나머지는 유지한다
       setF({ ...f, amount: "" });
       setShowSug(false);
+      setDone(`${f.date.slice(5)} ${f.merchant || "(내용 없음)"} ${won(amount)}`);
+      amountRef.current?.focus();
       onAdded();
     } catch (e: any) {
       setErr(String(e));
@@ -202,12 +219,30 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
   const cats = categoryOptions(refs.categories, f.direction);
 
   return (
-    <form className="surface p-5 mb-5" onSubmit={submit}>
-      <div className="flex items-center gap-3 mb-4">
-        <IconTile icon={PlusCircle} tone="mint" size="sm" />
-        <h3 className="section-title">수동 등록</h3>
+    <Portal>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+    <form
+      role="dialog"
+      aria-modal="true"
+      aria-label="거래 등록"
+      className="surface max-h-[92vh] w-full max-w-3xl overflow-y-auto p-5 sm:p-6"
+      onSubmit={submit}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <IconTile icon={PlusCircle} tone="mint" size="sm" />
+          <h3 className="section-title">거래 등록</h3>
+        </div>
+        <button type="button" onClick={onClose} className="btn-icon shrink-0" aria-label="닫기" title="닫기 (Esc)">
+          <X className="h-4 w-4" />
+        </button>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
         <input
           type="date"
           className="input-field"
@@ -224,6 +259,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           <option value="transfer">이체</option>
         </select>
         <input
+          ref={amountRef}
           type="text"
           inputMode="numeric"
           className="input-field num"
@@ -274,7 +310,7 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
         <select
           className="input-field"
           value={f.memberId}
@@ -326,12 +362,24 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
           />
           실적 제외
         </label>
-        <button type="submit" className="btn-primary ml-auto">
-          <Plus className="h-4 w-4" />
-          등록
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            닫기
+          </button>
+          <button type="submit" className="btn-primary">
+            <Plus className="h-4 w-4" />
+            등록
+          </button>
+        </div>
       </div>
       {err && <p className="mt-3 text-sm text-rose-300">{err}</p>}
+      {done && !err && (
+        <p className="mt-3 flex items-center gap-1.5 text-sm text-emerald-300">
+          <CheckCircle2 className="h-4 w-4" />
+          등록됨: <span className="num">{done}</span>
+          <span className="text-zinc-500">· 금액만 바꿔 이어서 등록할 수 있습니다</span>
+        </p>
+      )}
       <p className="mt-3 text-xs leading-relaxed text-zinc-500">
         이미 학습된 가맹점·금액이면 규칙대로 자동 분류됩니다(기본 귀속자보다 규칙이 우선).
         새 거래는 카테고리까지 골라 등록하면 다음부터 자동 분류되도록 규칙으로 학습됩니다.
@@ -340,6 +388,8 @@ function ManualForm({ refs, onAdded }: { refs: Refs; onAdded: () => void }) {
         <strong className="text-zinc-300">실적 제외</strong>를 켜면 이 결제는 카드 실적 계산에서만 빠지고, 지출 통계에는 그대로 포함됩니다.
       </p>
     </form>
+    </div>
+    </Portal>
   );
 }
 
@@ -390,6 +440,9 @@ export default function Transactions({
   // 삭제 등 되돌리기 어려운 동작 앞의 확인 모달
   const [confirm, confirmUI] = useConfirm();
   const [loading, setLoading] = useState(true);
+  // 수동 등록 팝업
+  const [adding, setAdding] = useState(false);
+  const closeAdding = useCallback(() => setAdding(false), []);
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
   // 정기결제로 등록할 거래 id (모달이 열려 있을 때만 값이 있다)
   const [subTxId, setSubTxId] = useState<number | null>(null);
@@ -588,9 +641,13 @@ export default function Transactions({
             <p className="label-mono num">{loading && txs.length === 0 ? "불러오는 중…" : `${txs.length} items`}</p>
           </div>
         </div>
+        <button type="button" className="btn-primary shrink-0" onClick={() => setAdding(true)}>
+          <Plus className="h-4 w-4" />
+          거래 등록
+        </button>
       </div>
 
-      <ManualForm refs={refs} onAdded={load} />
+      {adding && <ManualForm refs={refs} onAdded={load} onClose={closeAdding} />}
       {confirmUI}
 
       {/* 날짜 한 줄, 나머지 조건 한 줄로 나눠 어중간한 줄바꿈을 없앤다 */}
