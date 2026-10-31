@@ -1,6 +1,6 @@
 // frontend/src/appearance/AppearanceContext.tsx
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState, CSSProperties } from 'react';
-import { buildThemeVars, getTheme, hexToRgb, rgbToHex, DEFAULT_THEME_ID, AppTheme } from './themes';
+import { buildThemeVars, getTheme, hexToRgb, mix, rgbToHex, DEFAULT_THEME_ID, AppTheme } from './themes';
 import { desktop } from '../platform/desktop';
 // 데스크톱 셸이 아니면 제목 표시줄 브리지(setTitleBarColors)와 아래 useEffect 를 삭제
 import {
@@ -86,6 +86,24 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 
 // index.html 의 첫 페인트 전 스크립트도 이 키를 읽는다 (깜빡임 방지)
 const STORAGE_KEY = 'app-appearance';
+
+// 제목 표시줄 색 맞추기
+const AMBIENT_TOP = 0.06; // App 셸 위쪽 광원(radial-gradient white 6%)의 맨 위 세기
+const TITLEBAR_RETRY_MS = [250, 600, 1200, 2500, 5000]; // 창이 뜨기 전 실패 시 재시도 간격
+
+// 헤더 바탕(--header-bg)의 불투명도. "rgba(6, 6, 7, 0.7)" / "rgb(6 6 7 / 0.7)" → 0.7, 알파 없으면 1.
+// 헤더가 아직 없거나 읽지 못하면 기본값 0.7.
+function headerAlpha(): number {
+  const el = document.querySelector('.app-header');
+  if (!el) return 0.7;
+  const bg = getComputedStyle(el).backgroundColor;
+  const m = /rgba?\(([^)]*)\)/.exec(bg);
+  if (!m) return 0.7;
+  const parts = m[1].split(/[\s,/]+/).filter(Boolean);
+  if (parts.length < 4) return 1;
+  const a = Number(parts[3]);
+  return Number.isFinite(a) ? a : 0.7;
+}
 
 const clampNum = (v: unknown, lim: { min: number; max: number }, def: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(lim.max, Math.max(lim.min, v)) : def;
@@ -241,17 +259,45 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     applyToRoot(settings);
   }, [settings]);
 
-  // 데스크톱 창 제목 표시줄을 앱 배경(ink-950)과 같은 색으로 맞춘다
+  // 데스크톱 창 제목 표시줄을 앱 윗부분과 같은 색으로 맞춘다.
+  // 앱 윗부분은 배경(ink-950) 위에 위쪽 은은한 빛(white 6%)과 반투명 헤더(--header-bg)가 겹쳐 있으므로
+  // 그 합성색을 계산해 보낸다. 시작 직후엔 창이 아직 보이지 않아 실패할 수 있어 몇 번 다시 시도하고,
+  // 창이 다시 활성화될 때도 한 번 더 맞춘다.
   useEffect(() => {
     const theme = getTheme(settings.themeId);
-    const css = getComputedStyle(document.documentElement);
-    const triplet = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
-    const toHex = (v: number[], fallback: string) =>
-      v.length === 3 && v.every(Number.isFinite) ? rgbToHex(v as [number, number, number]) : fallback;
-    const bg = toHex(triplet('--c-ink-950'), theme.bg);
-    const text = toHex(triplet('--c-zinc-300'), theme.fg);
-    desktop.setTitleBarColors(bg, text, theme.mode === 'dark'); // §10.0 브리지 — 웹이면 아무것도 안 함
-  }, [settings.themeId]);
+    const send = () => {
+      const css = getComputedStyle(document.documentElement);
+      const triplet = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
+      const toHex = (v: number[], fallback: string) =>
+        v.length === 3 && v.every(Number.isFinite) ? rgbToHex(v as [number, number, number]) : fallback;
+      const base = toHex(triplet('--c-ink-950'), theme.bg);
+      const white = toHex(triplet('--c-white'), theme.fg);
+      const text = toHex(triplet('--c-zinc-300'), theme.fg);
+      const top = mix(base, white, AMBIENT_TOP * (1 - headerAlpha()));
+      return desktop.setTitleBarColors(top, text, theme.mode === 'dark'); // §10.0 브리지 — 웹이면 아무것도 안 함
+    };
+    let cancelled = false;
+    const timers: number[] = [];
+    // 즉시 시도하고, 실패하면(창이 아직 안 뜸) 간격을 늘려 가며 다시 시도한다
+    const attempt = (i: number) => {
+      if (cancelled) return;
+      send().then((ok) => {
+        if (!ok && !cancelled && i < TITLEBAR_RETRY_MS.length) {
+          timers.push(window.setTimeout(() => attempt(i + 1), TITLEBAR_RETRY_MS[i]));
+        }
+      });
+    };
+    // applyToRoot 가 바꾼 변수가 반영된 다음 프레임에 계산한다
+    const raf = requestAnimationFrame(() => attempt(0));
+    const onFocus = () => void send();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      timers.forEach((t) => window.clearTimeout(t));
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [settings.themeId, settings.cardStyle]);
 
   const update = useCallback((patch: Partial<AppearanceSettings>) => setSettings((prev) => ({ ...prev, ...patch })), []);
   const reset = useCallback(() => setSettings(DEFAULT_APPEARANCE), []);
