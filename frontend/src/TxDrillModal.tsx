@@ -1,7 +1,8 @@
-import { createPortal } from "react-dom";
+import { BarChart3, Pencil, X } from "lucide-react";
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
 import { MiniTrend } from "./charts";
+import Portal from "./components/ui/Portal";
 
 // 표의 칸 하나를 열어 보는 모달.
 // 위에는 그 항목의 월별 추이, 아래에는 고른 달의 거래 목록. 목록에서 바로 고칠 수 있다.
@@ -35,91 +36,139 @@ export default function TxDrillModal({
     active > 0 && prev > 0 ? Math.round(((values[active] - prev) / prev) * 100) : null;
   const sum = txs.reduce((s, t) => s + t.amount, 0);
 
-  // 모달은 body 로 띄운다. 페이지 안에 두면 조상의 transform/filter 가 position:fixed 의
-  // 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
-  return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal drill-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="stats-head">
-          <h3>
-            {heading ?? (
-              <>
-                {title} · {Number(ym.slice(5))}월
-                <span className="muted small"> ({ym})</span>
-              </>
-            )}
-          </h3>
-          <button className="ghost" onClick={onClose}>✕</button>
-        </div>
-
-        {/* 이 항목이 달마다 어떻게 움직였는지 먼저 보여 준다 */}
-        {months.length > 0 && values.length === months.length && (
-          <div className="drill-trend">
-            <MiniTrend
-              values={values}
-              months={months}
-              active={active}
-              onPick={(i) => onPickMonth(months[i])}
-            />
-            <p className="muted small">
-              {months.length}개월 합계 {won(total)}
-              {delta !== null && (
-                <>
-                  {" · 전월 대비 "}
-                  <span className={`delta ${delta > 0 ? "bad" : delta < 0 ? "good" : "flat"}`}>
-                    {delta > 0 ? "▲" : delta < 0 ? "▼" : ""} {Math.abs(delta)}%
-                  </span>
-                </>
-              )}
-              {" · 값이 있는 달을 누르면 그 달로 이동합니다"}
-            </p>
-          </div>
-        )}
-
-        {txs.length === 0 ? (
-          <p className="muted">거래를 불러오지 못했거나 내역이 없습니다.</p>
-        ) : (
-          <>
-            <p className="muted small">
-              {txs.length}건 · 합계 <strong className="expense">{won(sum)}</strong>
-            </p>
-            <div className="drill-scroll">
-              <table className="tx-table">
-                <thead>
-                  <tr>
-                    <th className="nowrap">날짜</th>
-                    <th>내용</th>
-                    <th className="nowrap">카테고리</th>
-                    <th className="nowrap">귀속자</th>
-                    <th className="nowrap">결제수단</th>
-                    <th className="num">금액</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {txs.map((t) => (
-                    <tr key={t.id}>
-                      <td className="nowrap">{t.date}</td>
-                      <td>
-                        {t.merchant}
-                        {t.memo && <span className="muted small"> · {t.memo}</span>}
-                      </td>
-                      <td className="nowrap">{t.categoryName || <span className="muted">미지정</span>}</td>
-                      <td className="nowrap">{t.memberName || <span className="muted">미지정</span>}</td>
-                      <td className="nowrap">{t.paymentMethodName || <span className="muted">미지정</span>}</td>
-                      <td className="num expense">{won(t.amount)}</td>
-                      <td className="actions">
-                        <button className="ghost" onClick={() => onEdit(t)}>수정</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+  // 모달은 Portal 로 body 에 띄운다. 페이지 안에 두면 조상의 transform/filter 가
+  // position:fixed 의 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={heading ?? `${title} · ${Number(ym.slice(5))}월`}
+          className="surface max-h-[92vh] w-full max-w-5xl overflow-y-auto p-4 sm:p-6"
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="icon-tile icon-tile-mint !h-8 !w-8 !rounded-lg">
+                <BarChart3 className="h-4 w-4" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0">
+                <h3 className="section-title">
+                  {heading ?? (
+                    <>
+                      {title} · {Number(ym.slice(5))}월
+                    </>
+                  )}
+                </h3>
+                {!heading && <p className="label-mono !normal-case mt-0.5">{ym}</p>}
+              </div>
             </div>
-          </>
-        )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-icon shrink-0"
+              aria-label="닫기"
+              title="닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* 이 항목이 달마다 어떻게 움직였는지 먼저 보여 준다 */}
+          {months.length > 0 && values.length === months.length && (
+            <div className="surface-inset mb-4 p-4">
+              <MiniTrend
+                values={values}
+                months={months}
+                active={active}
+                onPick={(i) => onPickMonth(months[i])}
+              />
+              <p className="mt-2 text-xs text-zinc-500">
+                {months.length}개월 합계 <span className="num">{won(total)}</span>
+                {delta !== null && (
+                  <>
+                    {" · 전월 대비 "}
+                    <span
+                      className={`num font-medium ${
+                        delta > 0 ? "text-rose-300" : delta < 0 ? "text-emerald-300" : "text-zinc-400"
+                      }`}
+                    >
+                      {delta > 0 ? "▲" : delta < 0 ? "▼" : ""} {Math.abs(delta)}%
+                    </span>
+                  </>
+                )}
+                {" · 값이 있는 달을 누르면 그 달로 이동합니다"}
+              </p>
+            </div>
+          )}
+
+          {txs.length === 0 ? (
+            <p className="py-10 text-center text-sm text-zinc-500">
+              거래를 불러오지 못했거나 내역이 없습니다.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-zinc-500">
+                <span className="num">{txs.length}</span>건 · 합계{" "}
+                <strong className="num font-medium text-rose-300">{won(sum)}</strong>
+              </p>
+              <div className="mt-3 max-h-[50vh] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="table-head border-b border-white/[0.08]">
+                      <th className="whitespace-nowrap py-2.5 pr-3 text-left font-normal">날짜</th>
+                      <th className="px-3 py-2.5 text-left font-normal">내용</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-normal">카테고리</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-normal">귀속자</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-normal">결제수단</th>
+                      <th className="px-3 py-2.5 text-right font-normal">금액</th>
+                      <th className="py-2.5 pl-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {txs.map((t) => (
+                      <tr key={t.id} className="table-row text-zinc-200">
+                        <td className="num whitespace-nowrap py-2.5 pr-3">{t.date}</td>
+                        <td className="px-3 py-2.5">
+                          {t.merchant}
+                          {t.memo && <span className="text-xs text-zinc-500"> · {t.memo}</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          {t.categoryName || <span className="text-zinc-500">미지정</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          {t.memberName || <span className="text-zinc-500">미지정</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          {t.paymentMethodName || <span className="text-zinc-500">미지정</span>}
+                        </td>
+                        <td className="num whitespace-nowrap px-3 py-2.5 text-right font-medium text-rose-300">
+                          {won(t.amount)}
+                        </td>
+                        <td className="py-2.5 pl-3 text-right">
+                          <button
+                            type="button"
+                            className="btn-ghost !px-3 !py-1.5 !text-xs"
+                            onClick={() => onEdit(t)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            수정
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>,
-    document.body
+    </Portal>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CalendarCheck, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 // 월 선택기.
 //
@@ -80,64 +81,76 @@ export default function MonthPicker({
   };
 
   return (
-    <div className={className ? `month-picker ${className}` : "month-picker"} ref={boxRef}>
-      <button
-        type="button"
-        className="mp-arrow"
-        onClick={() => shift(-1)}
-        aria-label="이전 달"
-        title="이전 달"
-      >
-        ‹
-      </button>
+    <div
+      className={`relative inline-flex items-center ${className ?? ""}`}
+      ref={boxRef}
+    >
+      <div className="glass-pill flex items-center gap-1 p-1">
+        <button
+          type="button"
+          className="btn-icon"
+          onClick={() => shift(-1)}
+          aria-label="이전 달"
+          title="이전 달"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
 
-      <button
-        type="button"
-        className={`mp-label ${open ? "open" : ""}`}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        title="달 고르기"
-      >
-        <span className="mp-y">{y}년</span>
-        <span className="mp-m">{m}월</span>
-        {isThisMonth && <span className="mp-badge">이번 달</span>}
-        <span className="mp-caret" aria-hidden="true">▾</span>
-      </button>
+        <button
+          type="button"
+          className={`pill-item inline-flex items-center gap-2 ${open ? "pill-item-active" : ""}`}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          title="달 고르기"
+        >
+          <span className="num text-zinc-400">{y}년</span>
+          <span className="num font-medium text-white">{m}월</span>
+          {isThisMonth && <span className="badge bg-mint-500/10 text-mint-300">이번 달</span>}
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
 
-      <button
-        type="button"
-        className="mp-arrow"
-        onClick={() => shift(1)}
-        aria-label="다음 달"
-        title="다음 달"
-      >
-        ›
-      </button>
+        <button
+          type="button"
+          className="btn-icon"
+          onClick={() => shift(1)}
+          aria-label="다음 달"
+          title="다음 달"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
 
       {open && (
-        <div className="mp-pop" role="dialog" aria-label="달 선택">
-          <div className="mp-pop-head">
+        <div
+          className="surface absolute left-0 top-full z-30 mt-2 w-64 p-3"
+          role="dialog"
+          aria-label="달 선택"
+        >
+          <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
-              className="mp-arrow"
+              className="btn-icon"
               onClick={() => setPanelYear((py) => py - 1)}
               aria-label="이전 해"
             >
-              ‹
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            <strong>{panelYear}년</strong>
+            <strong className="num text-sm font-medium text-white">{panelYear}년</strong>
             <button
               type="button"
-              className="mp-arrow"
+              className="btn-icon"
               onClick={() => setPanelYear((py) => py + 1)}
               aria-label="다음 해"
             >
-              ›
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="mp-grid">
+          <div className="grid grid-cols-4 gap-1.5">
             {MONTHS.map((mm) => {
               const selected = panelYear === y && mm === m;
               const isNow = panelYear === thisY && mm === thisM;
@@ -145,7 +158,9 @@ export default function MonthPicker({
                 <button
                   key={mm}
                   type="button"
-                  className={`mp-m-btn${selected ? " sel" : ""}${isNow ? " now" : ""}`}
+                  className={`pill-item num !px-0 text-center ${
+                    selected ? "pill-item-active" : ""
+                  } ${isNow && !selected ? "!text-mint-300" : ""}`}
                   onClick={() => pick(mm)}
                   title={isNow ? "이번 달" : undefined}
                 >
@@ -157,12 +172,13 @@ export default function MonthPicker({
 
           <button
             type="button"
-            className="mp-today"
+            className="btn-ghost mt-3 w-full !py-1.5 !text-xs"
             onClick={() => {
               onChange(ymOf(thisY, thisM));
               setOpen(false);
             }}
           >
+            <CalendarCheck className="h-3.5 w-3.5" />
             이번 달로 이동
           </button>
         </div>

@@ -29,9 +29,9 @@ export default function Brand() {
       </svg>
       <div className="hidden leading-none min-[440px]:block">
         <div className="whitespace-nowrap text-[17px] tracking-tight text-white">
-          <span className="font-semibold">Product</span> <span className="font-light text-zinc-400">Name</span>
+          <span className="font-semibold">소비마스터</span>
         </div>
-        <div className="label-mono mt-1.5 !text-[10px] uppercase tracking-[0.2em]">Tagline · Mono</div>
+        <div className="label-mono mt-1.5 !text-[10px] uppercase tracking-[0.2em]">우리 집 가계부</div>
       </div>
     </div>
   );

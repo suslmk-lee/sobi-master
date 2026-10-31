@@ -1,4 +1,4 @@
-// 로딩 중 빈 화면 대신 보여주는 쉬머 플레이스홀더.
+// 로딩 중 빈 화면 대신 보여주는 펄스 플레이스홀더 (§6.15).
 
 export function Sk({
   h = 14,
@@ -11,34 +11,37 @@ export function Sk({
   r?: number;
   style?: React.CSSProperties;
 }) {
-  return <div className="sk" style={{ height: h, width: w, borderRadius: r, ...style }} />;
+  return (
+    <div
+      className="animate-pulse bg-white/[0.08]"
+      style={{ height: h, width: w, borderRadius: r, ...style }}
+    />
+  );
 }
 
 // 대시보드 모양의 스켈레톤: 요약 카드 4개 + 큰 차트 + 2열 카드
 export function DashboardSkeleton() {
   return (
-    <div>
-      <div className="toolbar">
-        <Sk w={150} h={36} r={10} />
-      </div>
-      <div className="stat-grid">
+    <div className="space-y-4">
+      <Sk w={150} h={36} r={10} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
-          <div className="card stat" key={i}>
+          <div className="surface flex flex-col gap-3 p-5" key={i}>
             <Sk w={80} h={12} />
             <Sk w={130} h={22} />
             <Sk w={100} h={12} />
           </div>
         ))}
       </div>
-      <div className="card">
+      <div className="surface p-5 sm:p-6">
         <Sk w={180} h={16} style={{ marginBottom: 12 }} />
-        <Sk h={200} r={12} />
+        <Sk h={200} r={16} />
       </div>
-      <div className="dash-grid">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {[0, 1, 2, 3].map((i) => (
-          <div className="card" key={i}>
+          <div className="surface p-5 sm:p-6" key={i}>
             <Sk w={140} h={16} style={{ marginBottom: 12 }} />
-            <Sk h={150} r={12} />
+            <Sk h={150} r={16} />
           </div>
         ))}
       </div>
@@ -51,9 +54,9 @@ export function TableSkeleton({ cols, rows = 6 }: { cols: number; rows?: number 
   return (
     <>
       {Array.from({ length: rows }, (_, i) => (
-        <tr key={i}>
+        <tr key={i} className="table-row">
           {Array.from({ length: cols }, (_, j) => (
-            <td key={j}>
+            <td key={j} className="py-2.5 pr-3">
               <Sk h={14} w={j === 1 ? "80%" : "60%"} />
             </td>
           ))}
@@ -66,9 +69,9 @@ export function TableSkeleton({ cols, rows = 6 }: { cols: number; rows?: number 
 // 카드 탭 스켈레톤
 export function CardsSkeleton() {
   return (
-    <div className="card-grid">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       {[0, 1].map((i) => (
-        <div className="card credit-card" key={i}>
+        <div className="surface p-5" key={i}>
           <Sk w={180} h={18} style={{ marginBottom: 10 }} />
           <Sk w={220} h={12} style={{ marginBottom: 8 }} />
           <Sk w={160} h={14} style={{ marginBottom: 10 }} />

@@ -1,8 +1,9 @@
-import { createPortal } from "react-dom";
 import { FormEvent, useEffect, useState } from "react";
+import { AlertTriangle, Info, Repeat, X } from "lucide-react";
 import { DraftSubscriptionFromTx, LinkSubscriptionTx, SaveSubscription } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import { formatAmount, parseAmount, won } from "./lib";
+import Portal from "./components/ui/Portal";
 
 // 거래 한 건을 정기결제로 등록하는 모달.
 // 초안(이름·금액·결제일·다음 달 시작)은 백엔드가 그 거래로 채워 주고, 여기서는 확인·조정만 한다.
@@ -93,148 +94,204 @@ export default function SubscribeModal({
     }
   };
 
-  // 모달은 body 로 띄운다. 페이지 안에 두면 조상의 transform/filter 가 position:fixed 의
-  // 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
-  return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
-        <h3>정기결제로 등록</h3>
-        {!draft ? (
-          err ? <p className="error">{err}</p> : <p className="muted">거래를 읽는 중…</p>
-        ) : (
-          <>
-            <p className="muted small">
-              이 거래가 있는 달은 이미 결제됐으므로 <strong>{f.startYm}</strong>부터 적용합니다.
-              {f.autoPost
-                ? " 매달 결제일에 거래가 자동으로 등록됩니다(주말·공휴일이면 다음 업무일)."
-                : " 매달 정기결제 탭에서 실제로 빠졌는지·금액이 달라졌는지만 확인합니다."}
-            </p>
+  // 모달은 Portal 로 body 에 띄운다. 페이지 안에 두면 조상의 transform/filter 가
+  // position:fixed 의 기준 상자를 바꿔 모달이 화면 밖으로 밀려날 수 있다.
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <form
+          role="dialog"
+          aria-modal="true"
+          aria-label="정기결제로 등록"
+          className="surface max-h-[92vh] w-full max-w-2xl overflow-y-auto p-4 sm:p-6"
+          onSubmit={save}
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="icon-tile icon-tile-sky !h-8 !w-8 !rounded-lg">
+                <Repeat className="h-4 w-4" strokeWidth={1.75} />
+              </span>
+              <h3 className="section-title">정기결제로 등록</h3>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-icon shrink-0"
+              aria-label="닫기"
+              title="닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            {/* 같은 가맹점에 금액도 거의 같으면 같은 결제를 두 번 거는 것일 수 있다 */}
-            {dups.length > 0 && (
-              <div className="alert warn sub-dup">
-                <strong>같은 결제가 이미 정기결제로 등록돼 있는 것 같습니다</strong>
-                {dups.map((d) => (
-                  <span key={d.id} className="muted small">
-                    {d.name} · {won(d.amount)} · 매{d.cycle === "yearly" ? "년" : "월"} {d.billingDay}일
-                    {!d.active && " (꺼짐)"}
-                  </span>
-                ))}
-                <span className="muted small">
-                  가맹점과 금액이 같습니다. 요금이 바뀐 거라면 새로 만들지 말고 기존 항목을 수정하세요.
-                </span>
-              </div>
-            )}
+          {!draft ? (
+            err ? (
+              <p className="text-xs text-rose-300">{err}</p>
+            ) : (
+              <p className="py-6 text-center text-sm text-zinc-500">거래를 읽는 중…</p>
+            )
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-zinc-400">
+                이 거래가 있는 달은 이미 결제됐으므로{" "}
+                <strong className="num font-medium text-white">{f.startYm}</strong>부터 적용합니다.
+                {f.autoPost
+                  ? " 매달 결제일에 거래가 자동으로 등록됩니다(주말·공휴일이면 다음 업무일)."
+                  : " 매달 정기결제 탭에서 실제로 빠졌는지·금액이 달라졌는지만 확인합니다."}
+              </p>
 
-            {/* 같은 가맹점이지만 금액이 다르면 다른 회선·상품으로 구분된다 — 안내만 */}
-            {siblings.length > 0 && (
-              <div className="alert info sub-dup">
-                <strong>같은 가맹점의 다른 정기결제 {siblings.length}건</strong>
-                {siblings.map((d) => (
-                  <span key={d.id} className="muted small">
-                    {d.name} · {won(d.amount)}
-                  </span>
-                ))}
-                <span className="muted small">
-                  금액으로 구분해 각자 자기 요금과 짝지으니 함께 등록해도 됩니다(회선이 여럿인 통신비 등).
-                </span>
-              </div>
-            )}
-
-            <div className="modal-grid">
-              <label className="field span2">
-                이름
-                <input
-                  type="text"
-                  value={f.name}
-                  onChange={(e) => setF({ ...f, name: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                금액 (원)
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={f.amount}
-                  onChange={(e) => setF({ ...f, amount: formatAmount(e.target.value) })}
-                />
-              </label>
-              <label className="field span3">
-                대조할 가맹점명
-                <input
-                  type="text"
-                  value={f.merchant}
-                  onChange={(e) => setF({ ...f, merchant: e.target.value })}
-                />
-                <span className="muted small">
-                  거래 가맹점에 이 글자가 들어 있으면 같은 결제로 봅니다. 날짜·지점이 붙는 이름이면 공통 부분만 남기세요.
-                </span>
-              </label>
-              <label className="field">
-                주기
-                <select value={f.cycle} onChange={(e) => setF({ ...f, cycle: e.target.value })}>
-                  <option value="monthly">매월</option>
-                  <option value="yearly">매년</option>
-                </select>
-              </label>
-              {f.cycle === "yearly" && (
-                <label className="field">
-                  결제 월
-                  <select
-                    value={f.billingMonth}
-                    onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>{i + 1}월</option>
+              {/* 같은 가맹점에 금액도 거의 같으면 같은 결제를 두 번 거는 것일 수 있다 */}
+              {dups.length > 0 && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-300/30 bg-amber-400/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" strokeWidth={1.75} />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <strong className="text-sm font-medium text-amber-200">
+                      같은 결제가 이미 정기결제로 등록돼 있는 것 같습니다
+                    </strong>
+                    {dups.map((d) => (
+                      <span key={d.id} className="text-xs text-zinc-400">
+                        {d.name} · <span className="num">{won(d.amount)}</span> · 매
+                        {d.cycle === "yearly" ? "년" : "월"} <span className="num">{d.billingDay}</span>일
+                        {!d.active && " (꺼짐)"}
+                      </span>
                     ))}
+                    <span className="text-xs text-zinc-400">
+                      가맹점과 금액이 같습니다. 요금이 바뀐 거라면 새로 만들지 말고 기존 항목을 수정하세요.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 같은 가맹점이지만 금액이 다르면 다른 회선·상품으로 구분된다 — 안내만 */}
+              {siblings.length > 0 && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-sky-300/30 bg-sky-400/10 p-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" strokeWidth={1.75} />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <strong className="text-sm font-medium text-sky-200">
+                      같은 가맹점의 다른 정기결제 <span className="num">{siblings.length}</span>건
+                    </strong>
+                    {siblings.map((d) => (
+                      <span key={d.id} className="text-xs text-zinc-400">
+                        {d.name} · <span className="num">{won(d.amount)}</span>
+                      </span>
+                    ))}
+                    <span className="text-xs text-zinc-400">
+                      금액으로 구분해 각자 자기 요금과 짝지으니 함께 등록해도 됩니다(회선이 여럿인 통신비 등).
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <label className="block sm:col-span-2">
+                  <span className="field-label">이름</span>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={f.name}
+                    onChange={(e) => setF({ ...f, name: e.target.value })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="field-label">금액 (원)</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="input-field num"
+                    value={f.amount}
+                    onChange={(e) => setF({ ...f, amount: formatAmount(e.target.value) })}
+                  />
+                </label>
+                <label className="block sm:col-span-3">
+                  <span className="field-label">대조할 가맹점명</span>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={f.merchant}
+                    onChange={(e) => setF({ ...f, merchant: e.target.value })}
+                  />
+                  <span className="mt-1 block text-xs text-zinc-500">
+                    거래 가맹점에 이 글자가 들어 있으면 같은 결제로 봅니다. 날짜·지점이 붙는 이름이면 공통 부분만 남기세요.
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="field-label">주기</span>
+                  <select
+                    className="input-field"
+                    value={f.cycle}
+                    onChange={(e) => setF({ ...f, cycle: e.target.value })}
+                  >
+                    <option value="monthly">매월</option>
+                    <option value="yearly">매년</option>
                   </select>
                 </label>
-              )}
-              <label className="field">
-                결제일
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={f.billingDay}
-                  onChange={(e) => setF({ ...f, billingDay: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                시작 월
-                <input
-                  type="month"
-                  value={f.startYm}
-                  onChange={(e) => setF({ ...f, startYm: e.target.value })}
-                />
-              </label>
-              <label className="field span3 check-field">
-                <input
-                  type="checkbox"
-                  checked={f.autoPost}
-                  onChange={(e) => setF({ ...f, autoPost: e.target.checked })}
-                />
-                <span className="cf-text">매달 거래 자동 등록</span>
-                <span className="cf-hint muted">
-                  끄면 등록은 직접 하고, 정기결제 탭에서 빠졌는지만 확인합니다
-                </span>
-              </label>
+                {f.cycle === "yearly" && (
+                  <label className="block">
+                    <span className="field-label">결제 월</span>
+                    <select
+                      className="input-field"
+                      value={f.billingMonth}
+                      onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1}월</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="block">
+                  <span className="field-label">결제일</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    className="input-field num"
+                    value={f.billingDay}
+                    onChange={(e) => setF({ ...f, billingDay: e.target.value })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="field-label">시작 월</span>
+                  <input
+                    type="month"
+                    className="input-field num"
+                    value={f.startYm}
+                    onChange={(e) => setF({ ...f, startYm: e.target.value })}
+                  />
+                </label>
+                <label className="surface-inset flex cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-1 p-3 sm:col-span-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-mint-400"
+                    checked={f.autoPost}
+                    onChange={(e) => setF({ ...f, autoPost: e.target.checked })}
+                  />
+                  <span className="text-sm text-zinc-200">매달 거래 자동 등록</span>
+                  <span className="text-xs text-zinc-500">
+                    끄면 등록은 직접 하고, 정기결제 탭에서 빠졌는지만 확인합니다
+                  </span>
+                </label>
+              </div>
+              <p className="text-xs text-zinc-500">
+                카테고리 {draft.categoryName || "미지정"} · 귀속자 {draft.memberName || "미지정"} · 결제수단{" "}
+                {draft.paymentMethodName || "미지정"} — 거래에서 그대로 가져옵니다.
+              </p>
+              {err && <p className="text-xs text-rose-300">{err}</p>}
             </div>
-            <p className="muted small">
-              카테고리 {draft.categoryName || "미지정"} · 귀속자 {draft.memberName || "미지정"} · 결제수단{" "}
-              {draft.paymentMethodName || "미지정"} — 거래에서 그대로 가져옵니다.
-            </p>
-            {err && <p className="error">{err}</p>}
-          </>
-        )}
-        <div className="modal-actions">
-          <button type="button" className="ghost" onClick={onClose}>취소</button>
-          <button type="submit" disabled={!draft || busy}>
-            {busy ? "등록 중…" : "정기결제로 등록"}
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body
+          )}
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button type="button" className="btn-ghost" onClick={onClose}>취소</button>
+            <button type="submit" className="btn-primary" disabled={!draft || busy}>
+              {busy ? "등록 중…" : "정기결제로 등록"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Portal>
   );
 }
