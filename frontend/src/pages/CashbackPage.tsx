@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { GetCashback, MarkPaid } from "../../wailsjs/go/main/App";
-import { Check, Clock, Undo2 } from "lucide-react";
+import { Check, Clock, Coins, Undo2 } from "lucide-react";
 import { store } from "../../wailsjs/go/models";
 import CountUp from "../components/CountUp";
 import IconTile from "../components/ui/IconTile";
@@ -103,7 +103,14 @@ export default function CashbackPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconTile icon={Coins} tone="mint" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-light tracking-tight text-white">캐시백</h2>
+            <p className="label-mono num">{month}</p>
+          </div>
+        </div>
         <MonthPicker value={month} onChange={setMonth} />
       </div>
 

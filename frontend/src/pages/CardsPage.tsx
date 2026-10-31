@@ -6,7 +6,8 @@ import {
   GetCardStatuses,
   SaveCard,
 } from "../../wailsjs/go/main/App";
-import { Check, Pencil, Trash2 } from "lucide-react";
+import { Check, CreditCard, Pencil, Trash2 } from "lucide-react";
+import IconTile from "../components/ui/IconTile";
 import { store } from "../../wailsjs/go/models";
 import RingGauge from "../components/ui/RingGauge";
 import { formatAmount, parseAmount, won } from "../lib";
@@ -372,6 +373,13 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
   return (
     <div className="space-y-6">
       {confirmUI}
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={CreditCard} tone="mint" />
+        <div className="min-w-0">
+          <h2 className="text-2xl font-light tracking-tight text-white">카드</h2>
+          <p className="label-mono num">{statuses.length} cards</p>
+        </div>
+      </div>
       <CardForm
         initial={editing}
         onSaved={() => {

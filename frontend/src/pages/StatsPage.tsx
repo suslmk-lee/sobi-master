@@ -327,7 +327,8 @@ export default function StatsPage({
   const days = cur?.days ?? 0;
   const dimSeries: LineSeries[] = (cur?.series ?? []).map((s) => ({
     name: s.name,
-    color: dim === "paymentMethod" ? s.color || autoColor(s.name) : undefined,
+    // "기타"는 묶음이라 고유 색이 없다 — 카드 색과 겹치지 않게 중립 회색
+    color: s.name === "기타" ? theme.axis : dim === "paymentMethod" ? s.color || autoColor(s.name) : undefined,
     values: s.values,
   }));
   const dayLabels = Array.from({ length: days }, (_, i) => `${i + 1}일`);
