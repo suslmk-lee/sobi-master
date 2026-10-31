@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Banknote,
   CalendarClock,
+  ChevronRight,
   CreditCard,
   Flag,
   PiggyBank,
@@ -448,6 +449,14 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
     }
   }, []);
 
+  // 일정의 카드 출금 항목 → 같은 카드·같은 출금일의 청구서 (세부 내역 팝업용)
+  const billFor = (ev: store.CashEvent) =>
+    ev.kind === "card"
+      ? [...(plan?.nextDueBills ?? []), ...(plan?.followingBills ?? [])].find(
+          (b) => b.cardId === ev.refId && b.dueDate === ev.date
+        )
+      : undefined;
+
   const openDrill = (b: store.CardBill) => {
     setDrill(b);
     setDrillTx([]);
@@ -706,8 +715,23 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
                   {g.events.map((ev, i) => {
                     const k = kindOf(ev.kind);
                     const Icon = k.icon;
+                    const bill = billFor(ev);
+                    // 카드 출금은 눌러서 그 청구분의 이용 내역을 본다
+                    const Row = bill ? "button" : "div";
                     return (
-                      <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                      <Row
+                        key={i}
+                        {...(bill
+                          ? {
+                              type: "button" as const,
+                              onClick: () => openDrill(bill),
+                              title: `${bill.cardName} 이용 내역 보기 (${bill.periodStart} ~ ${bill.periodEnd})`,
+                            }
+                          : {})}
+                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${
+                          bill ? "group cursor-pointer transition-colors hover:bg-white/[0.04]" : ""
+                        }`}
+                      >
                         <Icon className="h-4 w-4 shrink-0" style={{ color: k.color }} strokeWidth={1.75} />
                         <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{ev.label}</span>
                         {ev.estimated && <EstBadge />}
@@ -725,7 +749,12 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
                         >
                           {won(ev.balance)}
                         </span>
-                      </div>
+                        {bill ? (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                        ) : (
+                          <span className="w-4 shrink-0" aria-hidden />
+                        )}
+                      </Row>
                     );
                   })}
                 </div>
