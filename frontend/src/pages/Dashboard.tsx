@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
-import { GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
+import { GetCashPlan, GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
 import {
   AlertTriangle,
@@ -43,6 +43,47 @@ function Delta({ cur, prev, goodWhenDown }: { cur: number; prev: number; goodWhe
   );
 }
 
+// 오늘부터 date(YYYY-MM-DD)까지 남은 일수
+function dday(date: string, today: string) {
+  const a = new Date(today + "T00:00:00").getTime();
+  const b = new Date(date + "T00:00:00").getTime();
+  return Math.round((b - a) / 86400000);
+}
+
+// 다음 카드 결제 요약 — 누르면 자금 계획 탭으로
+function NextDueCard({ plan, onClick }: { plan: store.CashPlan; onClick?: () => void }) {
+  const d = dday(plan.nextDue, plan.today);
+  const hasBalance = !!plan.balance;
+  const after = plan.afterNextDue;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="surface flex w-full flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4 text-left"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={CreditCard} tone="mint" size="sm" />
+        <div className="min-w-0">
+          <p className="label-mono !normal-case">
+            다음 카드 결제 · {plan.nextDue.slice(5).replace("-", "/")} {d === 0 ? "D-day" : `D-${d}`}
+          </p>
+          <p className="num text-xl font-light tracking-tight text-rose-300">{won(plan.nextDueTotal)}</p>
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-2 text-sm">
+        {!hasBalance ? (
+          <span className="text-amber-300">잔액을 입력하세요</span>
+        ) : after >= 0 ? (
+          <span className="num text-emerald-300">여유 {won(after)}</span>
+        ) : (
+          <span className="num text-rose-300">{won(-after)} 부족</span>
+        )}
+        <ChevronRight className="h-4 w-4 text-zinc-500" />
+      </div>
+    </button>
+  );
+}
+
 // 카드 내부 섹션 헤더 (IconTile + 제목 + 우측 컨트롤)
 function SectionHead({
   icon,
@@ -73,11 +114,20 @@ export default function Dashboard({
   month,
   setMonth,
   goUnclassified,
+  goCashPlan,
 }: {
   month: string;
   setMonth: (m: string) => void;
   goUnclassified: () => void;
+  goCashPlan?: () => void;
 }) {
+  // 자금 계획 요약 — 실패하면 카드만 숨기고 대시보드는 그대로 둔다
+  const [plan, setPlan] = useState<store.CashPlan | null>(null);
+  useEffect(() => {
+    GetCashPlan()
+      .then(setPlan)
+      .catch(() => setPlan(null));
+  }, []);
   const [sum, setSum] = useState<store.MonthlySummary | null>(null);
   const [prev, setPrev] = useState<store.MonthlySummary | null>(null);
   const [trend, setTrend] = useState<store.MonthPoint[]>([]);
@@ -193,6 +243,8 @@ export default function Dashboard({
           })}
         </div>
       )}
+
+      {plan && plan.nextDue && <NextDueCard plan={plan} onClick={goCashPlan} />}
 
       {/* KPI: 수지 히어로 + 수입·지출·이체 타일 */}
       <div className="grid items-stretch gap-4 lg:grid-cols-3 lg:gap-5">

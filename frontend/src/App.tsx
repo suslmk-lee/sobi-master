@@ -10,6 +10,7 @@ import {
   ReceiptText,
   Repeat,
   Settings,
+  Wallet,
 } from "lucide-react";
 import {
   ListCategories,
@@ -20,6 +21,7 @@ import { Refs, thisMonth } from "./lib";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import CardsPage from "./pages/CardsPage";
+import CashPlanPage from "./pages/CashPlanPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CashbackPage from "./pages/CashbackPage";
 import StatsPage from "./pages/StatsPage";
@@ -30,6 +32,7 @@ import AppearanceSettings from "./components/settings/AppearanceSettings";
 
 type Tab =
   | "dashboard"
+  | "cashplan"
   | "transactions"
   | "cards"
   | "subscriptions"
@@ -39,6 +42,7 @@ type Tab =
 
 const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard },
+  { key: "cashplan", label: "자금 계획", icon: Wallet },
   { key: "transactions", label: "거래내역", icon: ReceiptText },
   { key: "cards", label: "카드", icon: CreditCard },
   { key: "subscriptions", label: "정기결제", icon: Repeat },
@@ -172,12 +176,14 @@ export default function App() {
           <Dashboard
             month={month}
             setMonth={setMonth}
+            goCashPlan={() => setTab("cashplan")}
             goUnclassified={() => {
               setUnclassifiedOnly(true);
               setTab("transactions");
             }}
           />
         )}
+        {tab === "cashplan" && <CashPlanPage refs={refs} />}
         {tab === "transactions" && (
           <Transactions
             refs={refs}
