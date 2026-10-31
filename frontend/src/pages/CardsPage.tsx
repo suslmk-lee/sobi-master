@@ -6,7 +6,9 @@ import {
   GetCardStatuses,
   SaveCard,
 } from "../../wailsjs/go/main/App";
+import { Check, Pencil, Trash2 } from "lucide-react";
 import { store } from "../../wailsjs/go/models";
+import RingGauge from "../components/ui/RingGauge";
 import { formatAmount, parseAmount, won } from "../lib";
 import Bars from "../Bars";
 import CardBenefits, { bpToPct as bpToPctLabel } from "../CardBenefits";
@@ -110,10 +112,11 @@ function CardForm({
   };
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h3>{f.id ? "카드 수정" : "카드 등록"}</h3>
-      <div className="form-row">
+    <form className="surface space-y-4 p-5" onSubmit={submit}>
+      <h3 className="section-title">{f.id ? "카드 수정" : "카드 등록"}</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
         <select
+          className="input-field"
           value={f.issuer}
           onChange={(e) => setF({ ...f, issuer: e.target.value })}
         >
@@ -128,16 +131,18 @@ function CardForm({
         </select>
         <input
           type="text"
+          className="input-field"
           placeholder="카드 이름 (예: 딥드림 체크)"
           value={f.name}
           onChange={(e) => setF({ ...f, name: e.target.value })}
         />
       </div>
-      <div className="form-row">
-        <label className="field">
-          결제일 (매월)
+      <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="field-label">결제일 (매월)</span>
           <input
             type="number"
+            className="input-field num"
             min={1}
             max={31}
             placeholder="예: 25"
@@ -145,57 +150,64 @@ function CardForm({
             onChange={(e) => setF({ ...f, billingDay: e.target.value })}
           />
         </label>
-        <label className="field">
-          실적 시작일 (1이면 1일~말일)
+        <label className="block">
+          <span className="field-label">실적 시작일 (1이면 1일~말일)</span>
           <input
             type="number"
+            className="input-field num"
             min={1}
             max={31}
             value={f.cycleStartDay}
             onChange={(e) => setF({ ...f, cycleStartDay: e.target.value })}
           />
         </label>
-        <label className="field">
-          실적한도 (원)
+        <label className="block">
+          <span className="field-label">실적한도 (원)</span>
           <input
             type="text"
+            className="input-field num"
             inputMode="numeric"
             placeholder="예: 300,000"
             value={f.perfTarget}
             onChange={(e) => setF({ ...f, perfTarget: formatAmount(e.target.value) })}
           />
         </label>
-        <button type="submit">{f.id ? "저장" : "등록"}</button>
-        {f.id !== 0 && onCancel && (
-          <button type="button" className="ghost" onClick={onCancel}>취소</button>
-        )}
+        <div className="flex gap-2">
+          <button type="submit" className="btn-primary flex-1">{f.id ? "저장" : "등록"}</button>
+          {f.id !== 0 && onCancel && (
+            <button type="button" className="btn-ghost" onClick={onCancel}>취소</button>
+          )}
+        </div>
       </div>
       {/* 캐시백: 결제액의 기본 %, 그리고 기한 내 카드대금 납부 시 얹어 주는 추가 % */}
-      <div className="form-row">
-        <label className="field">
-          캐시백 기본 (%)
+      <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="field-label">캐시백 기본 (%)</span>
           <input
             type="text"
+            className="input-field num"
             inputMode="decimal"
             placeholder="예: 1"
             value={f.cashbackPct}
             onChange={(e) => setF({ ...f, cashbackPct: e.target.value })}
           />
         </label>
-        <label className="field">
-          기한 내 납부 시 추가 (%)
+        <label className="block">
+          <span className="field-label">기한 내 납부 시 추가 (%)</span>
           <input
             type="text"
+            className="input-field num"
             inputMode="decimal"
             placeholder="예: 1"
             value={f.cashbackBonusPct}
             onChange={(e) => setF({ ...f, cashbackBonusPct: e.target.value })}
           />
         </label>
-        <label className="field">
-          추가 적립 기한 (일)
+        <label className="block">
+          <span className="field-label">추가 적립 기한 (일)</span>
           <input
             type="number"
+            className="input-field num"
             min={0}
             max={60}
             placeholder="예: 5"
@@ -203,60 +215,62 @@ function CardForm({
             onChange={(e) => setF({ ...f, cashbackBonusDays: e.target.value })}
           />
         </label>
-        <span className="muted small cb-hint">
+        <span className="label-mono whitespace-normal">
           결제일로부터 기한 안에 카드대금을 갚으면 추가분을 받습니다. 캐시백 탭에서 집계·독촉을 봅니다.
         </span>
       </div>
       {/* 혜택 자료: 카드사 안내를 그대로 적어 두는 칸. 앱 계산에는 쓰지 않는다 */}
-      <div className="form-row">
-        <label className="field">
-          연회비 국내 (원)
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="field-label">연회비 국내 (원)</span>
           <input
             type="text"
+            className="input-field num"
             inputMode="numeric"
             placeholder="예: 70,000"
             value={f.annualFee}
             onChange={(e) => setF({ ...f, annualFee: formatAmount(e.target.value) })}
           />
         </label>
-        <label className="field">
-          연회비 해외 (원)
+        <label className="block">
+          <span className="field-label">연회비 해외 (원)</span>
           <input
             type="text"
+            className="input-field num"
             inputMode="numeric"
             placeholder="예: 70,000"
             value={f.annualFeeGlobal}
             onChange={(e) => setF({ ...f, annualFeeGlobal: formatAmount(e.target.value) })}
           />
         </label>
-        <label className="field grow">
-          혜택 자료 출처 (URL)
+        <label className="block sm:col-span-2">
+          <span className="field-label">혜택 자료 출처 (URL)</span>
           <input
             type="text"
+            className="input-field"
             placeholder="카드사 안내 페이지 주소"
             value={f.benefitUrl}
             onChange={(e) => setF({ ...f, benefitUrl: e.target.value })}
           />
         </label>
       </div>
-      <div className="form-row">
-        <label className="field grow">
-          혜택 유의사항
-          <input
-            type="text"
-            placeholder="예: 전월 실적 50만원 이상 시 적용, 실적 산정 제외 업종 있음"
-            value={f.benefitNote}
-            onChange={(e) => setF({ ...f, benefitNote: e.target.value })}
-          />
-        </label>
-      </div>
-      <div className="form-row">
-        <label className="field">
-          칩 색상 (목록에서 이 카드를 표시할 색)
-          <div className="swatches">
+      <label className="block">
+        <span className="field-label">혜택 유의사항</span>
+        <input
+          type="text"
+          className="input-field"
+          placeholder="예: 전월 실적 50만원 이상 시 적용, 실적 산정 제외 업종 있음"
+          value={f.benefitNote}
+          onChange={(e) => setF({ ...f, benefitNote: e.target.value })}
+        />
+      </label>
+      <div className="flex flex-wrap items-end gap-6">
+        <div>
+          <span className="field-label">칩 색상 (목록에서 이 카드를 표시할 색)</span>
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className={`swatch auto ${f.color === "" ? "sel" : ""}`}
+              className={`pill-item !px-3 !py-1 !text-xs ${f.color === "" ? "pill-item-active" : ""}`}
               title="자동 (이름 기반)"
               onClick={() => setF({ ...f, color: "" })}
             >
@@ -266,21 +280,24 @@ function CardForm({
               <button
                 key={c}
                 type="button"
-                className={`swatch ${f.color === c ? "sel" : ""}`}
+                aria-label={c}
+                className={`h-6 w-6 rounded-full border-2 transition-transform ${
+                  f.color === c ? "scale-110 border-white" : "border-transparent"
+                }`}
                 style={{ background: c }}
                 onClick={() => setF({ ...f, color: c })}
               />
             ))}
           </div>
-        </label>
+        </div>
         {f.name && (
-          <label className="field">
-            미리보기
+          <div>
+            <span className="field-label">미리보기</span>
             <PmChip name={f.name} type="card" color={f.color} />
-          </label>
+          </div>
         )}
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="text-sm text-rose-300">{err}</p>}
     </form>
   );
 }
@@ -353,7 +370,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
   };
 
   return (
-    <div>
+    <div className="space-y-6">
       {confirmUI}
       <CardForm
         initial={editing}
@@ -366,73 +383,109 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
       />
 
       {loading && statuses.length === 0 && <CardsSkeleton />}
-      <div className="card-grid">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {statuses.map((st) => {
           const pct =
             st.card.perfTarget > 0
               ? Math.min(100, Math.round((st.spent / st.card.perfTarget) * 100))
               : 0;
           const color = st.card.color || autoColor(st.card.name);
+          const ringColor = st.achieved
+            ? "rgb(var(--c-emerald-400))"
+            : pct >= 70
+              ? "rgb(var(--c-amber-400))"
+              : "rgb(var(--c-mint-400))";
+          const cardBenefits = benefits[st.card.id] ?? [];
           return (
             <div
               key={st.card.id}
-              className={`card credit-card ${selectedId === st.card.id ? "selected" : ""}`}
-              // 카드 고유색을 유리 뒤에서 번지게 한다(실물 카드 색이 비치는 느낌)
-              style={{ "--cc": color } as React.CSSProperties}
+              className={`surface surface-interactive p-5 ${selectedId === st.card.id ? "!border-mint-400/40" : ""}`}
               onClick={() => select(st)}
             >
-              <div className="cc-head">
-                <strong>
-                  <span className="cc-dot" style={{ background: color }} />
-                  {st.card.issuer ? `${st.card.issuer} ` : ""}{st.card.name}
-                </strong>
-                <span>
-                  <button className="ghost" onClick={(e) => { e.stopPropagation(); edit(st); }}>수정</button>
-                  <button className="ghost" onClick={(e) => { e.stopPropagation(); remove(st); }}>✕</button>
-                </span>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* 사용자가 고른 카드 색은 작은 점으로만 남긴다 */}
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                  <strong className="min-w-0 truncate text-sm font-semibold text-white">
+                    {st.card.issuer ? `${st.card.issuer} ` : ""}{st.card.name}
+                  </strong>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    className="btn-icon"
+                    title="수정"
+                    aria-label="수정"
+                    onClick={(e) => { e.stopPropagation(); edit(st); }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="btn-icon hover:!text-rose-300"
+                    title="삭제"
+                    aria-label="삭제"
+                    onClick={(e) => { e.stopPropagation(); remove(st); }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <p className="muted small">
-                {st.card.billingDay ? `결제일 매월 ${st.card.billingDay}일 · ` : ""}
-                실적기간 {st.periodStart} ~ {st.periodEnd}
-              </p>
-              <p>
-                기간 내 사용 <strong>{won(st.spent)}</strong>
-                {st.card.perfTarget > 0 && <> / 한도 {won(st.card.perfTarget)}</>}
-              </p>
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {st.card.billingDay ? <span className="chip">결제일 매월 {st.card.billingDay}일</span> : null}
+                <span className="chip">실적기간 {st.periodStart} ~ {st.periodEnd}</span>
+                {st.card.annualFee > 0 && (
+                  <span className="chip">연회비 <span className="num">{won(st.card.annualFee)}</span></span>
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center gap-4">
+                {st.card.perfTarget > 0 && (
+                  <RingGauge value={pct} size={72} stroke={4} color={ringColor}>
+                    <span className="text-sm">{pct}%</span>
+                  </RingGauge>
+                )}
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="label-mono">기간 내 사용</div>
+                  <div className="num text-lg font-semibold text-white">{won(st.spent)}</div>
+                  {st.card.perfTarget > 0 && (
+                    <div className="label-mono">한도 <span className="num">{won(st.card.perfTarget)}</span></div>
+                  )}
+                  {st.card.perfTarget > 0 &&
+                    (st.achieved ? (
+                      <span className="badge bg-emerald-500/15 text-emerald-300">
+                        <Check className="h-3 w-3" strokeWidth={2.5} />
+                        실적 달성
+                      </span>
+                    ) : (
+                      <span className="badge bg-amber-500/15 text-amber-300">
+                        <span className="num">{won(st.remaining)}</span> 남음
+                      </span>
+                    ))}
+                </div>
+              </div>
+
               {st.excluded > 0 && (
-                <p className="muted small">
-                  실적 제외 {won(st.excluded)} (세금·공과금 등, 실적 합계에서 뺀 금액)
+                <p className="label-mono mt-3 whitespace-normal">
+                  실적 제외 <span className="num">{won(st.excluded)}</span> (세금·공과금 등, 실적 합계에서 뺀 금액)
                 </p>
               )}
-              {st.card.perfTarget > 0 && (
-                <>
-                  <div className="bar-track">
-                    <div className="bar-fill" style={{ width: `${pct}%`, background: color }} />
-                  </div>
-                  {st.achieved ? (
-                    <span className="badge achieved">실적 달성 ✓</span>
-                  ) : (
-                    <span className="badge shortfall">{won(st.remaining)} 남음 ({pct}%)</span>
-                  )}
-                </>
-              )}
+
               {/* 대표 혜택 두 줄만 미리보기 — 전체는 카드를 눌러서 본다 */}
-              {(benefits[st.card.id]?.length ?? 0) > 0 && (
-                <div className="cc-benefits">
-                  {benefits[st.card.id].slice(0, 2).map((b) => (
-                    <span key={b.id} className="badge benefit" title={b.note}>
+              {cardBenefits.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {cardBenefits.slice(0, 2).map((b) => (
+                    <span key={b.id} className="chip" title={b.note}>
                       {b.area}
                       {b.rateBp > 0 && (
-                        <>
-                          {" "}
+                        <span className="num text-mint-300">
                           {b.isMax ? "최대 " : ""}
                           {bpToPctLabel(b.rateBp)}
-                        </>
+                        </span>
                       )}
                     </span>
                   ))}
-                  {benefits[st.card.id].length > 2 && (
-                    <span className="muted small">외 {benefits[st.card.id].length - 2}건</span>
+                  {cardBenefits.length > 2 && (
+                    <span className="label-mono">외 {cardBenefits.length - 2}건</span>
                   )}
                 </div>
               )}
@@ -440,27 +493,27 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
           );
         })}
         {!loading && statuses.length === 0 && (
-          <p className="muted">등록된 카드가 없습니다. 위에서 카드를 등록하세요.</p>
+          <p className="label-mono">등록된 카드가 없습니다. 위에서 카드를 등록하세요.</p>
         )}
       </div>
 
       {selected && (
-        <div>
+        <div className="space-y-3">
           <h3 className="section-title">
             {selected.card.issuer} {selected.card.name} — 혜택과 실적
           </h3>
-          <div className="card">
+          <div className="surface p-5">
             <CardBenefits card={selected.card} onChanged={load} />
           </div>
         </div>
       )}
 
       {selected && breakdown && (
-        <div>
+        <div className="space-y-3">
           <h3 className="section-title">
             실적기간({selected.periodStart} ~ {selected.periodEnd}) 지출 분석
           </h3>
-          <div className="dash-grid">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Bars title="어디에서 썼는가 (가맹점별)" rows={breakdown.byMerchant} />
             <Bars title="무엇에 썼는가 (카테고리별)" rows={breakdown.byCategory} />
           </div>
@@ -469,3 +522,4 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
     </div>
   );
 }
+
