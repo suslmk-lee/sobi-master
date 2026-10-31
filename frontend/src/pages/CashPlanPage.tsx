@@ -26,6 +26,7 @@ import {
   ChevronRight,
   CreditCard,
   Flag,
+  Landmark,
   PiggyBank,
   Repeat,
   Settings2,
@@ -67,6 +68,93 @@ const kindOf = (k: string) => KIND[k] ?? KIND.subscription;
 
 function EstBadge() {
   return <span className="badge bg-amber-500/10 text-amber-300">예상</span>;
+}
+
+// 같은 날짜의 카드 출금을 카드사별로 묶는다. 카드사 대금은 카드사 단위로 한 번에 빠져나가기 때문이다.
+// 카드가 아닌 항목(월급·정기결제)은 그대로 두고, 묶음은 그 카드사가 처음 나온 자리에 놓는다.
+type TimelineItem =
+  | { kind: "event"; ev: store.CashEvent }
+  | { kind: "issuer"; issuer: string; events: store.CashEvent[] };
+
+function groupByIssuer(events: store.CashEvent[], issuerOf: (ev: store.CashEvent) => string): TimelineItem[] {
+  const out: TimelineItem[] = [];
+  const byIssuer = new Map<string, Extract<TimelineItem, { kind: "issuer" }>>();
+  for (const ev of events) {
+    if (ev.kind !== "card") {
+      out.push({ kind: "event", ev });
+      continue;
+    }
+    const issuer = issuerOf(ev);
+    let g = byIssuer.get(issuer);
+    if (!g) {
+      g = { kind: "issuer", issuer, events: [] };
+      byIssuer.set(issuer, g);
+      out.push(g);
+    }
+    g.events.push(ev);
+  }
+  return out;
+}
+
+// 일정 한 줄. 카드 출금(청구서가 있으면)은 눌러서 그 청구분의 이용 내역을 본다.
+// nested 면 카드사 묶음 아래의 카드 한 장 — 들여 쓰고, 잔액은 묶음 줄에만 보여 준다.
+function EventRow({
+  ev,
+  bill,
+  onOpen,
+  nested,
+}: {
+  ev: store.CashEvent;
+  bill?: store.CardBill;
+  onOpen: (b: store.CardBill) => void;
+  nested?: boolean;
+}) {
+  const k = kindOf(ev.kind);
+  const Icon = k.icon;
+  const Row = bill ? "button" : "div";
+  return (
+    <Row
+      {...(bill
+        ? {
+            type: "button" as const,
+            onClick: () => onOpen(bill),
+            title: `${bill.cardName} 이용 내역 보기 (${bill.periodStart} ~ ${bill.periodEnd})`,
+          }
+        : {})}
+      className={`flex w-full items-center gap-3 px-4 text-left ${nested ? "py-1.5 pl-11" : "py-2.5"} ${
+        bill ? "group cursor-pointer transition-colors hover:bg-white/[0.04]" : ""
+      }`}
+    >
+      {nested ? (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/20" aria-hidden />
+      ) : (
+        <Icon className="h-4 w-4 shrink-0" style={{ color: k.color }} strokeWidth={1.75} />
+      )}
+      <span className={`min-w-0 flex-1 truncate ${nested ? "text-xs text-zinc-400" : "text-sm text-zinc-200"}`}>
+        {ev.label}
+      </span>
+      {ev.estimated && !nested && <EstBadge />}
+      <span
+        className={`num whitespace-nowrap ${nested ? "text-xs text-zinc-300" : "text-sm font-medium"} ${
+          nested ? "" : ev.amount >= 0 ? "text-emerald-300" : "text-rose-300"
+        }`}
+      >
+        {signed(ev.amount)}
+      </span>
+      <span
+        className={`num w-28 whitespace-nowrap text-right text-xs sm:w-36 ${
+          ev.balance < 0 ? "text-rose-300" : "text-zinc-400"
+        }`}
+      >
+        {nested ? "" : won(ev.balance)}
+      </span>
+      {bill ? (
+        <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-300" />
+      ) : (
+        <span className="w-4 shrink-0" aria-hidden />
+      )}
+    </Row>
+  );
 }
 
 function Callout({ tone, children }: { tone: "amber" | "rose"; children: React.ReactNode }) {
@@ -449,6 +537,12 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
     }
   }, []);
 
+  // 카드 → 카드사 (카드 탭의 "카드사". 비어 있으면 카드 이름을 그대로 묶음 이름으로)
+  const issuerOf = (ev: store.CashEvent) => {
+    const pm = refs.paymentMethods.find((p) => p.id === ev.refId);
+    return pm?.issuer?.trim() || ev.label;
+  };
+
   // 일정의 카드 출금 항목 → 같은 카드·같은 출금일의 청구서 (세부 내역 팝업용)
   const billFor = (ev: store.CashEvent) =>
     ev.kind === "card"
@@ -712,50 +806,39 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
                   {dateLabel(g.date)} · {ddayText(dday(g.date, plan.today))}
                 </p>
                 <div className="surface-inset divide-y divide-white/[0.06]">
-                  {g.events.map((ev, i) => {
-                    const k = kindOf(ev.kind);
-                    const Icon = k.icon;
-                    const bill = billFor(ev);
-                    // 카드 출금은 눌러서 그 청구분의 이용 내역을 본다
-                    const Row = bill ? "button" : "div";
-                    return (
-                      <Row
-                        key={i}
-                        {...(bill
-                          ? {
-                              type: "button" as const,
-                              onClick: () => openDrill(bill),
-                              title: `${bill.cardName} 이용 내역 보기 (${bill.periodStart} ~ ${bill.periodEnd})`,
-                            }
-                          : {})}
-                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${
-                          bill ? "group cursor-pointer transition-colors hover:bg-white/[0.04]" : ""
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" style={{ color: k.color }} strokeWidth={1.75} />
-                        <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{ev.label}</span>
-                        {ev.estimated && <EstBadge />}
-                        <span
-                          className={`num whitespace-nowrap text-sm font-medium ${
-                            ev.amount >= 0 ? "text-emerald-300" : "text-rose-300"
-                          }`}
-                        >
-                          {signed(ev.amount)}
-                        </span>
-                        <span
-                          className={`num w-28 whitespace-nowrap text-right text-xs sm:w-36 ${
-                            ev.balance < 0 ? "text-rose-300" : "text-zinc-400"
-                          }`}
-                        >
-                          {won(ev.balance)}
-                        </span>
-                        {bill ? (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-300" />
-                        ) : (
-                          <span className="w-4 shrink-0" aria-hidden />
-                        )}
-                      </Row>
-                    );
+                  {groupByIssuer(g.events, issuerOf).map((item, i) => {
+                    if (item.kind === "issuer") {
+                      // 카드사 묶음: 실제로는 카드사별로 한 번에 빠져나가므로 합계를 먼저 보여 준다
+                      const last = item.events[item.events.length - 1];
+                      const sumOut = item.events.reduce((s, e) => s + e.amount, 0);
+                      return (
+                        <div key={`iss-${i}`}>
+                          <div className="flex items-center gap-3 px-4 py-2.5">
+                            <Landmark className="h-4 w-4 shrink-0 text-rose-300" strokeWidth={1.75} />
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                              {item.issuer}
+                              <span className="label-mono !normal-case ml-2">{item.events.length}장</span>
+                            </span>
+                            {item.events.some((e) => e.estimated) && <EstBadge />}
+                            <span className="num whitespace-nowrap text-sm font-semibold text-rose-300">
+                              {signed(sumOut)}
+                            </span>
+                            <span
+                              className={`num w-28 whitespace-nowrap text-right text-xs sm:w-36 ${
+                                last.balance < 0 ? "text-rose-300" : "text-zinc-400"
+                              }`}
+                            >
+                              {won(last.balance)}
+                            </span>
+                            <span className="w-4 shrink-0" aria-hidden />
+                          </div>
+                          {item.events.map((ev, j) => (
+                            <EventRow key={j} ev={ev} bill={billFor(ev)} onOpen={openDrill} nested />
+                          ))}
+                        </div>
+                      );
+                    }
+                    return <EventRow key={i} ev={item.ev} bill={billFor(item.ev)} onOpen={openDrill} />;
                   })}
                 </div>
               </div>
