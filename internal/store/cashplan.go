@@ -632,7 +632,8 @@ func (s *Store) subscriptionEvents(pms []PaymentMethod, cal *holiday.Calendar, t
 			continue
 		}
 		// 지난달 결제일이 밀려 이번 달로 넘어온 경우까지 보려고 한 달 앞에서 시작한다.
-		for m := monthStart(today).AddDate(0, -1, 0); !m.After(horizon); m = m.AddDate(0, 1, 0) {
+		// 다음 달 결제일이 이전 영업일로 당겨져 이번 달로 넘어오는 경우까지 보려고 한 달 뒤까지 간다.
+		for m := monthStart(today).AddDate(0, -1, 0); !m.After(horizon.AddDate(0, 1, 0)); m = m.AddDate(0, 1, 0) {
 			ym := m.Format("2006-01")
 			if !sub.DueIn(ym) {
 				continue
@@ -640,18 +641,23 @@ func (s *Store) subscriptionEvents(pms []PaymentMethod, cal *holiday.Calendar, t
 			if _, done := posts[sub.ID][ym]; done {
 				continue
 			}
-			planned := clampDay(m.Year(), m.Month(), sub.BillingDay)
-			actual := cal.NextBusinessDay(planned)
+			_, actual, err := sub.ChargeDate(ym, cal)
+			if err != nil {
+				continue
+			}
 			d := fmtDay(actual)
 			if d < todayStr || d > horizonStr {
 				continue
 			}
 			if matched != nil {
-				to := fmtDay(m.AddDate(0, 1, -1))
+				from, to := fmtDay(m), fmtDay(m.AddDate(0, 1, -1))
 				if d > to {
 					to = d
 				}
-				if matched(sub, ym, fmtDay(m), to) {
+				if d < from {
+					from = d // 이전 영업일로 당겨져 전달로 넘어온 결제
+				}
+				if matched(sub, ym, from, to) {
 					continue
 				}
 			}

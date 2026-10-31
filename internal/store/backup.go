@@ -98,7 +98,11 @@ CREATE TABLE subscriptions (
 	memo              TEXT NOT NULL DEFAULT '',
 	active            INTEGER NOT NULL DEFAULT 1,
 	auto_post         INTEGER NOT NULL DEFAULT 0,
-	auto_since        TEXT NOT NULL DEFAULT ''
+	auto_since        TEXT NOT NULL DEFAULT '',
+	day_rule          TEXT NOT NULL DEFAULT 'day',
+	week_nth          INTEGER NOT NULL DEFAULT 1,
+	weekday           INTEGER NOT NULL DEFAULT 5,
+	holiday_rule      TEXT NOT NULL DEFAULT 'next'
 );
 CREATE TABLE subscription_posts (
 	subscription_id INTEGER NOT NULL,
@@ -241,21 +245,25 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 		copy("subscriptions",
 			`SELECT id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
-			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since FROM subscriptions`,
+			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since,
+			        day_rule, week_nth, weekday, holiday_rule FROM subscriptions`,
 			`INSERT INTO subscriptions(id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
-			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since)
-			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since,
+			        day_rule, week_nth, weekday, holiday_rule)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id, amount, next int64
-				var day, bmonth, active, autoPost int
-				var name, merchant, cycle, startYM, endYM, nextYM, memo, autoSince string
+				var day, bmonth, active, autoPost, weekNth, weekday int
+				var name, merchant, cycle, startYM, endYM, nextYM, memo, autoSince, dayRule, holidayRule string
 				var cid, mid, pid sql.NullInt64
 				e := r.Scan(&id, &name, &merchant, &amount, &cycle, &day, &bmonth,
-					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active, &autoPost, &autoSince)
+					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active, &autoPost, &autoSince,
+					&dayRule, &weekNth, &weekday, &holidayRule)
 				return []interface{}{id, name, merchant, amount, cycle, day, bmonth,
 					startYM, endYM, next, nextYM,
-					nullable(cid), nullable(mid), nullable(pid), memo, active, autoPost, autoSince}, e
+					nullable(cid), nullable(mid), nullable(pid), memo, active, autoPost, autoSince,
+					dayRule, weekNth, weekday, holidayRule}, e
 			}),
 		// 자동 등록 기록이 빠지면 복원 후 같은 달 거래가 다시 만들어진다
 		copy("subscription_posts",

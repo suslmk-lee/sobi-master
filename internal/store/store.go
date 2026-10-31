@@ -216,6 +216,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- auto_since 는 자동 등록을 시작하는 달. 켠 시점 이전으로 소급하지 않기 위해 둔다.
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_post INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_since TEXT NOT NULL DEFAULT '';
+-- 결제일 규칙: day_rule 'day'(결제일) | 'weekday'(week_nth 번째 weekday 요일), holiday_rule 'next'|'prev'|'none'.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS day_rule TEXT NOT NULL DEFAULT 'day';
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS week_nth INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS weekday INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS holiday_rule TEXT NOT NULL DEFAULT 'next';
 -- 정기결제 한 달치를 처리했다는 기록. (정기결제, 월) 이 기본키라 같은 달이 두 번 등록되지 않는다.
 -- 사용자가 만들어진 거래를 지워도 기록은 남겨 다시 생기지 않게 한다(transaction_id 만 비워짐).
 -- matched=1 은 새로 만들지 않고 이미 손으로 입력한 거래에 연결했다는 뜻.

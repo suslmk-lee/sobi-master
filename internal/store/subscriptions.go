@@ -119,6 +119,7 @@ func (s Subscription) MatchTarget() string {
 
 const subSelect = `
 SELECT s.id, s.name, s.merchant, s.amount, s.cycle, s.billing_day, s.billing_month,
+       s.day_rule, s.week_nth, s.weekday, s.holiday_rule,
        s.start_ym, s.end_ym, s.next_amount, s.next_amount_ym,
        s.category_id, s.member_id, s.payment_method_id, s.memo, s.active, s.auto_post, s.auto_since,
        CASE WHEN c.id IS NULL THEN ''
@@ -137,6 +138,7 @@ func scanSub(rows *sql.Rows) (Subscription, error) {
 	var cid, mid, pid sql.NullInt64
 	var active, autoPost int
 	err := rows.Scan(&s.ID, &s.Name, &s.Merchant, &s.Amount, &s.Cycle, &s.BillingDay, &s.BillingMonth,
+		&s.DayRule, &s.WeekNth, &s.Weekday, &s.HolidayRule,
 		&s.StartYM, &s.EndYM, &s.NextAmount, &s.NextAmountYM,
 		&cid, &mid, &pid, &s.Memo, &active, &autoPost, &s.AutoSince,
 		&s.CategoryName, &s.MemberName, &s.PaymentMethodName)
@@ -185,6 +187,7 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 	if sub.BillingDay < 1 || sub.BillingDay > 31 {
 		sub.BillingDay = 1
 	}
+	sub.normalizeSchedule()
 	if sub.Cycle == "yearly" && (sub.BillingMonth < 1 || sub.BillingMonth > 12) {
 		sub.BillingMonth = 1
 	}
@@ -205,6 +208,7 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 	}
 	args := []interface{}{
 		sub.Name, sub.Merchant, sub.Amount, sub.Cycle, sub.BillingDay, sub.BillingMonth,
+		sub.DayRule, sub.WeekNth, sub.Weekday, sub.HolidayRule,
 		sub.StartYM, sub.EndYM, sub.NextAmount, sub.NextAmountYM,
 		nullableID(sub.CategoryID), nullableID(sub.MemberID), nullableID(sub.PaymentMethodID),
 		sub.Memo, active, boolToInt(sub.AutoPost), sub.AutoSince,
@@ -213,9 +217,10 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 		var id int64
 		err := s.queryRow(`
 INSERT INTO subscriptions(name, merchant, amount, cycle, billing_day, billing_month,
+	day_rule, week_nth, weekday, holiday_rule,
 	start_ym, end_ym, next_amount, next_amount_ym,
 	category_id, member_id, payment_method_id, memo, active, auto_post, auto_since)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
 		if err != nil {
 			return sub, err
 		}
@@ -224,6 +229,7 @@ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
 	}
 	_, err := s.exec(`
 UPDATE subscriptions SET name=?, merchant=?, amount=?, cycle=?, billing_day=?, billing_month=?,
+	day_rule=?, week_nth=?, weekday=?, holiday_rule=?,
 	start_ym=?, end_ym=?, next_amount=?, next_amount_ym=?,
 	category_id=?, member_id=?, payment_method_id=?, memo=?, active=?, auto_post=?, auto_since=?
 WHERE id=?`, append(args, sub.ID)...)
