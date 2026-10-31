@@ -101,7 +101,16 @@ function ConfirmDialog({ opts, onClose }: { opts: ConfirmOpts; onClose: (v: bool
             </div>
           </div>
           {opts.detail && (
-            <div className="surface-inset mt-4 break-words p-3.5 text-sm text-zinc-200">
+            // 요약 칸은 호출부가 cf-d-main(이름) · cf-d-amt(금액, 방향 클래스) · cf-d-sub(부가 정보)로 채운다
+            <div
+              className={[
+                "surface-inset mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 p-3.5 text-sm text-zinc-200",
+                "[&_.cf-d-main]:truncate [&_.cf-d-main]:font-semibold [&_.cf-d-main]:text-white",
+                "[&_.cf-d-amt]:whitespace-nowrap [&_.cf-d-amt]:font-semibold [&_.cf-d-amt]:tabular-nums [&_.cf-d-amt]:text-white",
+                "[&_.cf-d-amt.expense]:text-rose-300 [&_.cf-d-amt.income]:text-emerald-300 [&_.cf-d-amt.transfer]:text-sky-300",
+                "[&_.cf-d-sub]:col-span-2 [&_.cf-d-sub]:text-xs [&_.cf-d-sub]:text-zinc-400",
+              ].join(" ")}
+            >
               {opts.detail}
             </div>
           )}
