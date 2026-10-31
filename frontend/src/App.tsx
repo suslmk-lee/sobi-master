@@ -48,7 +48,6 @@ const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: "subscriptions", label: "정기결제", icon: Repeat },
   { key: "cashback", label: "캐시백", icon: Coins },
   { key: "stats", label: "통계", icon: BarChart3 },
-  { key: "settings", label: "설정", icon: Settings },
 ];
 
 export default function App() {
@@ -100,6 +99,19 @@ export default function App() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <Brand />
             <div className="flex items-center gap-2">
+              {/* 설정은 탭이 아니라 헤더의 작은 기어 아이콘으로 들어간다 (열려 있으면 민트로 표시) */}
+              <button
+                type="button"
+                onClick={() => setTab("settings")}
+                title="설정"
+                aria-label="설정"
+                aria-current={tab === "settings" ? "page" : undefined}
+                className={`glass-pill flex h-9 w-9 items-center justify-center transition-colors ${
+                  tab === "settings" ? "text-mint-300" : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => setAppearanceOpen(true)}

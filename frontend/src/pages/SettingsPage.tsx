@@ -24,7 +24,8 @@ import {
   SetBudget,
   SetCategoryParent,
 } from "../../wailsjs/go/main/App";
-import { CornerDownRight, GripVertical, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import IconTile from "../components/ui/IconTile";
 import { main, store } from "../../wailsjs/go/models";
 import AppearanceSettings from "../components/settings/AppearanceSettings";
 import {
@@ -739,6 +740,14 @@ export default function SettingsPage({
   };
 
   return (
+    <div className="space-y-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={Settings} tone="mint" />
+        <div className="min-w-0">
+          <h2 className="text-2xl font-light tracking-tight text-white">설정</h2>
+          <p className="label-mono">카테고리 · 귀속자 · 결제수단 · 예산 · 규칙 · 백업</p>
+        </div>
+      </div>
     <div className="grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       {confirmUI}
       <nav className="surface flex flex-row gap-1 overflow-x-auto p-2 lg:flex-col lg:overflow-visible">
@@ -834,6 +843,7 @@ export default function SettingsPage({
 
         {section === "backup" && <BackupSection />}
       </div>
+    </div>
     </div>
   );
 }
