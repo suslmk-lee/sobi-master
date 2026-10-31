@@ -1,17 +1,22 @@
 import React from 'react'
-import {createRoot} from 'react-dom/client'
-// 글꼴을 앱에 내장한다. PC 에 Pretendard 가 없으면 맑은 고딕으로 떨어져 제목이 가늘고
-// 거칠게 보인다. 동적 서브셋이라 화면에 쓰인 글자 범위의 조각만 불러온다(인터넷 불필요).
-import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
-import './style.css'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import { AppearanceProvider, initAppearance } from './appearance/AppearanceContext'
+import CursorTrail from './components/effects/CursorTrail'
+import CursorPointer from './components/effects/CursorPointer'
+import CardTilt from './components/effects/CardTilt'
 import App from './App'
 
-const container = document.getElementById('root')
+// 첫 렌더 전에: 저장된 테마/변수를 <html> 에 바로 적용 → 깜빡임 방지
+initAppearance()
 
-const root = createRoot(container!)
-
-root.render(
-    <React.StrictMode>
-        <App/>
-    </React.StrictMode>
+createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <AppearanceProvider>
+      <CursorTrail />
+      <CursorPointer />
+      <CardTilt />
+      <App />
+    </AppearanceProvider>
+  </React.StrictMode>
 )

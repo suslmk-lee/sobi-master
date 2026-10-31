@@ -1,6 +1,6 @@
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
-import { compact } from "./charts";
+import { ChartEmpty, compact } from "./charts";
 
 // 요일별 평균 지출 — "무슨 요일에 돈을 쓰나".
 //
@@ -42,17 +42,17 @@ export default function WeekdayPanel({ data }: { data: store.CumCompare }) {
   const hasData = avg.some((v) => v > 0);
 
   return (
-    <div className="wd-panel">
-      <div className="wd-chips">
-        <div className="wd-chip">
-          <span>평일 하루 평균</span>
-          <strong>{won(weekdayAvg)}</strong>
+    <div className="flex flex-col h-full gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="surface-inset p-3 flex flex-col gap-1">
+          <span className="label-mono">평일 하루 평균</span>
+          <strong className="num text-base font-semibold text-white">{won(weekdayAvg)}</strong>
         </div>
-        <div className="wd-chip">
-          <span>주말 하루 평균</span>
-          <strong>{won(weekendAvg)}</strong>
+        <div className="surface-inset p-3 flex flex-col gap-1">
+          <span className="label-mono">주말 하루 평균</span>
+          <strong className="num text-base font-semibold text-white">{won(weekendAvg)}</strong>
           {weekdayAvg > 0 && weekendAvg > 0 && (
-            <em className={ratio > 1 ? "up" : "down"}>
+            <em className={`not-italic num text-[11px] ${ratio > 1 ? "text-rose-400" : "text-emerald-400"}`}>
               평일의 {ratio.toFixed(1)}배
             </em>
           )}
@@ -60,23 +60,30 @@ export default function WeekdayPanel({ data }: { data: store.CumCompare }) {
       </div>
 
       {!hasData ? (
-        <p className="muted">이번 달 지출이 없습니다.</p>
+        <ChartEmpty>이번 달 지출이 없습니다.</ChartEmpty>
       ) : (
-        <div className="wd-cols">
+        <div className="grid grid-cols-7 gap-1.5 flex-1 min-h-[150px]">
           {avg.map((v, i) => {
             const s = stat[i];
             return (
               <div
                 key={i}
-                className={`wd-col${i === top ? " top" : ""}`}
+                className="flex flex-col items-center gap-1.5 min-w-0"
                 title={`${NAMES[i]} · 지난 ${s.count}번 중 ${s.spendDays}번 지출 · 합계 ${won(s.total)} · 하루 평균 ${won(v)}`}
               >
-                <span className="wd-val">{v > 0 ? compact(v) : "—"}</span>
-                <div className="wd-track">
-                  <div className="wd-bar" style={{ height: `${Math.max(v > 0 ? 3 : 0, (v / max) * 100)}%` }} />
+                <span className={`num text-[10px] ${i === top ? "text-white font-semibold" : "text-zinc-500"}`}>
+                  {v > 0 ? compact(v) : "—"}
+                </span>
+                <div className="flex-1 w-full flex items-end rounded-[4px] bg-white/[0.03] min-h-[80px]">
+                  <div
+                    className={`w-full rounded-[4px] ${i === top ? "bg-mint-400" : "bg-mint-400/40"}`}
+                    style={{ height: `${Math.max(v > 0 ? 3 : 0, (v / max) * 100)}%` }}
+                  />
                 </div>
-                <span className={`wd-name${i === 0 ? " sun" : i === 6 ? " sat" : ""}`}>{SHORT[i]}</span>
-                <span className="wd-cnt">{s.spendDays}/{s.count}일</span>
+                <span className={`text-[11px] font-medium ${i === 0 ? "text-rose-400" : i === 6 ? "text-sky-400" : "text-zinc-300"}`}>
+                  {SHORT[i]}
+                </span>
+                <span className="num text-[10px] text-zinc-500">{s.spendDays}/{s.count}일</span>
               </div>
             );
           })}
@@ -84,9 +91,9 @@ export default function WeekdayPanel({ data }: { data: store.CumCompare }) {
       )}
 
       {hasData && (
-        <p className="wd-insight">
-          <strong>{NAMES[top]}</strong>에 가장 많이 써요 · 하루 평균 {won(avg[top])}
-          {topRatio >= 1.2 && <>, 다른 요일 평균의 <strong>{topRatio.toFixed(1)}배</strong></>}
+        <p className="text-xs text-zinc-400">
+          <strong className="font-semibold text-white">{NAMES[top]}</strong>에 가장 많이 써요 · 하루 평균 <span className="num">{won(avg[top])}</span>
+          {topRatio >= 1.2 && <>, 다른 요일 평균의 <strong className="num font-semibold text-white">{topRatio.toFixed(1)}배</strong></>}
         </p>
       )}
     </div>

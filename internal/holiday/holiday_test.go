@@ -168,3 +168,19 @@ func TestUncoveredYearFallsBackToFixedSolar(t *testing.T) {
 		t.Error("표 없는 해에 임의 날짜가 공휴일로 잡힘")
 	}
 }
+
+func TestPrevBusinessDay(t *testing.T) {
+	cal := New(nil)
+	cases := []struct{ in, want string }{
+		{"2026-11-10", "2026-11-10"},
+		{"2026-01-10", "2026-01-09"},
+		{"2026-11-01", "2026-10-30"},
+		{"2026-10-05", "2026-10-02"},
+		{"2026-10-10", "2026-10-08"},
+	}
+	for _, c := range cases {
+		if got := cal.PrevBusinessDay(day(c.in)).Format(layout); got != c.want {
+			t.Errorf("%s -> %s, want %s", c.in, got, c.want)
+		}
+	}
+}

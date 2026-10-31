@@ -32,6 +32,10 @@ type PaymentMethod struct {
 	BillingDay int `json:"billingDay"`
 	// CycleStartDay: 실적 산정 시작일. 1이면 매월 1일~말일이 실적기간.
 	CycleStartDay int `json:"cycleStartDay"`
+	// StatementStartDay: 청구(이용)기간 시작일. 결제일에 빠져나갈 금액이 어느 기간 사용분인지 정한다.
+	// 예: 1일 결제 카드가 19 이면 "전전월 19일 ~ 전월 18일" 이용분이 1일에 청구된다.
+	// 0이면 미지정 — 실적 시작일(>1)을, 그것도 1이면 결제일 기준 기본값을 쓴다.
+	StatementStartDay int `json:"statementStartDay"`
 	// PerfTarget: 실적한도(전월/당월 실적 충족 기준 금액). 0이면 미지정.
 	PerfTarget int64 `json:"perfTarget"`
 	// Color: 목록 칩 색상(hex, 예: "#3b5fd9"). 비어 있으면 이름 기반 자동 색.
@@ -171,4 +175,89 @@ type MonthlySummary struct {
 	ByCategory        []NamedAmount `json:"byCategory"`
 	ByPaymentMethod   []NamedAmount `json:"byPaymentMethod"`
 	UnclassifiedCount int           `json:"unclassifiedCount"`
+}
+
+// ---- 자금 계획 (카드대금 대비 현금 흐름) ----
+
+// CashSettings 는 자금 계획 설정. app_settings 의 "cash.*" 키로 저장한다.
+type CashSettings struct {
+	SalaryDay    int   `json:"salaryDay"`    // 월급일(1~31). 기본 10
+	SalaryAmount int64 `json:"salaryAmount"` // 예상 월급(원). 0이면 최근 3개월 "급여" 평균으로 자동
+	Reserve      int64 `json:"reserve"`      // 항상 남겨둘 최소 잔액(원). 안전 지출 가능액 계산에 쓴다
+}
+
+// CashBalance 는 사용자가 입력한 통장 잔액 기록(기준일 시점).
+type CashBalance struct {
+	ID     int64  `json:"id"`
+	AsOf   string `json:"asOf"` // YYYY-MM-DD
+	Amount int64  `json:"amount"`
+	Memo   string `json:"memo"`
+}
+
+// CardBill 은 카드 한 장의 결제일 한 번 청구분.
+type CardBill struct {
+	CardID      int64  `json:"cardId"`
+	CardName    string `json:"cardName"`
+	Color       string `json:"color"`
+	NominalDue  string `json:"nominalDue"`  // 약정 결제일 (YYYY-MM-DD)
+	DueDate     string `json:"dueDate"`     // 실제 출금일 — 주말·공휴일이면 다음 영업일
+	PeriodStart string `json:"periodStart"` // 이용기간 시작
+	PeriodEnd   string `json:"periodEnd"`   // 이용기간 끝
+	Closed      bool   `json:"closed"`      // 이용기간이 끝나 금액이 확정됐는지 (오늘 > PeriodEnd)
+	Total       int64  `json:"total"`       // 이용기간 내 지출 합계 (실적 제외분 포함)
+	Prepaid     int64  `json:"prepaid"`     // 그중 이미 갚은(PaidAt 있는) 금액
+	Due         int64  `json:"due"`         // 결제일에 빠질 금액 = Total - Prepaid (지금까지 기준)
+	Projected   int64  `json:"projected"`   // 기간이 열려 있으면 기간 끝까지의 예상 청구액, 닫혔으면 Due 와 같음
+	TxCount     int    `json:"txCount"`
+}
+
+// CashEvent 는 자금 흐름 타임라인의 한 항목. Amount 는 들어오면 +, 나가면 −.
+type CashEvent struct {
+	Date      string `json:"date"`      // YYYY-MM-DD
+	Kind      string `json:"kind"`      // card | salary | subscription
+	Label     string `json:"label"`     // 표시 이름 (카드명, "월급", 정기결제명)
+	Amount    int64  `json:"amount"`    // 부호 있음
+	Estimated bool   `json:"estimated"` // 예상치(월급 자동 추정, 열린 이용기간 예상 카드값 등)
+	Balance   int64  `json:"balance"`   // 이 항목 반영 뒤 예상 잔액
+	RefID     int64  `json:"refId"`     // 카드 ID 또는 정기결제 ID (월급은 0)
+}
+
+// CashPlan 은 자금 계획 화면 전체 데이터.
+type CashPlan struct {
+	Today    string       `json:"today"`
+	Settings CashSettings `json:"settings"`
+
+	// 월급
+	SalaryAuto  int64  `json:"salaryAuto"`  // 최근 3개월 급여 평균 (자동 추정치)
+	SalaryUsed  int64  `json:"salaryUsed"`  // 계산에 쓴 월급 (설정값이 있으면 설정값, 없으면 자동)
+	SalaryBasis string `json:"salaryBasis"` // 사람이 읽는 근거 (예: "최근 3개월 급여 평균")
+	NextSalary  string `json:"nextSalary"`  // 다음 월급일 (주말·공휴일이면 직전 영업일)
+
+	// 잔액
+	Balance       *CashBalance `json:"balance"`       // 가장 최근 입력한 잔액 (없으면 null)
+	BalanceAdjust int64        `json:"balanceAdjust"` // 기준일 이후 오늘까지 반영한 증감 (수입 − 계좌·현금 지출 − 빠져나간 카드대금)
+	BalanceNow    int64        `json:"balanceNow"`    // 추정 현재 잔액 = Balance.Amount + BalanceAdjust
+
+	// 다음 카드 결제일
+	NextDue      string     `json:"nextDue"`      // 가장 가까운 카드대금 출금일 (없으면 "")
+	NextDueTotal int64      `json:"nextDueTotal"` // 그날 빠질 카드대금 합계
+	NextDueBills []CardBill `json:"nextDueBills"` // 그날 빠질 카드별 청구
+	AfterNextDue int64      `json:"afterNextDue"` // 그날 출금 뒤 예상 잔액 (음수면 부족)
+
+	// 그다음 결제 (지금 쓰는 카드값이 쌓이는 청구)
+	FollowingDue       string     `json:"followingDue"`
+	FollowingTotal     int64      `json:"followingTotal"`     // 지금까지 쌓인 금액
+	FollowingProjected int64      `json:"followingProjected"` // 이용기간 끝까지의 예상
+	FollowingBills     []CardBill `json:"followingBills"`
+
+	// 타임라인 (오늘 ~ Horizon)
+	Horizon       string      `json:"horizon"`
+	Events        []CashEvent `json:"events"`
+	LowestBalance int64       `json:"lowestBalance"` // 기간 중 가장 낮은 예상 잔액
+	LowestDate    string      `json:"lowestDate"`
+
+	// 다음 월급 전까지
+	SafeToSpend    int64 `json:"safeToSpend"`    // 다음 월급 전까지 추가로 써도 되는 돈 = 그 사이 최저 예상 잔액 − Reserve (음수면 0 아님, 그대로)
+	DaysToSalary   int   `json:"daysToSalary"`   // 오늘부터 다음 월급일까지 남은 일수
+	DailyAllowance int64 `json:"dailyAllowance"` // SafeToSpend / DaysToSalary (0 이하이면 0)
 }

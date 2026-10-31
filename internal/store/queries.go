@@ -276,7 +276,7 @@ func (s *Store) DeleteCategory(id int64) error {
 // ---- 결제수단 ----
 
 func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
-	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods ORDER BY id`)
+	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +285,7 @@ func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
 	for rows.Next() {
 		var p PaymentMethod
 		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Issuer, &p.BillingDay, &p.CycleStartDay,
-			&p.PerfTarget, &p.Color, &p.CashbackBp, &p.CashbackBonusBp, &p.CashbackBonusDays,
+			&p.StatementStartDay, &p.PerfTarget, &p.Color, &p.CashbackBp, &p.CashbackBonusBp, &p.CashbackBonusDays,
 			&p.AnnualFee, &p.AnnualFeeGlobal, &p.BenefitURL, &p.BenefitNote); err != nil {
 			return nil, err
 		}
@@ -307,18 +307,21 @@ func (s *Store) SavePaymentMethod(p PaymentMethod) (PaymentMethod, error) {
 	if p.BillingDay < 0 || p.BillingDay > 31 {
 		p.BillingDay = 0
 	}
+	if p.StatementStartDay < 0 || p.StatementStartDay > 31 {
+		p.StatementStartDay = 0
+	}
 	if p.ID > 0 {
-		_, err := s.exec(`UPDATE payment_methods SET name=?, type=?, issuer=?, billing_day=?, cycle_start_day=?, perf_target=?, color=?,
+		_, err := s.exec(`UPDATE payment_methods SET name=?, type=?, issuer=?, billing_day=?, cycle_start_day=?, statement_start_day=?, perf_target=?, color=?,
 	cashback_bp=?, cashback_bonus_bp=?, cashback_bonus_days=?,
 	annual_fee=?, annual_fee_global=?, benefit_url=?, benefit_note=? WHERE id=?`,
-			p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color,
+			p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.StatementStartDay, p.PerfTarget, p.Color,
 			p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
 			p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote, p.ID)
 		return p, err
 	}
-	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
-		p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.PerfTarget, p.Color,
+	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+		p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.StatementStartDay, p.PerfTarget, p.Color,
 		p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
 		p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote).Scan(&p.ID)
 	return p, err

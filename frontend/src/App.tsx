@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  AlertTriangle,
+  BarChart3,
+  Coins,
+  CreditCard,
+  LayoutDashboard,
+  LucideIcon,
+  Palette,
+  ReceiptText,
+  Repeat,
+  Settings,
+  Wallet,
+} from "lucide-react";
+import {
   ListCategories,
   ListMembers,
   ListPaymentMethods,
@@ -8,13 +21,18 @@ import { Refs, thisMonth } from "./lib";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import CardsPage from "./pages/CardsPage";
+import CashPlanPage from "./pages/CashPlanPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CashbackPage from "./pages/CashbackPage";
 import StatsPage from "./pages/StatsPage";
 import SettingsPage from "./pages/SettingsPage";
+import Brand from "./components/ui/Brand";
+import IconTile from "./components/ui/IconTile";
+import AppearanceSettings from "./components/settings/AppearanceSettings";
 
 type Tab =
   | "dashboard"
+  | "cashplan"
   | "transactions"
   | "cards"
   | "subscriptions"
@@ -22,53 +40,22 @@ type Tab =
   | "stats"
   | "settings";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "dashboard", label: "대시보드" },
-  { key: "transactions", label: "거래내역" },
-  { key: "cards", label: "카드" },
-  { key: "subscriptions", label: "정기결제" },
-  { key: "cashback", label: "캐시백" },
-  { key: "stats", label: "통계" },
-  { key: "settings", label: "설정" },
+const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
+  { key: "dashboard", label: "대시보드", icon: LayoutDashboard },
+  { key: "cashplan", label: "자금 계획", icon: Wallet },
+  { key: "transactions", label: "거래내역", icon: ReceiptText },
+  { key: "cards", label: "카드", icon: CreditCard },
+  { key: "subscriptions", label: "정기결제", icon: Repeat },
+  { key: "cashback", label: "캐시백", icon: Coins },
+  { key: "stats", label: "통계", icon: BarChart3 },
+  { key: "settings", label: "설정", icon: Settings },
 ];
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [month, setMonth] = useState(thisMonth());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(
-    () => (localStorage.getItem("sobi-theme") as "light" | "dark") || "light"
-  );
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("sobi-theme", theme);
-  }, [theme]);
-
-  // 유리 카드 위에서 마우스를 따라 빛이 비치게 한다. 커서가 올라간 카드 하나에만
-  // 카드 안 좌표(--mx/--my)를 넘기고, 프레임당 한 번으로 묶어 움직일 때만 다시 그린다.
-  useEffect(() => {
-    let raf = 0;
-    let last: PointerEvent | null = null;
-    const apply = () => {
-      raf = 0;
-      const e = last;
-      const card = (e?.target as Element | null)?.closest?.(".card") as HTMLElement | null;
-      if (!e || !card) return;
-      const r = card.getBoundingClientRect();
-      card.style.setProperty("--mx", `${e.clientX - r.left}px`);
-      card.style.setProperty("--my", `${e.clientY - r.top}px`);
-    };
-    const onMove = (e: PointerEvent) => {
-      last = e;
-      if (!raf) raf = requestAnimationFrame(apply);
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, []);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [refs, setRefs] = useState<Refs>({
     members: [],
     categories: [],
@@ -97,57 +84,106 @@ export default function App() {
   }, [loadRefs]);
 
   return (
-    <div id="app">
-      <header className="app-header">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">₩</div>
-          <div className="brand-text">
-            <h1>소비마스터</h1>
-            <span>우리 집 가계부</span>
+    <div className="relative min-h-screen app-bg text-zinc-100">
+      {/* 상단 은은한 광원 */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 top-0 h-[420px]"
+        style={{
+          background:
+            "radial-gradient(60% 100% at 50% 0%, rgb(var(--c-white) / 0.06) 0%, transparent 70%)",
+        }}
+      />
+
+      <header className="app-header sticky top-0 z-20 backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-4 pb-3 pt-4 sm:px-6 lg:px-8">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <Brand />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAppearanceOpen(true)}
+                title="모양 설정"
+                aria-label="모양 설정"
+                className="glass-pill flex h-9 w-9 items-center justify-center text-zinc-400 transition-colors hover:text-white"
+              >
+                <Palette className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+
+          <nav className="-mb-1 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {TABS.map((t) => {
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  aria-current={active ? "page" : undefined}
+                  className={`tab-card ${active ? "tab-card-active" : ""}`}
+                >
+                  <div className="flex w-full items-start justify-between">
+                    <IconTile icon={t.icon} size="sm" tone={active ? "mint" : "warm"} />
+                  </div>
+                  <span
+                    className={`text-sm font-medium leading-tight ${active ? "text-white" : "text-zinc-400"}`}
+                  >
+                    {t.label}
+                  </span>
+                  <span className="absolute inset-x-3.5 bottom-2 h-[2px] overflow-hidden rounded-full bg-white/[0.06]">
+                    {active && (
+                      <span
+                        className="block h-full w-1/2 origin-left rounded-full bg-white/80"
+                        style={{ animation: "tabProgress 0.6s cubic-bezier(0.22, 1, 0.36, 1) both" }}
+                      />
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
-        <nav className="app-nav">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              className={tab === t.key ? "active" : ""}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        <button
-          className="theme-toggle"
-          title={theme === "dark" ? "라이트 모드" : "다크 모드"}
-          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        >
-          {theme === "dark" ? "☀️" : "🌙"}
-        </button>
+        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
       </header>
-      {dbError && (
-        <div className="card banner-error">
-          <strong>데이터베이스 연결 오류</strong>
-          <p className="small">{dbError}</p>
-          <p className="muted small">
-            config.json 의 database_url 과 인터넷 연결을 확인한 뒤 다시 시도하세요.
-            상세 내용은 설정 폴더의 sobi.log 에 기록됩니다.
-          </p>
-          <button onClick={loadRefs}>다시 연결</button>
-        </div>
-      )}
+
       {/* 탭 전환 시 각 화면이 마운트되며 데이터를 새로 불러온다 */}
-      <main>
+      <main
+        key={tab}
+        className="relative mx-auto max-w-7xl animate-fade-up px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+      >
+        {dbError && (
+          <div className="surface mb-5 p-4 sm:p-5" role="alert">
+            <div className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-300">
+                <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <strong className="text-sm font-medium text-rose-200">데이터베이스 연결 오류</strong>
+                <p className="mt-1 break-words text-xs text-zinc-300">{dbError}</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  config.json 의 database_url 과 인터넷 연결을 확인한 뒤 다시 시도하세요.
+                  상세 내용은 설정 폴더의 sobi.log 에 기록됩니다.
+                </p>
+                <button type="button" className="btn-primary mt-3" onClick={loadRefs}>
+                  다시 연결
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {tab === "dashboard" && (
           <Dashboard
             month={month}
             setMonth={setMonth}
+            goCashPlan={() => setTab("cashplan")}
             goUnclassified={() => {
               setUnclassifiedOnly(true);
               setTab("transactions");
             }}
           />
         )}
+        {tab === "cashplan" && <CashPlanPage refs={refs} />}
         {tab === "transactions" && (
           <Transactions
             refs={refs}
@@ -165,6 +201,8 @@ export default function App() {
         {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}
       </main>
+
+      <AppearanceSettings open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
     </div>
   );
 }

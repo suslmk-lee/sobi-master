@@ -5,6 +5,7 @@ import {
   MoveCardBenefit,
   SaveCardBenefit,
 } from "../wailsjs/go/main/App";
+import { AlertTriangle, ArrowDown, ArrowUp, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { store } from "../wailsjs/go/models";
 import { formatAmount, parseAmount, won } from "./lib";
 
@@ -114,30 +115,31 @@ export default function CardBenefits({
   const unchecked = items.filter((b) => b.needsCheck).length;
 
   return (
-    <div className="cbn">
-      <div className="stats-head">
-        <h3>혜택</h3>
-        <div className="seg-row">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="section-title">혜택</h3>
+        <div className="flex items-center gap-2">
           {card.benefitUrl && (
-            <a className="ghost-btn cbn-src" href={card.benefitUrl} target="_blank" rel="noreferrer">
-              자료 출처 ↗
+            <a className="btn-ghost !px-3 !py-1.5 !text-xs" href={card.benefitUrl} target="_blank" rel="noreferrer">
+              자료 출처
+              <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
-          <button className="ghost-btn" onClick={() => setEditing((v) => !v)}>
+          <button className="btn-ghost !px-3 !py-1.5 !text-xs" onClick={() => setEditing((v) => !v)}>
             {editing ? "편집 닫기" : "혜택 편집"}
           </button>
         </div>
       </div>
 
       {/* 카드 기본 조건 */}
-      <div className="cbn-facts">
-        <span>
-          <span className="muted small">전월 실적</span>{" "}
-          <strong>{card.perfTarget > 0 ? won(card.perfTarget) : "조건 없음"}</strong>
+      <div className="flex flex-wrap gap-2">
+        <span className="chip">
+          <span className="text-zinc-500">전월 실적</span>
+          <strong className="num font-medium text-white">{card.perfTarget > 0 ? won(card.perfTarget) : "조건 없음"}</strong>
         </span>
-        <span>
-          <span className="muted small">연회비</span>{" "}
-          <strong>
+        <span className="chip">
+          <span className="text-zinc-500">연회비</span>
+          <strong className="num font-medium text-white">
             {card.annualFee > 0 || card.annualFeeGlobal > 0
               ? `국내 ${won(card.annualFee)} / 해외 ${won(card.annualFeeGlobal)}`
               : "미입력"}
@@ -145,100 +147,117 @@ export default function CardBenefits({
         </span>
       </div>
 
-      {err && <p className="error">{err}</p>}
+      {err && <p className="text-sm text-rose-300">{err}</p>}
 
       {items.length === 0 ? (
-        <p className="muted">
-          등록된 혜택이 없습니다. <strong>혜택 편집</strong>으로 카드사 안내 내용을 옮겨 적으세요.
+        <p className="text-sm text-zinc-400">
+          등록된 혜택이 없습니다. <strong className="text-white">혜택 편집</strong>으로 카드사 안내 내용을 옮겨 적으세요.
         </p>
       ) : (
-        <table className="tx-table cbn-table">
-          <thead>
-            <tr>
-              <th>영역</th>
-              <th>구분</th>
-              <th className="num">적립·할인</th>
-              <th className="num">월 한도</th>
-              <th>비고</th>
-              {editing && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((b, i) => (
-              <tr key={b.id} className={b.needsCheck ? "row-unclassified" : ""}>
-                <td>{b.area}</td>
-                <td><span className="badge">{KIND_LABEL[b.kind] ?? b.kind}</span></td>
-                <td className="num">
-                  {/* 서비스거나, 요율이 없는 정액 혜택(리터당 N원 등)은 숫자를 비우고 비고로 설명한다 */}
-                  {b.kind === "service" || b.rateBp === 0 ? (
-                    <span className="muted">—</span>
-                  ) : (
-                    <>
-                      {b.isMax && <span className="muted small">최대 </span>}
-                      <strong className="income">{bpToPct(b.rateBp)}</strong>
-                    </>
-                  )}
-                </td>
-                <td className="num">
-                  {b.monthlyCap > 0 ? won(b.monthlyCap) : <span className="muted">—</span>}
-                </td>
-                <td className="small">
-                  {b.note}
-                  {b.needsCheck && (
-                    <span className="badge shortfall" title="카드사 약관에서 상세 조건 확인 필요">
-                      확인 필요
-                    </span>
-                  )}
-                </td>
-                {editing && (
-                  <td className="actions">
-                    <button className="ghost" title="위로" disabled={i === 0}
-                      onClick={() => run(() => MoveCardBenefit(b.id, -1))}>↑</button>
-                    <button className="ghost" title="아래로" disabled={i === items.length - 1}
-                      onClick={() => run(() => MoveCardBenefit(b.id, 1))}>↓</button>
-                    <button className="ghost" title="수정" onClick={() => edit(b)}>✎</button>
-                    <button className="ghost" title="삭제"
-                      onClick={() => run(() => DeleteCardBenefit(b.id))}>✕</button>
-                  </td>
-                )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="table-head border-b border-white/[0.07] text-left">
+                <th className="py-2 pr-3 font-normal">영역</th>
+                <th className="py-2 pr-3 font-normal">구분</th>
+                <th className="py-2 pr-3 text-right font-normal">적립·할인</th>
+                <th className="py-2 pr-3 text-right font-normal">월 한도</th>
+                <th className="py-2 pr-3 font-normal">비고</th>
+                {editing && <th className="py-2 font-normal"></th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((b, i) => (
+                <tr key={b.id} className="table-row">
+                  <td className="py-2.5 pr-3 text-zinc-100">{b.area}</td>
+                  <td className="py-2.5 pr-3">
+                    <span className="chip">{KIND_LABEL[b.kind] ?? b.kind}</span>
+                  </td>
+                  <td className="num py-2.5 pr-3 text-right">
+                    {/* 서비스거나, 요율이 없는 정액 혜택(리터당 N원 등)은 숫자를 비우고 비고로 설명한다 */}
+                    {b.kind === "service" || b.rateBp === 0 ? (
+                      <span className="text-zinc-500">—</span>
+                    ) : (
+                      <>
+                        {b.isMax && <span className="label-mono">최대 </span>}
+                        <strong className="font-semibold text-mint-300">{bpToPct(b.rateBp)}</strong>
+                      </>
+                    )}
+                  </td>
+                  <td className="num py-2.5 pr-3 text-right">
+                    {b.monthlyCap > 0 ? won(b.monthlyCap) : <span className="text-zinc-500">—</span>}
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <span className="label-mono whitespace-normal">{b.note}</span>
+                    {b.needsCheck && (
+                      <span className="badge ml-1.5 bg-amber-500/15 text-amber-300" title="카드사 약관에서 상세 조건 확인 필요">
+                        확인 필요
+                      </span>
+                    )}
+                  </td>
+                  {editing && (
+                    <td className="py-2.5">
+                      <div className="flex justify-end gap-1">
+                        <button className="btn-icon disabled:opacity-30" title="위로" aria-label="위로" disabled={i === 0}
+                          onClick={() => run(() => MoveCardBenefit(b.id, -1))}>
+                          <ArrowUp className="h-4 w-4" />
+                        </button>
+                        <button className="btn-icon disabled:opacity-30" title="아래로" aria-label="아래로" disabled={i === items.length - 1}
+                          onClick={() => run(() => MoveCardBenefit(b.id, 1))}>
+                          <ArrowDown className="h-4 w-4" />
+                        </button>
+                        <button className="btn-icon" title="수정" aria-label="수정" onClick={() => edit(b)}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button className="btn-icon hover:!text-rose-300" title="삭제" aria-label="삭제"
+                          onClick={() => run(() => DeleteCardBenefit(b.id))}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {unchecked > 0 && (
-        <p className="muted small">
-          ⚠ {unchecked}개 항목은 상세 조건(실적 구간별 차등·월 한도·제외 업종)을 아직 확인하지 못했습니다.
+        <p className="flex items-center gap-1.5 text-xs text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          {unchecked}개 항목은 상세 조건(실적 구간별 차등·월 한도·제외 업종)을 아직 확인하지 못했습니다.
         </p>
       )}
 
-      {card.benefitNote && <p className="muted small cbn-note">{card.benefitNote}</p>}
+      {card.benefitNote && <p className="label-mono whitespace-normal">{card.benefitNote}</p>}
 
       {editing && (
-        <form className="form-row cbn-form" onSubmit={save}>
-          <label className="field cbn-area">
-            영역
+        <form className="surface-inset grid items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={save}>
+          <label className="block sm:col-span-2">
+            <span className="field-label">영역</span>
             <input
               type="text"
+              className="input-field"
               placeholder="예: 차량유지관리 업종"
               value={f.area}
               onChange={(e) => setF({ ...f, area: e.target.value })}
             />
           </label>
-          <label className="field">
-            구분
-            <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
+          <label className="block">
+            <span className="field-label">구분</span>
+            <select className="input-field" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
               {Object.entries(KIND_LABEL).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
           </label>
           {f.kind !== "service" && (
-            <label className="field">
-              적립·할인 (%)
+            <label className="block">
+              <span className="field-label">적립·할인 (%)</span>
               <input
                 type="text"
+                className="input-field num"
                 inputMode="decimal"
                 placeholder="예: 4.5"
                 value={f.ratePct}
@@ -246,39 +265,43 @@ export default function CardBenefits({
               />
             </label>
           )}
-          <label className="field">
-            월 한도 (원)
+          <label className="block">
+            <span className="field-label">월 한도 (원)</span>
             <input
               type="text"
+              className="input-field num"
               inputMode="numeric"
               placeholder="없으면 비움"
               value={f.monthlyCap}
               onChange={(e) => setF({ ...f, monthlyCap: formatAmount(e.target.value) })}
             />
           </label>
-          <label className="field cbn-note-field">
-            비고
+          <label className="block sm:col-span-2">
+            <span className="field-label">비고</span>
             <input
               type="text"
+              className="input-field"
               placeholder="예: 전월 실적 구간별 차등"
               value={f.note}
               onChange={(e) => setF({ ...f, note: e.target.value })}
             />
           </label>
-          <label className="check small">
-            <input type="checkbox" checked={f.isMax}
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <input type="checkbox" className="accent-mint-400" checked={f.isMax}
               onChange={(e) => setF({ ...f, isMax: e.target.checked })} />
             최대치
           </label>
-          <label className="check small">
-            <input type="checkbox" checked={f.needsCheck}
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <input type="checkbox" className="accent-mint-400" checked={f.needsCheck}
               onChange={(e) => setF({ ...f, needsCheck: e.target.checked })} />
             확인 필요
           </label>
-          <button type="submit">{f.id ? "수정" : "추가"}</button>
-          {f.id !== 0 && (
-            <button type="button" className="ghost" onClick={() => setF({ ...BLANK })}>취소</button>
-          )}
+          <div className="flex gap-2">
+            <button type="submit" className="btn-primary">{f.id ? "수정" : "추가"}</button>
+            {f.id !== 0 && (
+              <button type="button" className="btn-ghost" onClick={() => setF({ ...BLANK })}>취소</button>
+            )}
+          </div>
         </form>
       )}
     </div>

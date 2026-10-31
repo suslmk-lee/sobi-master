@@ -161,6 +161,16 @@ func (c *Calendar) NextBusinessDay(d time.Time) time.Time {
 	return d
 }
 
+// PrevBusinessDay 는 d 가 업무일이면 d, 아니면 그 앞 마지막 업무일.
+// 월급처럼 휴일이면 앞당겨 들어오는 입금일을 구할 때 쓴다(예: 10일이 토요일이면 9일 금요일).
+func (c *Calendar) PrevBusinessDay(d time.Time) time.Time {
+	d = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 30 && !c.IsBusinessDay(d); i++ {
+		d = d.AddDate(0, 0, -1)
+	}
+	return d
+}
+
 // Reason 은 d 가 업무일이 아닌 까닭("토요일", "추석" 등). 업무일이면 "".
 func (c *Calendar) Reason(d time.Time) string {
 	if h, name := c.Holiday(d); h {

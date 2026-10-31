@@ -1,0 +1,458 @@
+/* frontend/src/index.css */
+@import './appearance/fonts.css';
+@import './styles/card-styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-color: rgb(var(--c-ink-500)) rgb(var(--c-ink-900));
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-ink-500)) rgb(var(--c-ink-900));
+}
+
+/* Chromium / Safari */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgb(var(--c-ink-900));
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-ink-600));
+  border-radius: 9999px;
+  border: 2px solid rgb(var(--c-ink-900));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-ink-500));
+}
+
+body {
+  @apply font-sans text-zinc-100;
+  background: var(--app-bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'tnum' 0;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* ------------------------------------------------------------------
+ * 디자인 시스템 — 유리 질감 다크 카드 / pill / 칩 / 링 게이지
+ * 화면 컴포넌트는 slate-* 대신 이 클래스와 ink/mint 토큰을 쓴다.
+ * ------------------------------------------------------------------ */
+@layer components {
+  /* 최상위 카드 — 모양은 모두 --card-* 변수(styles/card-styles.css)가 정한다 */
+  .surface {
+    @apply relative;
+    border-radius: var(--card-radius);
+    border: var(--card-border-w) solid var(--card-border);
+    /* --fx-glow-card: 모양 설정의 카드 그라데이션 (끄면 none) */
+    background: var(--fx-glow-card, none), var(--card-bg);
+    /* --fx-depth-card: 모양 설정의 카드 입체감 (끄면 투명 그림자) */
+    box-shadow: var(--fx-depth-card, 0 0 #0000), var(--card-shadow);
+    -webkit-backdrop-filter: var(--card-blur);
+    backdrop-filter: var(--card-blur);
+  }
+
+  /* 팝업·드롭다운·토스트 같은 고정 창 안에서는 카드 그라데이션/입체감을 덧입히지 않는다 */
+  .fixed,
+  [role='dialog'] {
+    --fx-glow-card: none;
+    --fx-depth-card: 0 0 #0000;
+  }
+
+  /* 카드 안쪽 패널 */
+  .surface-inset {
+    border-radius: var(--inset-radius);
+    border: var(--inset-border-w) solid var(--inset-border);
+    background: var(--inset-bg);
+    box-shadow: var(--inset-shadow);
+  }
+
+  /* 클릭 가능한 카드 */
+  .surface-interactive {
+    @apply transition-all duration-300 cursor-pointer;
+  }
+  .surface-interactive:hover {
+    border-color: var(--card-hover-border);
+    box-shadow: var(--fx-depth-card, 0 0 #0000), var(--card-hover-shadow);
+    transform: var(--card-hover-transform);
+  }
+
+  /* pill (네비게이션, 필터 그룹) */
+  .glass-pill {
+    border-radius: var(--pill-radius);
+    border: var(--pill-border-w) solid var(--pill-border);
+    background: var(--pill-bg);
+    box-shadow: var(--pill-shadow);
+    -webkit-backdrop-filter: var(--pill-blur);
+    backdrop-filter: var(--pill-blur);
+  }
+
+  /* pill 내부 세그먼트 버튼 */
+  .pill-item {
+    @apply px-3.5 py-1.5 text-sm text-zinc-400 transition-colors whitespace-nowrap;
+    border-radius: var(--pill-radius);
+    border: var(--pill-border-w) solid transparent;
+  }
+  .pill-item:hover {
+    @apply text-zinc-100;
+  }
+  .pill-item-active {
+    color: var(--pill-active-fg);
+    background: var(--pill-active-bg);
+    border-color: var(--pill-active-border);
+    box-shadow: var(--pill-active-shadow);
+  }
+
+  /* 아이콘 타일 */
+  .icon-tile {
+    @apply inline-flex items-center justify-center w-10 h-10 shrink-0 text-zinc-200;
+    border-radius: var(--tile-radius);
+    border: var(--tile-border-w) solid var(--tile-border);
+    background:
+      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-orange-400) / calc(0.28 * var(--tile-glow))), transparent 60%),
+      var(--tile-base);
+    box-shadow: var(--tile-shadow);
+  }
+  .icon-tile-mint {
+    background:
+      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-mint-400) / calc(0.3 * var(--tile-glow))), transparent 60%),
+      var(--tile-base);
+  }
+  .icon-tile-amber {
+    background:
+      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-amber-400) / calc(0.32 * var(--tile-glow))), transparent 60%),
+      var(--tile-base);
+  }
+  .icon-tile-sky {
+    background:
+      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-sky-300) / calc(0.28 * var(--tile-glow))), transparent 60%),
+      var(--tile-base);
+  }
+
+  /* 고정폭 칩 */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-1 font-mono text-[11px] text-zinc-300 whitespace-nowrap;
+    border-radius: var(--chip-radius);
+    border: var(--chip-border-w) solid var(--chip-border);
+    background: var(--chip-bg);
+    box-shadow: var(--chip-shadow);
+  }
+
+  /* "New" 배지 */
+  .badge-new {
+    @apply inline-flex items-center rounded-full border border-white/80 bg-black px-1.5 py-px text-[10px] font-semibold leading-none text-white;
+  }
+
+  /* 상태 배지 */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap;
+  }
+
+  /* 고정폭 보조 라벨 */
+  .label-mono {
+    @apply font-mono text-[11px] tracking-wide text-zinc-500;
+  }
+
+  /* 섹션 제목 */
+  .section-title {
+    @apply text-[15px] font-semibold tracking-tight text-white;
+  }
+
+  /* 큰 숫자 */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 앱 배경 (설정 미리보기 등에서도 쓰는 유틸) */
+  .app-bg {
+    background: var(--app-bg);
+  }
+
+  /* 상단 고정 헤더 바탕 (오로라처럼 배경을 살려야 하는 스타일은 더 투명하게) */
+  .app-header {
+    background: var(--header-bg, rgb(var(--c-ink-950) / 0.7));
+  }
+
+  /* 버튼: 주 행동 */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-all disabled:opacity-50;
+    color: var(--btn-primary-fg);
+    border-radius: var(--btn-radius);
+    border: var(--btn-border-w) solid var(--btn-primary-border);
+    background: var(--btn-primary-bg);
+    box-shadow: var(--btn-primary-shadow);
+  }
+  .btn-primary:hover {
+    background: var(--btn-primary-hover-bg);
+  }
+  .btn-primary:active {
+    transform: var(--btn-primary-active-transform);
+    box-shadow: var(--btn-primary-active-shadow);
+  }
+
+  /* 버튼: 보조 행동 */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors disabled:opacity-50;
+    border-radius: var(--btn-radius);
+    border: var(--btn-border-w) solid var(--btn-ghost-border);
+    background: var(--btn-ghost-bg);
+    box-shadow: var(--btn-ghost-shadow);
+  }
+  .btn-ghost:hover {
+    border-color: var(--btn-ghost-hover-border);
+    background: var(--btn-ghost-hover-bg);
+  }
+
+  /* 버튼: 위험 행동 */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 border-rose-400/25 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20;
+    border-radius: var(--btn-radius);
+    border-width: var(--btn-border-w);
+  }
+
+  /* 아이콘 전용 버튼 */
+  .btn-icon {
+    @apply inline-flex h-8 w-8 items-center justify-center text-zinc-400 transition-colors hover:text-white;
+    border-radius: var(--btn-icon-radius);
+    border: var(--btn-border-w) solid var(--btn-icon-border);
+    background: var(--btn-icon-bg);
+    box-shadow: var(--btn-icon-shadow);
+  }
+  .btn-icon:hover {
+    border-color: var(--btn-ghost-hover-border);
+  }
+
+  /* 입력 필드 */
+  .input-field {
+    @apply w-full px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 transition-colors focus:outline-none;
+    border-radius: var(--input-radius);
+    border: var(--input-border-w) solid var(--input-border);
+    background-color: var(--input-bg);
+    box-shadow: var(--input-shadow);
+  }
+  .input-field:focus {
+    border-color: var(--input-focus-border);
+    box-shadow: var(--input-focus-shadow);
+  }
+  select.input-field {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+  select.input-field option {
+    background: rgb(var(--c-ink-800));
+    color: rgb(var(--c-zinc-100));
+  }
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-zinc-400;
+  }
+
+  /* 테이블 */
+  .table-head {
+    @apply font-mono text-[11px] font-normal uppercase tracking-wider text-zinc-500;
+  }
+  .table-row {
+    @apply border-b border-white/[0.05] transition-colors hover:bg-white/[0.025];
+  }
+
+  /* 구분선 */
+  .divider-v {
+    @apply w-px self-stretch bg-white/[0.07];
+  }
+
+  /* 그레인 질감 + 사선 광원 히어로 */
+  .hero-grain {
+    @apply relative overflow-hidden;
+    border-radius: var(--hero-radius);
+    border: var(--hero-border-w) solid var(--hero-border);
+    background: var(--fx-glow-hero, none), var(--hero-bg);
+    box-shadow: var(--fx-depth-hero, 0 0 #0000), var(--hero-shadow);
+  }
+  .hero-grain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hero-grain-opacity);
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .hero-grain > * {
+    position: relative;
+  }
+
+  /* 탭 카드 */
+  .tab-card {
+    @apply relative flex min-w-[118px] flex-1 flex-col items-start gap-3 overflow-hidden px-3.5 pb-3.5 pt-3 text-left transition-all duration-300;
+    border-radius: var(--tab-radius);
+    border: var(--tab-border-w) solid var(--tab-border);
+    background: var(--tab-bg);
+    box-shadow: var(--tab-shadow);
+  }
+  .tab-card:hover {
+    border-color: var(--tab-hover-border);
+  }
+  .tab-card-active {
+    border-color: var(--tab-active-border);
+    background: var(--tab-active-bg);
+    box-shadow: var(--tab-active-shadow);
+  }
+  /* 스크롤 스택 카드 (components/ui/CardStack.tsx) */
+  .card-stack-item {
+    position: sticky;
+  }
+  .card-stack-card {
+    border-radius: var(--card-radius);
+    background: rgb(var(--c-ink-950)); /* 반투명 카드 뒤로 아래 카드가 비치지 않게 */
+    transform-origin: 50% 0;
+    will-change: transform;
+  }
+
+  /* 선택된 탭: 테두리를 따라 빛줄기가 도는 보더 빔 */
+  .tab-card-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    padding: 1.5px;
+    border-radius: max(0px, calc(var(--tab-radius) - var(--tab-border-w)));
+    background: conic-gradient(
+      from var(--beam-angle),
+      transparent 0deg,
+      transparent 200deg,
+      rgb(var(--c-mint-400) / 0.25) 260deg,
+      rgb(var(--c-mint-300) / 1) 335deg,
+      rgb(var(--c-white) / 1) 352deg,
+      transparent 360deg
+    );
+    filter: drop-shadow(0 0 3px rgb(var(--c-mint-400) / 0.8));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    /* @property 를 지원하지 않는 웹뷰(구버전 WebKitGTK 등)에서도 값이 비지 않게 기본값을 둔다 → 회전 없이 정지된 빛으로 보인다 */
+    --beam-angle: 0deg;
+    animation: beamSpin 3.2s linear infinite;
+  }
+}
+
+@property --beam-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes beamSpin {
+  to {
+    --beam-angle: 360deg;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes timelineCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tabProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.toast-in {
+  animation: toastIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 알림에서 이동했을 때 카드를 잠깐 강조 */
+@keyframes focusFlash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0.9), 0 0 24px rgb(var(--c-mint-400) / 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0), 0 0 24px rgb(var(--c-mint-400) / 0);
+  }
+}
+.focus-flash {
+  animation: focusFlash 2.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .focus-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0.9);
+  }
+  .tab-card-active::before {
+    animation: none;
+    --beam-angle: 300deg;
+  }
+}
