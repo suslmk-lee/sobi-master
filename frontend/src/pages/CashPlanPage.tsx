@@ -409,20 +409,58 @@ function FlowChart({ plan }: { plan: store.CashPlan }) {
 }
 
 // 카드별 청구 표
+// 청구표: 카드사별로 묶어 소계 줄을 먼저 보이고 그 아래에 카드 한 장씩. 맨 아래에 전체 합계.
+// (카드 대금은 카드사 단위로 한 번에 빠져나가므로 카드사 소계가 실제 출금액이다)
 function BillTable({
   bills,
   onPick,
+  issuerOf,
 }: {
   bills: store.CardBill[];
   onPick: (b: store.CardBill) => void;
+  issuerOf: (cardId: number, cardName: string) => string;
 }) {
   if (!bills.length) return <p className="py-4 text-center text-sm text-zinc-500">해당하는 청구가 없습니다.</p>;
+
+  const groups: { issuer: string; bills: store.CardBill[] }[] = [];
+  for (const b of bills) {
+    const issuer = issuerOf(b.cardId, b.cardName);
+    let g = groups.find((x) => x.issuer === issuer);
+    if (!g) groups.push((g = { issuer, bills: [] }));
+    g.bills.push(b);
+  }
+  const sumOf = (list: store.CardBill[]) => ({
+    total: list.reduce((s, b) => s + b.total, 0),
+    prepaid: list.reduce((s, b) => s + b.prepaid, 0),
+    due: list.reduce((s, b) => s + b.due, 0),
+    projected: list.reduce((s, b) => s + (b.closed ? b.due : b.projected), 0),
+    open: list.some((b) => !b.closed),
+    tx: list.reduce((s, b) => s + b.txCount, 0),
+  });
+  const all = sumOf(bills);
+
+  const SumCells = ({ v, strong }: { v: ReturnType<typeof sumOf>; strong?: boolean }) => (
+    <>
+      <td className={`num whitespace-nowrap px-3 py-2.5 text-right ${strong ? "font-semibold text-white" : "font-medium text-zinc-100"}`}>
+        {won(v.total)}
+      </td>
+      <td className="num whitespace-nowrap px-3 py-2.5 text-right text-zinc-400">
+        {v.prepaid ? `−${won(v.prepaid)}` : "-"}
+      </td>
+      <td className="num whitespace-nowrap px-3 py-2.5 text-right font-semibold text-rose-300">{won(v.due)}</td>
+      <td className="num whitespace-nowrap px-3 py-2.5 text-right font-medium text-amber-300">
+        {v.open ? won(v.projected) : ""}
+      </td>
+      <td className="num py-2.5 pl-3 text-right text-zinc-400">{v.tx}</td>
+    </>
+  );
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="table-head border-b border-white/[0.08]">
-            <th className="py-2.5 pr-3 text-left font-normal">카드</th>
+            <th className="py-2.5 pr-3 text-left font-normal">카드사 · 카드</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left font-normal">이용기간</th>
             <th className="px-3 py-2.5 text-left font-normal">상태</th>
             <th className="px-3 py-2.5 text-right font-normal">이용액</th>
@@ -432,47 +470,68 @@ function BillTable({
             <th className="py-2.5 pl-3 text-right font-normal">건수</th>
           </tr>
         </thead>
-        <tbody>
-          {bills.map((b) => (
-            <tr
-              key={`${b.cardId}-${b.nominalDue}`}
-              className="table-row cursor-pointer text-zinc-200"
-              onClick={() => onPick(b)}
-              title="이용 내역 보기"
-            >
-              <td className="whitespace-nowrap py-2.5 pr-3">
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: b.color || autoColor(b.cardName) }}
-                  />
-                  {b.cardName}
-                </span>
-              </td>
-              <td className="num whitespace-nowrap px-3 py-2.5 text-zinc-400">
-                {b.periodStart} ~ {b.periodEnd}
-              </td>
-              <td className="px-3 py-2.5">
-                {b.closed ? (
-                  <span className="badge bg-emerald-500/10 text-emerald-300">확정</span>
-                ) : (
-                  <span className="badge bg-sky-500/10 text-sky-300">누적 중</span>
-                )}
-              </td>
-              <td className="num whitespace-nowrap px-3 py-2.5 text-right">{won(b.total)}</td>
-              <td className="num whitespace-nowrap px-3 py-2.5 text-right text-zinc-400">
-                {b.prepaid ? `−${won(b.prepaid)}` : "-"}
-              </td>
-              <td className="num whitespace-nowrap px-3 py-2.5 text-right font-medium text-rose-300">
-                {won(b.due)}
-              </td>
-              <td className="num whitespace-nowrap px-3 py-2.5 text-right text-amber-300">
-                {b.closed ? "" : won(b.projected)}
-              </td>
-              <td className="num py-2.5 pl-3 text-right text-zinc-400">{b.txCount}</td>
-            </tr>
-          ))}
-        </tbody>
+        {groups.map((g) => {
+          const v = sumOf(g.bills);
+          return (
+            <tbody key={g.issuer} className="border-b border-white/[0.08]">
+              <tr className="bg-white/[0.025]">
+                <td className="whitespace-nowrap py-2.5 pr-3" colSpan={3}>
+                  <span className="inline-flex items-center gap-2 pl-1 font-medium text-white">
+                    <Landmark className="h-4 w-4 text-zinc-400" strokeWidth={1.75} />
+                    {g.issuer}
+                    <span className="label-mono !normal-case">{g.bills.length}장</span>
+                  </span>
+                </td>
+                <SumCells v={v} />
+              </tr>
+              {g.bills.map((b) => (
+                <tr
+                  key={`${b.cardId}-${b.nominalDue}`}
+                  className="table-row cursor-pointer text-xs text-zinc-300"
+                  onClick={() => onPick(b)}
+                  title="이용 내역 보기"
+                >
+                  <td className="whitespace-nowrap py-2 pl-7 pr-3">
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: b.color || autoColor(b.cardName) }}
+                      />
+                      {b.cardName}
+                    </span>
+                  </td>
+                  <td className="num whitespace-nowrap px-3 py-2 text-zinc-400">
+                    {b.periodStart} ~ {b.periodEnd}
+                  </td>
+                  <td className="px-3 py-2">
+                    {b.closed ? (
+                      <span className="badge bg-emerald-500/10 text-emerald-300">확정</span>
+                    ) : (
+                      <span className="badge bg-sky-500/10 text-sky-300">누적 중</span>
+                    )}
+                  </td>
+                  <td className="num whitespace-nowrap px-3 py-2 text-right">{won(b.total)}</td>
+                  <td className="num whitespace-nowrap px-3 py-2 text-right text-zinc-500">
+                    {b.prepaid ? `−${won(b.prepaid)}` : "-"}
+                  </td>
+                  <td className="num whitespace-nowrap px-3 py-2 text-right text-rose-300/80">{won(b.due)}</td>
+                  <td className="num whitespace-nowrap px-3 py-2 text-right text-amber-300/80">
+                    {b.closed ? "" : won(b.projected)}
+                  </td>
+                  <td className="num py-2 pl-3 text-right text-zinc-500">{b.txCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          );
+        })}
+        <tfoot>
+          <tr>
+            <td className="whitespace-nowrap py-3 pr-3 font-semibold text-white" colSpan={3}>
+              합계 <span className="label-mono !normal-case ml-1">{groups.length}개 카드사 · {bills.length}장</span>
+            </td>
+            <SumCells v={all} strong />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
@@ -538,10 +597,9 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
   }, []);
 
   // 카드 → 카드사 (카드 탭의 "카드사". 비어 있으면 카드 이름을 그대로 묶음 이름으로)
-  const issuerOf = (ev: store.CashEvent) => {
-    const pm = refs.paymentMethods.find((p) => p.id === ev.refId);
-    return pm?.issuer?.trim() || ev.label;
-  };
+  const issuerOfCard = (cardId: number, cardName: string) =>
+    refs.paymentMethods.find((p) => p.id === cardId)?.issuer?.trim() || cardName;
+  const issuerOf = (ev: store.CashEvent) => issuerOfCard(ev.refId, ev.label);
 
   // 일정의 카드 출금 항목 → 같은 카드·같은 출금일의 청구서 (세부 내역 팝업용)
   const billFor = (ev: store.CashEvent) =>
@@ -854,7 +912,7 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
           title={plan.nextDue ? `다음 결제 (${dateLabel(plan.nextDue)})` : "다음 결제"}
           sub={nextEstimated ? "이용기간이 끝나지 않은 카드는 예상치" : undefined}
         />
-        <BillTable bills={plan.nextDueBills} onPick={openDrill} />
+        <BillTable bills={plan.nextDueBills} onPick={openDrill} issuerOf={issuerOfCard} />
       </div>
       {plan.followingDue && (
         <div className="surface p-5 sm:p-6">
@@ -863,7 +921,7 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
             title={`그다음 결제 (${dateLabel(plan.followingDue)})`}
             sub="지금 쓰는 카드값이 쌓이는 중"
           />
-          <BillTable bills={plan.followingBills} onPick={openDrill} />
+          <BillTable bills={plan.followingBills} onPick={openDrill} issuerOf={issuerOfCard} />
           {followingEstimated && (
             <p className="mt-2 text-xs text-zinc-500">예상 열은 이용기간 끝까지의 추정 청구액입니다.</p>
           )}
