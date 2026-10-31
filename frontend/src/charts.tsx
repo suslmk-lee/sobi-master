@@ -29,12 +29,15 @@ const INCOME = cv("emerald-400");
 const EXPENSE = cv("rose-400");
 
 // 축 숫자(§11.5). 값 표시는 풀 포맷(won), 축은 compact.
-export const compact = (n: number) =>
-  n >= 100000000
+// 음수(잔액 부족 등)도 같은 단위로 줄인다 — 부호만 앞에 붙인다
+export const compact = (n: number): string => {
+  if (n < 0) return `-${compact(-n)}`;
+  return n >= 100000000
     ? `${(n / 100000000).toFixed(1)}억`
     : n >= 10000
     ? `${Math.round(n / 10000).toLocaleString()}만`
     : Math.round(n).toLocaleString("ko-KR");
+};
 
 // 축 눈금 글자 규격: 11px mono
 export function useAxisTick() {
