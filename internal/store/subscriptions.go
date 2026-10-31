@@ -27,6 +27,18 @@ type Subscription struct {
 	// BillingDay 는 결제일(1~31). BillingMonth 는 연 결제일 때의 결제 월(1~12).
 	BillingDay   int `json:"billingDay"`
 	BillingMonth int `json:"billingMonth"`
+	// DayRule 은 결제일을 정하는 방식.
+	//   "day"     — BillingDay 일 (기본. 말일보다 크면 말일)
+	//   "weekday" — WeekNth 번째 Weekday 요일 (예: 둘째 주 금요일)
+	// 매년(yearly)이면 BillingMonth 달 안에서 같은 규칙을 쓴다.
+	DayRule string `json:"dayRule"`
+	// WeekNth 는 몇 번째 요일인지: 1~5, -1 은 마지막. 그 달에 5번째가 없으면 마지막으로 본다.
+	WeekNth int `json:"weekNth"`
+	// Weekday 는 요일: 0=일, 1=월, … 6=토 (Go time.Weekday 와 같다).
+	Weekday int `json:"weekday"`
+	// HolidayRule 은 결제일이 주말·공휴일일 때:
+	//   "next" — 다음 영업일 (기본)  "prev" — 이전 영업일  "none" — 그대로
+	HolidayRule string `json:"holidayRule"`
 	// StartYM/EndYM 은 "YYYY-MM". 비어 있으면 제한 없음.
 	// EndYM 은 마지막으로 결제되는 달이다(그 달까지는 빠진다).
 	StartYM string `json:"startYm"`
