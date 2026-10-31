@@ -4,6 +4,8 @@ import { useAppearance } from '../../appearance/AppearanceContext';
 
 // 카드 입체감: 마우스를 올린 카드를 포인터 쪽으로 기울이고 살짝 띄운다 (모양 설정에서 켤 때만)
 const BASE_WIDTH = 480; // 이보다 넓은 카드는 기울기를 줄여 과하지 않게
+const BASE_HEIGHT = 320; // 이보다 높은 카드는 앞뒤 기울기를 줄인다
+const MAX_TILT_HEIGHT = 900; // 이보다 높은 카드는 기울이지 않는다 (띄우기만)
 
 export default function CardTilt() {
   const { settings } = useAppearance();
@@ -37,11 +39,21 @@ export default function CardTilt() {
       current = el;
       if (!el) return;
       const r = el.getBoundingClientRect();
+      // 화면보다 긴 카드(거래 표 등)는 기울이지 않고 띄우기만 한다. 수천 px 짜리 판을 원근으로 기울이면
+      // 끝부분이 시점 앞으로 넘어가 브라우저가 판 전체를 그리지 않아 깜빡이거나 사라진다.
+      // data-no-tilt 를 단 영역도 기울이지 않는다.
+      if (r.height > MAX_TILT_HEIGHT || el.closest('[data-no-tilt]')) {
+        el.style.transition = 'transform 0.12s ease-out';
+        el.style.transform = lift > 0 ? `translateY(${-lift}px)` : '';
+        return;
+      }
       const px = (e.clientX - r.left) / r.width - 0.5;
       const py = (e.clientY - r.top) / r.height - 0.5;
-      const k = Math.min(1, BASE_WIDTH / r.width);
+      // 넓은 카드는 좌우 기울기를, 높은 카드는 앞뒤 기울기를 줄인다 (끝이 튀어나오는 정도를 일정하게)
+      const kx = Math.min(1, BASE_WIDTH / r.width);
+      const ky = Math.min(1, BASE_HEIGHT / r.height);
       el.style.transition = 'transform 0.12s ease-out';
-      el.style.transform = `perspective(1000px) rotateX(${(-py * 2 * tilt * k).toFixed(2)}deg) rotateY(${(px * 2 * tilt * k).toFixed(2)}deg) translateY(${-lift}px)`;
+      el.style.transform = `perspective(1000px) rotateX(${(-py * 2 * tilt * ky).toFixed(2)}deg) rotateY(${(px * 2 * tilt * kx).toFixed(2)}deg) translateY(${-lift}px)`;
     };
 
     const onMove = (e: PointerEvent) => {
