@@ -26,6 +26,7 @@ CREATE TABLE payment_methods (
 	issuer          TEXT NOT NULL DEFAULT '',
 	billing_day     INTEGER NOT NULL DEFAULT 0,
 	cycle_start_day INTEGER NOT NULL DEFAULT 1,
+	statement_start_day INTEGER NOT NULL DEFAULT 0,
 	perf_target     INTEGER NOT NULL DEFAULT 0,
 	color           TEXT NOT NULL DEFAULT '',
 	cashback_bp         INTEGER NOT NULL DEFAULT 0,
@@ -112,6 +113,17 @@ CREATE TABLE custom_holidays (
 	name       TEXT NOT NULL DEFAULT '',
 	is_holiday INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE app_settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+CREATE TABLE cash_balances (
+	id         INTEGER PRIMARY KEY,
+	as_of      TEXT NOT NULL,
+	amount     INTEGER NOT NULL,
+	memo       TEXT NOT NULL DEFAULT '',
+	created_at TEXT
+);
 `
 
 // BackupToSQLite 는 현재 DB(Supabase) 전체를 새 SQLite 파일로 스냅샷 백업한다.
@@ -186,15 +198,15 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name, kind, nullable(parent), order}, e
 			}),
 		copy("payment_methods",
-			`SELECT id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods`,
-			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods`,
+			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id, target, fee, feeG int64
-				var day, cycle, cbBp, cbBonusBp, cbDays int
+				var day, cycle, stmt, cbBp, cbBonusBp, cbDays int
 				var name, typ, issuer, color, bURL, bNote string
-				e := r.Scan(&id, &name, &typ, &issuer, &day, &cycle, &target, &color, &cbBp, &cbBonusBp, &cbDays,
+				e := r.Scan(&id, &name, &typ, &issuer, &day, &cycle, &stmt, &target, &color, &cbBp, &cbBonusBp, &cbDays,
 					&fee, &feeG, &bURL, &bNote)
-				return []interface{}{id, name, typ, issuer, day, cycle, target, color, cbBp, cbBonusBp, cbDays,
+				return []interface{}{id, name, typ, issuer, day, cycle, stmt, target, color, cbBp, cbBonusBp, cbDays,
 					fee, feeG, bURL, bNote}, e
 			}),
 		copy("card_benefits",
@@ -265,6 +277,24 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var h int
 				e := r.Scan(&date, &name, &h)
 				return []interface{}{date, name, h}, e
+			}),
+		copy("app_settings",
+			`SELECT key, value FROM app_settings`,
+			`INSERT INTO app_settings(key, value) VALUES(?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var k, v string
+				e := r.Scan(&k, &v)
+				return []interface{}{k, v}, e
+			}),
+		copy("cash_balances",
+			`SELECT id, as_of, amount, memo, created_at::text FROM cash_balances`,
+			`INSERT INTO cash_balances(id, as_of, amount, memo, created_at) VALUES(?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, amount int64
+				var asOf, memo string
+				var createdAt sql.NullString
+				e := r.Scan(&id, &asOf, &amount, &memo, &createdAt)
+				return []interface{}{id, asOf, amount, memo, nullable2(createdAt)}, e
 			}),
 		copy("transactions",
 			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at::text FROM transactions`,
