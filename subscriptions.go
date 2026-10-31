@@ -36,7 +36,7 @@ type SubStatus struct {
 	ChangingYM     string `json:"changingYm"`
 	ChangingAmount int64  `json:"changingAmount"`
 	// PlannedDate 는 원래 결제일, ChargeDate 는 주말·공휴일을 피해 민 실제 결제일.
-	// ShiftReason 은 밀린 까닭("토요일", "추석" …) — 안 밀렸으면 "".
+	// ShiftReason 은 밀린(당겨진) 까닭("주말 → 다음 영업일", "공휴일(추석) → 이전 영업일") — 안 밀렸으면 "".
 	PlannedDate string `json:"plannedDate"`
 	ChargeDate  string `json:"chargeDate"`
 	ShiftReason string `json:"shiftReason"`
@@ -81,6 +81,34 @@ type chargeWant struct {
 	Sub      store.Subscription
 	Amount   int64  // 그 달 예상 요금
 	From, To string // 허용 날짜 범위("YYYY-MM-DD", 양끝 포함). 빈 값이면 제한 없음
+}
+
+// newChargeWant 는 ym 달 정기결제 대조 요청. 허용 날짜 범위는 chargeWindow — 결제일이
+// 전달로 당겨지거나 다음 달로 밀려도 그 정기결제 자기 달로 잡힌다.
+func newChargeWant(sub store.Subscription, ym string, cal *holiday.Calendar) chargeWant {
+	w := chargeWant{Sub: sub, Amount: sub.AmountAt(ym)}
+	if from, to, err := chargeWindow(sub, ym, cal); err == nil {
+		w.From, w.To = from.Format("2006-01-02"), to.Format("2006-01-02")
+	}
+	return w
+}
+
+// wantsTxFilter 는 wants 의 날짜 범위를 모두 덮는 지출 거래 조회 조건(기본은 ym 한 달).
+func wantsTxFilter(ym string, wants []chargeWant) store.TxFilter {
+	first, err := time.Parse("2006-01", ym)
+	if err != nil {
+		return store.TxFilter{Month: ym, Direction: "expense"}
+	}
+	from, to := first.Format("2006-01-02"), first.AddDate(0, 1, -1).Format("2006-01-02")
+	for _, w := range wants {
+		if w.From != "" && w.From < from {
+			from = w.From
+		}
+		if w.To != "" && w.To > to {
+			to = w.To
+		}
+	}
+	return store.TxFilter{From: from, To: to, Direction: "expense"}
 }
 
 // assignCharges 는 정기결제(wants)와 실제 거래(txs)를 짝짓는다.
@@ -336,11 +364,6 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 		return SubMonth{}, err
 	}
 
-	// 그 달 지출 거래를 한 번만 읽어 대조에 재사용한다.
-	txs, err := a.st.ListTransactions(store.TxFilter{Month: ym, Direction: "expense"})
-	if err != nil {
-		return SubMonth{}, err
-	}
 	cal, err := a.st.Calendar()
 	if err != nil {
 		return SubMonth{}, err
@@ -386,7 +409,13 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 		if p, ok := posts[sub.ID][ym]; ok && p.TransactionID != nil {
 			continue
 		}
-		wants = append(wants, chargeWant{Sub: sub, Amount: sub.AmountAt(ym)})
+		wants = append(wants, newChargeWant(sub, ym, cal))
+	}
+	// 그 달 지출 거래를 한 번만 읽어 대조에 재사용한다. 결제일이 이전 영업일로 전달에
+	// 당겨졌거나 다음 달로 밀린 정기결제가 있으면 그 날짜까지 넓혀 읽는다.
+	txs, err := a.st.ListTransactions(wantsTxFilter(ym, wants))
+	if err != nil {
+		return SubMonth{}, err
 	}
 	assigned := assignCharges(wants, txs, linkedTx)
 
@@ -402,9 +431,7 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 			if planned, actual, err := chargeDate(sub, ym, cal); err == nil {
 				st.PlannedDate = planned.Format("2006-01-02")
 				st.ChargeDate = actual.Format("2006-01-02")
-				if !actual.Equal(planned) {
-					st.ShiftReason = cal.Reason(planned)
-				}
+				st.ShiftReason = sub.ShiftReason(planned, actual, cal)
 			}
 		}
 		if p, ok := posts[sub.ID][ym]; ok {
@@ -449,7 +476,7 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 	out.YearlyProjection = out.MonthlyEquivalent * 12
 
 	// 최근 subTrendMonths 개월의 "실제로 빠진" 정기결제 지출 추이.
-	trend, months, err := a.subTrend(subs, year, month, subTrendMonths)
+	trend, months, err := a.subTrend(subs, cal, year, month, subTrendMonths)
 	if err != nil {
 		return out, err
 	}
@@ -458,22 +485,22 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 }
 
 // subTrend 는 (year, month) 까지 n개월 동안 정기결제로 대조된 실제 지출 합계.
-func (a *App) subTrend(subs []store.Subscription, year, month, n int) ([]int64, []string, error) {
+func (a *App) subTrend(subs []store.Subscription, cal *holiday.Calendar, year, month, n int) ([]int64, []string, error) {
 	base := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	trend := make([]int64, 0, n)
 	months := make([]string, 0, n)
 	for i := n - 1; i >= 0; i-- {
 		d := base.AddDate(0, -i, 0)
 		ym := ymOf(d.Year(), int(d.Month()))
-		txs, err := a.st.ListTransactions(store.TxFilter{Month: ym, Direction: "expense"})
-		if err != nil {
-			return nil, nil, err
-		}
 		var wants []chargeWant
 		for _, sub := range subs {
 			if sub.DueIn(ym) {
-				wants = append(wants, chargeWant{Sub: sub, Amount: sub.AmountAt(ym)})
+				wants = append(wants, newChargeWant(sub, ym, cal))
 			}
+		}
+		txs, err := a.st.ListTransactions(wantsTxFilter(ym, wants))
+		if err != nil {
+			return nil, nil, err
 		}
 		var sum int64
 		for _, t := range assignCharges(wants, txs, nil) {

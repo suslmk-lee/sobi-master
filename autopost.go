@@ -57,21 +57,40 @@ type AutoPostResult struct {
 
 // chargeDate 는 정기결제의 ym 달 결제일. planned 는 원래 날짜(말일보다 큰 결제일은 말일로
 // 당김), actual 은 주말·공휴일이면 다음 업무일로 민 날짜. 밀다 보면 다음 달로 넘어갈 수 있다.
+//
+// 날짜 규칙(결제일/N번째 요일)과 휴일 처리(다음·이전 영업일·그대로)는 store.Subscription.ChargeDate
+// 가 정한다. 이전 영업일로 당기면 전달로 넘어갈 수 있다.
 func chargeDate(sub store.Subscription, ym string, cal *holiday.Calendar) (planned, actual time.Time, err error) {
+	return sub.ChargeDate(ym, cal)
+}
+
+// chargeWindow 는 ym 달 결제를 실제 거래에서 찾는 날짜 범위(양끝 포함).
+// 기본은 그 달 1일~말일이고, 결제일이 다음 달로 밀렸거나 전달로 당겨졌으면 그 날까지 넓힌다.
+// 다음 달 결제가 당겨져 이 달 말로 들어와 있으면, 그 거래를 이 달 결제로 가져가지 않도록
+// 그 앞날까지만 본다(같은 거래가 두 달에 잡히는 것을 막는다).
+func chargeWindow(sub store.Subscription, ym string, cal *holiday.Calendar) (from, to time.Time, err error) {
 	first, err := time.Parse("2006-01", ym)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	last := first.AddDate(0, 1, -1).Day()
-	day := sub.BillingDay
-	if day < 1 {
-		day = 1
+	from, to = first, first.AddDate(0, 1, -1)
+	_, actual, err := sub.ChargeDate(ym, cal)
+	if err != nil {
+		return from, to, nil
 	}
-	if day > last {
-		day = last
+	if actual.Before(from) {
+		from = actual
 	}
-	planned = time.Date(first.Year(), first.Month(), day, 0, 0, 0, 0, time.UTC)
-	return planned, cal.NextBusinessDay(planned), nil
+	if actual.After(to) {
+		to = actual
+	}
+	if nym := nextYM(ym); sub.DueIn(nym) {
+		if _, na, err := sub.ChargeDate(nym, cal); err == nil &&
+			na.After(actual) && na.Before(first.AddDate(0, 1, 0)) {
+			to = na.AddDate(0, 0, -1)
+		}
+	}
+	return from, to, nil
 }
 
 // nextYM 은 "YYYY-MM" 의 다음 달.
@@ -144,7 +163,10 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 			start = s.AutoSince
 		}
 	}
-	for i, ym := 0, start; ym <= curYM && i < autoPostMaxMonths; i, ym = i+1, nextYM(ym) {
+	// 다음 달 결제일이 이전 영업일로 당겨져 이미 지났을 수 있어 다음 달까지 본다
+	// (결제일이 아직 안 온 달은 아래에서 건너뛴다).
+	lastYM := nextYM(curYM)
+	for i, ym := 0, start; ym <= lastYM && i < autoPostMaxMonths; i, ym = i+1, nextYM(ym) {
 		type job struct {
 			sub  store.Subscription
 			item AutoPostItem
@@ -152,7 +174,7 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 		var jobs []job
 		var wants []chargeWant
 		first, _ := time.Parse("2006-01", ym)
-		winTo := first.AddDate(0, 1, -1)
+		winFrom, winTo := first, first.AddDate(0, 1, -1)
 		for _, sub := range auto {
 			if ym < sub.AutoSince || !sub.DueIn(ym) {
 				continue
@@ -181,18 +203,22 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 			if !actual.Equal(planned) {
 				item.Reason = cal.Reason(planned)
 			}
-			// 이미 입력된 결제를 찾는 기간: 그 달 1일 ~ 말일, 결제일이 다음 달로 밀렸으면 그 날까지
-			to := first.AddDate(0, 1, -1)
-			if actual.After(to) {
-				to = actual
+			// 이미 입력된 결제를 찾는 기간: 그 달 1일 ~ 말일, 결제일이 다음 달로 밀렸거나
+			// 전달로 당겨졌으면 그 날까지 넓힌다.
+			from, to, err := chargeWindow(sub, ym, cal)
+			if err != nil {
+				return out, err
 			}
 			if to.After(winTo) {
 				winTo = to
 			}
+			if from.Before(winFrom) {
+				winFrom = from
+			}
 			jobs = append(jobs, job{sub, item})
 			wants = append(wants, chargeWant{
 				Sub: sub, Amount: item.Amount,
-				From: first.Format("2006-01-02"), To: to.Format("2006-01-02"),
+				From: from.Format("2006-01-02"), To: to.Format("2006-01-02"),
 			})
 		}
 		if len(jobs) == 0 {
@@ -201,7 +227,7 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 
 		// 이미 손으로 입력해 둔 그 달 결제와 짝짓는다(정기결제 화면의 "빠짐" 판정과 같은 규칙).
 		txs, err := a.st.ListTransactions(store.TxFilter{
-			From: first.Format("2006-01-02"), To: winTo.Format("2006-01-02"), Direction: "expense",
+			From: winFrom.Format("2006-01-02"), To: winTo.Format("2006-01-02"), Direction: "expense",
 		})
 		if err != nil {
 			return out, err
