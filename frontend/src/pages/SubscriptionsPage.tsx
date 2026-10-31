@@ -8,6 +8,8 @@ import {
 import { main, store } from "../../wailsjs/go/models";
 import { categoryOptions, formatAmount, parseAmount, Refs, won } from "../lib";
 import MonthPicker from "../MonthPicker";
+import ScheduleFields, { SCHEDULE_DEFAULTS, scheduleFromSub } from "../ScheduleFields";
+import { describeHolidayRule, describeSchedule } from "../subSchedule";
 import { LineChart } from "../charts";
 import { Sk } from "../Skeleton";
 import { useConfirm } from "../ConfirmModal";
@@ -23,6 +25,7 @@ const BLANK = {
   cycle: "monthly",
   billingDay: "1",
   billingMonth: "1",
+  ...SCHEDULE_DEFAULTS,
   startYm: "",
   endYm: "",
   nextAmount: "",
@@ -128,6 +131,7 @@ export default function SubscriptionsPage({
       cycle: s.cycle,
       billingDay: String(s.billingDay),
       billingMonth: String(s.billingMonth || 1),
+      ...scheduleFromSub(s),
       startYm: s.startYm,
       endYm: s.endYm,
       nextAmount: s.nextAmount ? formatAmount(String(s.nextAmount)) : "",
@@ -157,6 +161,10 @@ export default function SubscriptionsPage({
           cycle: f.cycle,
           billingDay: Number(f.billingDay) || 1,
           billingMonth: f.cycle === "yearly" ? Number(f.billingMonth) || 1 : 0,
+          dayRule: f.dayRule,
+          weekNth: Number(f.weekNth) || 1,
+          weekday: Number(f.weekday),
+          holidayRule: f.holidayRule,
           startYm: f.startYm,
           endYm: f.endYm,
           nextAmount: parseAmount(f.nextAmount),
@@ -254,8 +262,8 @@ export default function SubscriptionsPage({
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-500">
-        등록한 정기결제를 실제 거래와 대조합니다. "자동 등록"을 켠 항목은 결제일(주말·공휴일이면
-        다음 업무일)에 거래가 저절로 생깁니다.
+        등록한 정기결제를 실제 거래와 대조합니다. "자동 등록"을 켠 항목은 결제일(휴일이면 항목별 휴일
+        처리 규칙대로 조정)에 거래가 저절로 생깁니다.
       </p>
 
       {err && (
@@ -366,30 +374,10 @@ export default function SubscriptionsPage({
                 <option value="monthly">매월</option>
                 <option value="yearly">매년</option>
               </select>
-              {f.cycle === "yearly" && (
-                <select
-                  className="input-field"
-                  value={f.billingMonth}
-                  onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
-                  title="결제 월"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                    <option key={m} value={m}>{m}월</option>
-                  ))}
-                </select>
-              )}
-              <select
-                className="input-field"
-                value={f.billingDay}
-                onChange={(e) => setF({ ...f, billingDay: e.target.value })}
-                title="결제일"
-              >
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>{d}일</option>
-                ))}
-              </select>
             </div>
           </div>
+
+          <ScheduleFields value={f} onChange={(p) => setF({ ...f, ...p })} />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <select
@@ -475,7 +463,7 @@ export default function SubscriptionsPage({
             <span className="text-sm text-zinc-200">
               <strong className="font-medium text-white">매달 거래 자동 등록</strong>
               <span className="text-xs leading-relaxed text-zinc-500">
-                {" "}— 결제일에 거래를 만들어 줍니다. 주말·공휴일이면 다음 업무일로 밀고, 그 달 결제를
+                {" "}— 결제일에 거래를 만들어 줍니다. 주말·공휴일이면 선택한 휴일 처리(기본: 다음 영업일)대로 옮기고, 그 달 결제를
                 이미 입력해 뒀으면 새로 만들지 않고 연결만 합니다. 켠 달부터 적용됩니다(지난 달은 소급하지 않음).
               </span>
             </span>
@@ -536,7 +524,10 @@ export default function SubscriptionsPage({
                     ) : i.chargeDate ? (
                       <span>{dayLabel(i.chargeDate)}</span>
                     ) : (
-                      <span>{`매월 ${i.sub.billingDay}일`}</span>
+                      <span>{describeSchedule(i.sub)}</span>
+                    )}
+                    {i.sub.holidayRule && i.sub.holidayRule !== "next" && (
+                      <span>{`· ${describeHolidayRule(i.sub.holidayRule)}`}</span>
                     )}
                     {i.sub.categoryName && <span>{`· ${i.sub.categoryName}`}</span>}
                     {i.sub.paymentMethodName && <span>{`· ${i.sub.paymentMethodName}`}</span>}
@@ -624,7 +615,7 @@ export default function SubscriptionsPage({
                     : i.sub.startYm && month < i.sub.startYm
                     ? `${i.sub.startYm} 시작 예정`
                     : i.sub.cycle === "yearly"
-                    ? `매년 ${i.sub.billingMonth}월 결제`
+                    ? `${describeSchedule(i.sub)} 결제`
                     : ""}
                 </span>
                 <span className="num text-sm text-zinc-500">{won(i.amount)}</span>
