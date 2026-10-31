@@ -4,6 +4,8 @@ import { DraftSubscriptionFromTx, LinkSubscriptionTx, SaveSubscription } from ".
 import { store } from "../wailsjs/go/models";
 import { formatAmount, parseAmount, won } from "./lib";
 import Portal from "./components/ui/Portal";
+import ScheduleFields, { SCHEDULE_DEFAULTS, scheduleFromSub } from "./ScheduleFields";
+import { describeSchedule, holidayHint } from "./subSchedule";
 
 // 거래 한 건을 정기결제로 등록하는 모달.
 // 초안(이름·금액·결제일·다음 달 시작)은 백엔드가 그 거래로 채워 주고, 여기서는 확인·조정만 한다.
@@ -27,6 +29,7 @@ export default function SubscribeModal({
     cycle: "monthly",
     billingDay: "1",
     billingMonth: "1",
+    ...SCHEDULE_DEFAULTS,
     startYm: "",
     autoPost: true,
   });
@@ -46,7 +49,8 @@ export default function SubscribeModal({
           amount: formatAmount(String(d.amount)),
           cycle: d.cycle,
           billingDay: String(d.billingDay),
-          billingMonth: String(d.billingMonth),
+          billingMonth: String(d.billingMonth || 1),
+          ...scheduleFromSub(d),
           startYm: d.startYm,
           autoPost: d.autoPost,
         });
@@ -78,7 +82,11 @@ export default function SubscribeModal({
           amount,
           cycle: f.cycle,
           billingDay: Number(f.billingDay) || 1,
-          billingMonth: Number(f.billingMonth) || 1,
+          billingMonth: f.cycle === "yearly" ? Number(f.billingMonth) || 1 : 0,
+          dayRule: f.dayRule,
+          weekNth: Number(f.weekNth) || 1,
+          weekday: Number(f.weekday),
+          holidayRule: f.holidayRule,
           startYm: f.startYm,
           autoPost: f.autoPost,
         })
@@ -141,7 +149,7 @@ export default function SubscribeModal({
                 이 거래가 있는 달은 이미 결제됐으므로{" "}
                 <strong className="num font-medium text-white">{f.startYm}</strong>부터 적용합니다.
                 {f.autoPost
-                  ? " 매달 결제일에 거래가 자동으로 등록됩니다(주말·공휴일이면 다음 업무일)."
+                  ? " 매달 결제일에 거래가 자동으로 등록됩니다({holidayHint(f.holidayRule)})."
                   : " 매달 정기결제 탭에서 실제로 빠졌는지·금액이 달라졌는지만 확인합니다."}
               </p>
 
@@ -155,8 +163,7 @@ export default function SubscribeModal({
                     </strong>
                     {dups.map((d) => (
                       <span key={d.id} className="text-xs text-zinc-400">
-                        {d.name} · <span className="num">{won(d.amount)}</span> · 매
-                        {d.cycle === "yearly" ? "년" : "월"} <span className="num">{d.billingDay}</span>일
+                        {d.name} · <span className="num">{won(d.amount)}</span> · {describeSchedule(d)}
                         {!d.active && " (꺼짐)"}
                       </span>
                     ))}
@@ -230,31 +237,6 @@ export default function SubscribeModal({
                     <option value="yearly">매년</option>
                   </select>
                 </label>
-                {f.cycle === "yearly" && (
-                  <label className="block">
-                    <span className="field-label">결제 월</span>
-                    <select
-                      className="input-field"
-                      value={f.billingMonth}
-                      onChange={(e) => setF({ ...f, billingMonth: e.target.value })}
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>{i + 1}월</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <label className="block">
-                  <span className="field-label">결제일</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    className="input-field num"
-                    value={f.billingDay}
-                    onChange={(e) => setF({ ...f, billingDay: e.target.value })}
-                  />
-                </label>
                 <label className="block">
                   <span className="field-label">시작 월</span>
                   <input
@@ -264,6 +246,9 @@ export default function SubscribeModal({
                     onChange={(e) => setF({ ...f, startYm: e.target.value })}
                   />
                 </label>
+                <div className="sm:col-span-3">
+                  <ScheduleFields value={f} onChange={(p) => setF({ ...f, ...p })} />
+                </div>
                 <label className="surface-inset flex cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-1 p-3 sm:col-span-3">
                   <input
                     type="checkbox"
