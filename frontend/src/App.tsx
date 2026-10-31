@@ -5,6 +5,7 @@ import {
   Coins,
   CreditCard,
   LayoutDashboard,
+  Loader2,
   LucideIcon,
   Palette,
   ReceiptText,
@@ -26,6 +27,8 @@ import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CashbackPage from "./pages/CashbackPage";
 import StatsPage from "./pages/StatsPage";
 import SettingsPage from "./pages/SettingsPage";
+import { useBackendBusy } from "./platform/busy";
+import "./styles/loading.css";
 import Brand from "./components/ui/Brand";
 import IconTile from "./components/ui/IconTile";
 import AppearanceSettings from "./components/settings/AppearanceSettings";
@@ -52,6 +55,7 @@ const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const busy = useBackendBusy();
   const [month, setMonth] = useState(thisMonth());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -137,6 +141,9 @@ export default function App() {
                 >
                   <div className="flex w-full items-start justify-between">
                     <IconTile icon={t.icon} size="sm" tone={active ? "mint" : "warm"} />
+                    {active && busy && (
+                      <Loader2 className="h-4 w-4 animate-spin text-mint-300" aria-label="불러오는 중" />
+                    )}
                   </div>
                   <span
                     className={`text-sm font-medium leading-tight ${active ? "text-white" : "text-zinc-400"}`}
@@ -156,7 +163,12 @@ export default function App() {
             })}
           </nav>
         </div>
-        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+        {/* 백엔드 호출이 길어지면 구분선 자리에 진행 막대가 흐른다 */}
+        {busy ? (
+          <div className="busy-bar" role="progressbar" aria-label="불러오는 중" />
+        ) : (
+          <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+        )}
       </header>
 
       {/* 탭 전환 시 각 화면이 마운트되며 데이터를 새로 불러온다 */}

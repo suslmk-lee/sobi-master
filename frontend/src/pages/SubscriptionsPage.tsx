@@ -241,7 +241,7 @@ export default function SubscriptionsPage({
           <IconTile icon={Repeat} tone="mint" />
           <div className="min-w-0">
             <h2 className="text-2xl font-light tracking-tight text-white">정기결제</h2>
-            <p className="label-mono num">{items.length} items</p>
+            <p className="label-mono num">{loading ? "불러오는 중…" : `${items.length} items`}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">

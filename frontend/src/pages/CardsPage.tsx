@@ -397,7 +397,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
         <IconTile icon={CreditCard} tone="mint" />
         <div className="min-w-0">
           <h2 className="text-2xl font-light tracking-tight text-white">카드</h2>
-          <p className="label-mono num">{statuses.length} cards</p>
+          <p className="label-mono num">{loading && statuses.length === 0 ? "불러오는 중…" : `${statuses.length} cards`}</p>
         </div>
       </div>
       <CardForm

@@ -585,7 +585,7 @@ export default function Transactions({
           <IconTile icon={Receipt} tone="mint" />
           <div className="min-w-0">
             <h2 className="text-2xl font-light tracking-tight text-white">거래 내역</h2>
-            <p className="label-mono num">{txs.length} items</p>
+            <p className="label-mono num">{loading && txs.length === 0 ? "불러오는 중…" : `${txs.length} items`}</p>
           </div>
         </div>
       </div>

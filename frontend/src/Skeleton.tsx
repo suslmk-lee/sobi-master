@@ -1,4 +1,6 @@
-// 로딩 중 빈 화면 대신 보여주는 펄스 플레이스홀더 (§6.15).
+// 로딩 중 빈 화면 대신 보여주는 플레이스홀더 (§6.15). 어두운 테마에서 펄스만으로는 잘 안 보여
+// 빛이 지나가는 효과(sk-shimmer, styles/loading.css)를 쓴다.
+import "./styles/loading.css";
 
 export function Sk({
   h = 14,
@@ -13,7 +15,7 @@ export function Sk({
 }) {
   return (
     <div
-      className="animate-pulse bg-white/[0.08]"
+      className="sk-shimmer"
       style={{ height: h, width: w, borderRadius: r, ...style }}
     />
   );
