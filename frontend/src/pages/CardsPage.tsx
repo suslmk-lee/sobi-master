@@ -44,6 +44,7 @@ const EMPTY = {
   name: "",
   billingDay: "",
   cycleStartDay: "1",
+  statementStartDay: "",
   perfTarget: "",
   color: "",
   // 캐시백: 화면에는 %로 입력받고 저장할 때 만분율(bp)로 바꾼다 (1% → 100)
@@ -94,6 +95,7 @@ function CardForm({
           issuer: f.issuer,
           billingDay: f.billingDay ? Number(f.billingDay) : 0,
           cycleStartDay: f.cycleStartDay ? Number(f.cycleStartDay) : 1,
+          statementStartDay: f.statementStartDay ? Number(f.statementStartDay) : 0,
           perfTarget: parseAmount(f.perfTarget) || 0,
           color: f.color,
           cashbackBp: pctToBp(f.cashbackPct),
@@ -179,6 +181,23 @@ function CardForm({
             <button type="button" className="btn-ghost" onClick={onCancel}>취소</button>
           )}
         </div>
+      </div>
+      <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="field-label">청구(이용)기간 시작일</span>
+          <input
+            type="number"
+            className="input-field num"
+            min={0}
+            max={31}
+            placeholder="자동"
+            value={f.statementStartDay}
+            onChange={(e) => setF({ ...f, statementStartDay: e.target.value })}
+          />
+        </label>
+        <p className="text-xs text-zinc-500 sm:col-span-2 lg:col-span-3 sm:pt-6">
+          비우면 실적 시작일, 그것도 1일이면 결제일 기준으로 자동 (1일 결제 → 전전월 19일~전월 18일). 카드사 명세서의 이용기간과 맞춰 주세요.
+        </p>
       </div>
       {/* 캐시백: 결제액의 기본 %, 그리고 기한 내 카드대금 납부 시 얹어 주는 추가 % */}
       <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -342,6 +361,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
       name: st.card.name,
       billingDay: st.card.billingDay ? String(st.card.billingDay) : "",
       cycleStartDay: String(st.card.cycleStartDay || 1),
+      statementStartDay: st.card.statementStartDay ? String(st.card.statementStartDay) : "",
       perfTarget: st.card.perfTarget ? formatAmount(String(st.card.perfTarget)) : "",
       color: st.card.color || "",
       cashbackPct: bpToPct(st.card.cashbackBp),
@@ -440,6 +460,7 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
 
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {st.card.billingDay ? <span className="chip">결제일 매월 {st.card.billingDay}일</span> : null}
+                {st.card.statementStartDay ? <span className="chip">청구 {st.card.statementStartDay}일~</span> : null}
                 <span className="chip">실적기간 {st.periodStart} ~ {st.periodEnd}</span>
                 {st.card.annualFee > 0 && (
                   <span className="chip">연회비 <span className="num">{won(st.card.annualFee)}</span></span>
