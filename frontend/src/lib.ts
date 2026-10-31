@@ -6,7 +6,8 @@ export interface Refs {
   paymentMethods: store.PaymentMethod[];
 }
 
-export const won = (n: number) => n.toLocaleString("ko-KR") + "원";
+// 정수로 반올림해 찍는다 — CountUp 애니메이션 중간값(4,063,679.873)이 소수 자리까지 나오지 않게
+export const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 
 // "1234567" → "1,234,567" : 숫자만 남기고 천 단위 쉼표를 붙인다.
 export const formatAmount = (s: string) => {
