@@ -1,4 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  CreditCard,
+  Gauge,
+  GitCompare,
+  Grid3x3,
+  Layers,
+  Repeat,
+  TrendingUp,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import {
   GetCardCategoryBreakdown,
   GetCardPaces,
@@ -37,6 +54,8 @@ import {
 } from "../charts";
 import { autoColor } from "../PmChip";
 import { Sk } from "../Skeleton";
+import IconTile from "../components/ui/IconTile";
+import { useThemeColors } from "../appearance/AppearanceContext";
 
 type Dim = "paymentMethod" | "member" | "category";
 type Mode = "daily" | "cumulative";
@@ -64,14 +83,25 @@ const monthLabel = (ym: string) => `${Number(ym.slice(5))}월`;
 
 // 전년 대비 증감 배지
 function Yoy({ cur, prev, goodWhenDown }: { cur: number; prev: number; goodWhenDown?: boolean }) {
-  if (!prev) return <span className="delta flat">전년 데이터 없음</span>;
+  if (!prev) return <span className="text-xs text-zinc-500">전년 데이터 없음</span>;
   const pct = Math.round(((cur - prev) / prev) * 100);
-  if (pct === 0) return <span className="delta flat">전년과 동일</span>;
+  if (pct === 0) return <span className="text-xs text-zinc-400">전년과 동일</span>;
   const up = pct > 0;
   const good = goodWhenDown ? !up : up;
   return (
-    <span className={`delta ${good ? "good" : "bad"}`}>
-      {up ? "▲" : "▼"} {Math.abs(pct)}% <em>전년 대비</em>
+    <span className={`num text-xs ${good ? "text-emerald-300" : "text-rose-300"}`}>
+      {up ? "▲" : "▼"} {Math.abs(pct)}% <span className="text-zinc-500">전년 대비</span>
+    </span>
+  );
+}
+
+// 전월(기간) 대비 증감 텍스트 — 지출 기준이라 증가가 나쁨
+function PctDelta({ pct, suffix }: { pct: number; suffix?: string }) {
+  const color = pct > 0 ? "text-rose-300" : pct < 0 ? "text-emerald-300" : "text-zinc-300";
+  return (
+    <span className={`num text-xs ${color}`}>
+      {pct > 0 ? "▲" : pct < 0 ? "▼" : ""} {Math.abs(pct)}%
+      {suffix && <span className="text-zinc-500"> {suffix}</span>}
     </span>
   );
 }
@@ -87,11 +117,12 @@ function Seg<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="seg">
+    <div className="glass-pill flex gap-1 overflow-x-auto p-1" role="group">
       {options.map((o) => (
         <button
           key={o.key}
-          className={value === o.key ? "active" : ""}
+          className={`pill-item ${value === o.key ? "pill-item-active" : ""}`}
+          aria-pressed={value === o.key}
           onClick={() => onChange(o.key)}
         >
           {o.label}
@@ -100,6 +131,34 @@ function Seg<T extends string>({
     </div>
   );
 }
+
+// 카드 내부 섹션 헤더 (IconTile + 제목 + 부제 + 우측 컨트롤)
+function SectionHead({
+  icon,
+  title,
+  sub,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  sub?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={icon} tone="mint" size="sm" />
+        <div className="min-w-0">
+          <h3 className="section-title">{title}</h3>
+          {sub && <p className="label-mono mt-0.5 !normal-case">{sub}</p>}
+        </div>
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+    </div>
+  );
+}
+
+const PACE_BADGE = "badge self-start";
 
 export default function StatsPage({
   refs,
@@ -110,6 +169,7 @@ export default function StatsPage({
   month: string;
   setMonth: (m: string) => void;
 }) {
+  const theme = useThemeColors();
   const [dim, setDim] = useState<Dim>("paymentMethod");
   const [mode, setMode] = useState<Mode>("cumulative");
 
@@ -256,9 +316,9 @@ export default function StatsPage({
 
   if (err)
     return (
-      <div className="card">
-        <p className="error">통계 데이터를 불러오지 못했습니다: {err}</p>
-        <button onClick={load}>다시 시도</button>
+      <div className="surface p-5 sm:p-6">
+        <p className="mb-3 text-sm text-rose-300">통계 데이터를 불러오지 못했습니다: {err}</p>
+        <button className="btn-ghost" onClick={load}>다시 시도</button>
       </div>
     );
 
@@ -288,7 +348,7 @@ export default function StatsPage({
 
   // 카테고리 상세: 월별 추이 단일 시리즈
   const detailTrend: LineSeries[] = detail
-    ? [{ name: detail.category, color: "#5b6cff", values: detail.trend }]
+    ? [{ name: detail.category, color: theme.accent, values: detail.trend }]
     : [];
   const detailLabels = (detail?.months ?? []).map(monthLabel);
   // 월 × 항목 표에 실제로 그릴 줄 (총액순으로 이미 정렬돼 온다)
@@ -304,45 +364,52 @@ export default function StatsPage({
     detail && detail.prev ? Math.round(((detail.total - detail.prev) / detail.prev) * 100) : 0;
 
   return (
-    <div>
-      <div className="toolbar wrap">
-        <MonthPicker value={month} onChange={setMonth} />
-        {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다 */}
-        <span className="muted small">카테고리 기준</span>
-        <Seg<"main" | "sub">
-          value={catLevel}
-          options={[
-            { key: "main", label: "주" },
-            { key: "sub", label: "부" },
-          ]}
-          onChange={setCatLevel}
-        />
+    <div className="space-y-4 lg:space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconTile icon={BarChart3} tone="mint" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-light tracking-tight text-white">통계</h2>
+            <p className="label-mono num">{month}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <MonthPicker value={month} onChange={setMonth} />
+          {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다 */}
+          <span className="label-mono">카테고리 기준</span>
+          <Seg<"main" | "sub">
+            value={catLevel}
+            options={[
+              { key: "main", label: "주" },
+              { key: "sub", label: "부" },
+            ]}
+            onChange={setCatLevel}
+          />
+        </div>
       </div>
 
       {/* 대표 차트: 이번 달 지금까지를 지난달 이맘때와 견준다 */}
-      <div className="card cmp-card">
-        <div className="stats-head">
-          <h3>전월 동일시점 누적 비교</h3>
-          <span className="muted small">이번 달 지금까지 쓴 돈을 지난달 같은 날까지와 견줍니다</span>
-        </div>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead
+          icon={GitCompare}
+          title="전월 동일시점 누적 비교"
+          sub="이번 달 지금까지 쓴 돈을 지난달 같은 날까지와 견줍니다"
+        />
         {loading || !compare ? <Sk h={420} r={14} /> : <CompareChart data={compare} />}
       </div>
 
-      <div className="card">
-        <div className="stats-head">
-          <h3>일별 · 누적 지출 추이</h3>
-          <div className="seg-row">
-            <Seg value={dim} options={DIM_LABEL} onChange={setDim} />
-            <Seg<Mode>
-              value={mode}
-              options={[
-                { key: "daily", label: "일별" },
-                { key: "cumulative", label: "누적" },
-              ]}
-              onChange={setMode}
-            />
-          </div>
-        </div>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Activity} title="일별 · 누적 지출 추이">
+          <Seg value={dim} options={DIM_LABEL} onChange={setDim} />
+          <Seg<Mode>
+            value={mode}
+            options={[
+              { key: "daily", label: "일별" },
+              { key: "cumulative", label: "누적" },
+            ]}
+            onChange={setMode}
+          />
+        </SectionHead>
         {loading ? (
           <Sk h={240} r={12} />
         ) : (
@@ -355,22 +422,18 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="dash-grid">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
         {/* 옆 달력과 높이를 맞춘다(카드가 늘어나고 막대 영역이 남는 높이를 채움) */}
-        <div className="card wd-card">
-          <div className="stats-head">
-            <h3>요일별 평균 지출</h3>
-            <span className="muted small">지나간 날 기준 하루 평균</span>
+        <div className="surface flex h-full flex-col p-5 sm:p-6">
+          <SectionHead icon={CalendarDays} title="요일별 평균 지출" sub="지나간 날 기준 하루 평균" />
+          <div className="flex min-h-0 flex-1 flex-col">
+            {loading || !compare ? <Sk h={280} r={12} /> : <WeekdayPanel data={compare} />}
           </div>
-          {loading || !compare ? <Sk h={280} r={12} /> : <WeekdayPanel data={compare} />}
         </div>
 
         {/* 요일별 평균을 날짜 단위로 펼친 달력. 날짜를 누르면 그날 내역이 열린다 */}
-        <div className="card">
-          <div className="stats-head">
-            <h3>지출 달력</h3>
-            <span className="muted small">날짜를 누르면 그날 쓴 내역</span>
-          </div>
+        <div className="surface h-full p-5 sm:p-6">
+          <SectionHead icon={Calendar} title="지출 달력" sub="날짜를 누르면 그날 쓴 내역" />
           {loading || !compare ? (
             <Sk h={280} r={12} />
           ) : (
@@ -382,8 +445,8 @@ export default function StatsPage({
         </div>
       </div>
 
-      <div className="card">
-        <h3>카테고리별 6개월 추이</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={TrendingUp} title="카테고리별 6개월 추이" />
         {loading ? (
           <Sk h={220} r={12} />
         ) : (
@@ -391,119 +454,129 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="card">
-        <div className="stats-head">
-          <h3>카테고리 상세 분석</h3>
-          <div className="seg-row">
-            <Seg
-              value={catPeriod}
-              options={[
-                { key: "month", label: "이번 달" },
-                { key: "recent30", label: "최근 30일" },
-                { key: "prev", label: "전월" },
-              ]}
-              onChange={setCatPeriod}
-            />
-            {/* 주를 고르면 하위 부 지출까지 합산해서 보여준다 */}
-            <select value={catId} onChange={(e) => setCatId(Number(e.target.value))}>
-              {categoryOptions(expenseCats).map((c) => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Layers} title="카테고리 상세 분석">
+          <Seg
+            value={catPeriod}
+            options={[
+              { key: "month", label: "이번 달" },
+              { key: "recent30", label: "최근 30일" },
+              { key: "prev", label: "전월" },
+            ]}
+            onChange={setCatPeriod}
+          />
+          {/* 주를 고르면 하위 부 지출까지 합산해서 보여준다 */}
+          <select
+            className="input-field !w-auto"
+            value={catId}
+            onChange={(e) => setCatId(Number(e.target.value))}
+          >
+            {categoryOptions(expenseCats).map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </SectionHead>
         {!detail ? (
           <Sk h={200} r={12} />
         ) : detail.total === 0 && detail.trend.every((v) => v === 0) ? (
-          <p className="muted">이 카테고리의 지출 내역이 없습니다.</p>
+          <p className="text-sm text-zinc-500">이 카테고리의 지출 내역이 없습니다.</p>
         ) : (
-          <>
-            <div className="cat-summary">
-              <div className="cat-metric">
-                <span className="muted small">{detail.label} 지출</span>
-                <strong className="expense">{won(detail.total)}</strong>
-                <span className="muted small">전체 지출의 {detail.share}%</span>
-              </div>
-              <div className="cat-metric">
-                <span className="muted small">{detail.prevLabel} 대비</span>
-                {detail.prev > 0 ? (
-                  <span className={`delta ${detailPrevDelta > 0 ? "bad" : detailPrevDelta < 0 ? "good" : "flat"}`}>
-                    {detailPrevDelta > 0 ? "▲" : detailPrevDelta < 0 ? "▼" : ""} {Math.abs(detailPrevDelta)}%
-                  </span>
-                ) : (
-                  <span className="delta flat">{detail.prevLabel} 데이터 없음</span>
-                )}
-                <span className="muted small">{detail.prevLabel} {won(detail.prev)}</span>
-              </div>
-              <div className="cat-metric">
-                <span className="muted small">예산</span>
-                {detail.budget > 0 ? (
-                  <>
-                    <strong className={detail.over ? "expense" : ""}>{detail.budgetPct}%</strong>
-                    <span className="muted small">{won(detail.total)} / {won(detail.budget)}</span>
-                  </>
-                ) : (
-                  <span className="muted small">{catPeriod === "recent30" ? "기간 예산 없음" : "미설정"}</span>
-                )}
-              </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+              <p className="label-mono !normal-case">{detail.label} 지출</p>
+              <p className="num text-2xl font-light tracking-tight text-rose-300">{won(detail.total)}</p>
+              <p className="num text-xs text-zinc-500">전체 지출의 {detail.share}%</p>
             </div>
-            <div className="dash-grid">
-              {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
-              {detail.isMain && detail.bySub.length > 0 && (
-                <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
-              )}
-              <Bars title="누가 (귀속자별)" rows={detail.byMember} />
-              <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
-              <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
-              <div className="card">
-                <h3>월별 추이</h3>
-                <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
-              </div>
-            </div>
-
-            {/* 달마다 총액만 보면 왜 늘었는지 모른다. 항목을 쪼개야 그게 보인다. */}
-            <div className="card cat-monthly">
-              <div className="stats-head">
-                <h3>월별 상세 — 무엇에 썼나</h3>
-                <div className="seg-row">
-                  <Seg value={catBy} options={CAT_BY} onChange={setCatBy} />
-                  <select
-                    value={catMonths}
-                    onChange={(e) => setCatMonths(Number(e.target.value))}
-                  >
-                    {[3, 6, 12, 24].map((n) => (
-                      <option key={n} value={n}>최근 {n}개월</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {!catMonthly ? (
-                <Sk h={200} r={12} />
-              ) : catMonthly.series.length === 0 ? (
-                <p className="muted">이 기간에 기록된 지출이 없습니다.</p>
+            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+              <p className="label-mono !normal-case">{detail.prevLabel} 대비</p>
+              {detail.prev > 0 ? (
+                <p className="num text-2xl font-light tracking-tight">
+                  <PctDelta pct={detailPrevDelta} />
+                </p>
               ) : (
+                <p className="text-sm text-zinc-500">{detail.prevLabel} 데이터 없음</p>
+              )}
+              <p className="num text-xs text-zinc-500">{detail.prevLabel} {won(detail.prev)}</p>
+            </div>
+            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+              <p className="label-mono">예산</p>
+              {detail.budget > 0 ? (
                 <>
-                  <Heatmap
-                    rows={catMonthlyRows}
-                    months={catMonthly.months}
-                    onCell={(key, ym) => setDrill({ kind: "item", key, ym })}
-                  />
-                  {catMonthly.series.length > CAT_ROW_LIMIT && (
-                    <button className="ghost-btn" onClick={() => setCatAll((v) => !v)}>
-                      {catAll
-                        ? "상위 항목만 보기"
-                        : `나머지 ${catMonthly.series.length - CAT_ROW_LIMIT}개 항목 더 보기`}
-                    </button>
-                  )}
+                  <p
+                    className={`num text-2xl font-light tracking-tight ${
+                      detail.over ? "text-rose-300" : "text-white"
+                    }`}
+                  >
+                    {detail.budgetPct}%
+                  </p>
+                  <p className="num text-xs text-zinc-500">{won(detail.total)} / {won(detail.budget)}</p>
                 </>
+              ) : (
+                <p className="text-sm text-zinc-500">
+                  {catPeriod === "recent30" ? "기간 예산 없음" : "미설정"}
+                </p>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
-      <div className="card">
-        <h3>카테고리 × 월 히트맵</h3>
+      {detail && !(detail.total === 0 && detail.trend.every((v) => v === 0)) && (
+        <>
+          <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
+            {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
+            {detail.isMain && detail.bySub.length > 0 && (
+              <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
+            )}
+            <Bars title="누가 (귀속자별)" rows={detail.byMember} />
+            <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
+            <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
+            <div className="surface h-full p-5 sm:p-6">
+              <SectionHead icon={TrendingUp} title="월별 추이" />
+              <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
+            </div>
+          </div>
+
+          {/* 달마다 총액만 보면 왜 늘었는지 모른다. 항목을 쪼개야 그게 보인다. */}
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Grid3x3} title="월별 상세 — 무엇에 썼나">
+              <Seg value={catBy} options={CAT_BY} onChange={setCatBy} />
+              <select
+                className="input-field !w-auto"
+                value={catMonths}
+                onChange={(e) => setCatMonths(Number(e.target.value))}
+              >
+                {[3, 6, 12, 24].map((n) => (
+                  <option key={n} value={n}>최근 {n}개월</option>
+                ))}
+              </select>
+            </SectionHead>
+            {!catMonthly ? (
+              <Sk h={200} r={12} />
+            ) : catMonthly.series.length === 0 ? (
+              <p className="text-sm text-zinc-500">이 기간에 기록된 지출이 없습니다.</p>
+            ) : (
+              <>
+                <Heatmap
+                  rows={catMonthlyRows}
+                  months={catMonthly.months}
+                  onCell={(key, ym) => setDrill({ kind: "item", key, ym })}
+                />
+                {catMonthly.series.length > CAT_ROW_LIMIT && (
+                  <button className="btn-ghost mt-3 !py-1.5 !text-xs" onClick={() => setCatAll((v) => !v)}>
+                    {catAll
+                      ? "상위 항목만 보기"
+                      : `나머지 ${catMonthly.series.length - CAT_ROW_LIMIT}개 항목 더 보기`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Grid3x3} title="카테고리 × 월 히트맵" />
         {loading || !matrix ? (
           <Sk h={220} r={12} />
         ) : (
@@ -515,44 +588,42 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="card">
-        <h3>카테고리별 귀속자 구성 ({Number(month.slice(5))}월)</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Users} title={`카테고리별 귀속자 구성 (${Number(month.slice(5))}월)`} />
         {loading ? <Sk h={120} r={12} /> : <StackedBars data={catMember} />}
       </div>
 
-      <div className="card">
-        <h3>귀속자별 카테고리 구성 ({Number(month.slice(5))}월)</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Users} title={`귀속자별 카테고리 구성 (${Number(month.slice(5))}월)`} />
         {loading ? <Sk h={120} r={12} /> : <StackedBars data={memberCat} />}
       </div>
 
-      <div className="card">
-        <h3>귀속자별 지출 요약 ({Number(month.slice(5))}월)</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={UserRound} title={`귀속자별 지출 요약 (${Number(month.slice(5))}월)`} />
         {loading ? (
           <Sk h={120} r={12} />
         ) : memberStats.length === 0 ? (
-          <p className="muted">데이터 없음</p>
+          <p className="text-sm text-zinc-500">데이터 없음</p>
         ) : (
-          <div className="mini-cards">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {memberStats.map((s) => {
               const pct = s.prev ? Math.round(((s.total - s.prev) / s.prev) * 100) : 0;
               return (
-                <div className="mini-card" key={s.member}>
-                  <strong>
-                    {s.member} <span className="muted small">({s.share}%)</span>
+                <div className="surface-inset flex flex-col gap-2 p-4" key={s.member}>
+                  <strong className="text-sm font-medium text-white">
+                    {s.member} <span className="num text-xs font-normal text-zinc-500">({s.share}%)</span>
                   </strong>
-                  <span className="expense member-total">{won(s.total)}</span>
+                  <span className="num text-2xl font-light tracking-tight text-rose-300">{won(s.total)}</span>
                   {s.prev > 0 ? (
-                    <span className={`delta ${pct > 0 ? "bad" : pct < 0 ? "good" : "flat"}`}>
-                      {pct > 0 ? "▲" : pct < 0 ? "▼" : ""} {Math.abs(pct)}% <em>전월 대비</em>
-                    </span>
+                    <PctDelta pct={pct} suffix="전월 대비" />
                   ) : (
-                    <span className="delta flat">전월 데이터 없음</span>
+                    <span className="text-xs text-zinc-500">전월 데이터 없음</span>
                   )}
-                  <span className="muted small">
+                  <span className="num text-xs text-zinc-500">
                     최다 카테고리: {s.topCategory || "-"}
                     {s.topCategoryAmount ? ` · ${won(s.topCategoryAmount)}` : ""}
                   </span>
-                  <span className="muted small">
+                  <span className="num text-xs text-zinc-500">
                     최다 가맹점: {s.topMerchant || "-"}
                     {s.topMerchantAmount ? ` · ${won(s.topMerchantAmount)}` : ""}
                   </span>
@@ -563,37 +634,46 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="card">
-        <h3>귀속자별 6개월 추이</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={TrendingUp} title="귀속자별 6개월 추이" />
         {loading ? <Sk h={220} r={12} /> : <LineChart series={memberSeries} xLabels={memberLabels} />}
       </div>
 
-      <div className="card">
-        <h3>카드별 카테고리 구성</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={CreditCard} title="카드별 카테고리 구성" />
         {loading ? <Sk h={120} r={12} /> : <StackedBars data={cardCat} />}
       </div>
 
-      <div className="card">
-        <h3>고정비 · 정기결제 ({Number(month.slice(5))}월)</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead
+          icon={Repeat}
+          title={`고정비 · 정기결제 (${Number(month.slice(5))}월)`}
+          sub={recurring.length > 0 ? `${recurring.length} items` : undefined}
+        />
         {loading ? (
           <Sk h={100} r={12} />
         ) : recurring.length === 0 ? (
-          <p className="muted">
+          <p className="text-sm text-zinc-500">
             학습된 정기 거래가 없습니다. 거래를 분류하면 규칙이 쌓이고 여기에 표시됩니다.
           </p>
         ) : (
-          <ul className="recurring-list">
+          <ul className="divide-y divide-white/[0.05]">
             {recurring.map((r, i) => (
-              <li key={i} className={r.seen ? "seen" : "pending"}>
-                <span className="rc-name">{r.label || r.merchant}</span>
-                <span className="rc-merchant muted small">{r.merchant}</span>
+              <li
+                key={i}
+                className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm ${
+                  r.seen ? "text-zinc-400" : "text-zinc-100"
+                }`}
+              >
+                <span className="font-medium text-white">{r.label || r.merchant}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">{r.merchant}</span>
                 {r.seen ? (
-                  <span className="badge achieved">
+                  <span className="badge num bg-emerald-500/10 text-emerald-300">
                     빠짐 · {won(r.seenAmount)}
                     {r.seenDate ? ` (${r.seenDate.slice(5)})` : ""}
                   </span>
                 ) : (
-                  <span className="badge shortfall">
+                  <span className="badge num bg-amber-500/10 text-amber-300">
                     예정 · {won(r.amountMin)}~{won(r.amountMax)}
                   </span>
                 )}
@@ -603,41 +683,43 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="card">
-        <h3>카드 실적기간 누적 진행률</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={Gauge} title="카드 실적기간 누적 진행률" />
         {loading ? (
           <Sk h={120} r={12} />
         ) : paces.length === 0 ? (
-          <p className="muted">실적 목표가 설정된 카드가 없습니다. 카드 탭에서 실적한도를 입력하세요.</p>
+          <p className="text-sm text-zinc-500">실적 목표가 설정된 카드가 없습니다. 카드 탭에서 실적한도를 입력하세요.</p>
         ) : (
-          <div className="mini-cards">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {paces.map((p) => {
               const c = p.card.color || autoColor(p.card.name);
               const remaining = p.target - p.spent;
               return (
-                <div className="mini-card" key={p.card.id}>
-                  <strong>
-                    <span className="cc-dot" style={{ background: c }} />
-                    {p.card.issuer ? `${p.card.issuer} ` : ""}
-                    {p.card.name}
+                <div className="surface-inset flex flex-col gap-2 p-4" key={p.card.id}>
+                  <strong className="flex items-center gap-2 text-sm font-medium text-white">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c }} />
+                    <span className="truncate">
+                      {p.card.issuer ? `${p.card.issuer} ` : ""}
+                      {p.card.name}
+                    </span>
                   </strong>
-                  <span className="muted small">
+                  <span className="label-mono num !normal-case">
                     {p.periodStart} ~ {p.periodEnd} · {p.elapsed}/{p.days}일차
                   </span>
                   <PaceSparkline pace={p} />
-                  <div className="pace-foot">
-                    <span>
-                      {won(p.spent)} <span className="muted">/ 목표 {won(p.target)}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="num text-sm text-zinc-200">
+                      {won(p.spent)} <span className="text-zinc-500">/ 목표 {won(p.target)}</span>
                     </span>
                     {p.achieved ? (
-                      <span className="badge achieved">실적 달성 ✓</span>
+                      <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>실적 달성 ✓</span>
                     ) : p.onTrack ? (
-                      <span className="badge achieved">달성 페이스</span>
+                      <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>달성 페이스</span>
                     ) : (
-                      <span className="badge shortfall">미달 우려</span>
+                      <span className={`${PACE_BADGE} bg-amber-500/10 text-amber-300`}>미달 우려</span>
                     )}
                   </div>
-                  <span className="muted small">
+                  <span className="num text-xs text-zinc-500">
                     {p.achieved
                       ? `목표 ${won(p.spent - p.target)} 초과`
                       : `${won(remaining)} 남음 · 현재 페이스 예상 ${won(p.projected)}`}
@@ -649,34 +731,35 @@ export default function StatsPage({
         )}
       </div>
 
-      <div className="card">
-        <h3>연간 요약 ({Number(month.slice(0, 4))}년)</h3>
+      <div className="surface p-5 sm:p-6">
+        <SectionHead icon={CalendarRange} title={`연간 요약 (${Number(month.slice(0, 4))}년)`} />
         {loading || !year ? (
           <Sk h={220} r={12} />
         ) : (
           <>
             <TrendChart points={year.months} />
-            <div className="year-totals">
-              <div className="card stat">
-                <span className="muted">수입</span>
-                <strong className="income">{won(year.totalIncome)}</strong>
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="surface-inset flex flex-col gap-2 p-4">
+                <p className="label-mono">수입</p>
+                <p className="num text-2xl font-light tracking-tight text-emerald-300">{won(year.totalIncome)}</p>
                 <Yoy cur={year.totalIncome} prev={year.prevIncome} />
               </div>
-              <div className="card stat">
-                <span className="muted">지출</span>
-                <strong className="expense">{won(year.totalExpense)}</strong>
+              <div className="surface-inset flex flex-col gap-2 p-4">
+                <p className="label-mono">지출</p>
+                <p className="num text-2xl font-light tracking-tight text-rose-300">{won(year.totalExpense)}</p>
                 <Yoy cur={year.totalExpense} prev={year.prevExpense} goodWhenDown />
               </div>
-              <div className="card stat">
-                <span className="muted">투자/저축 이체</span>
-                <strong className="transfer">{won(year.totalTransfer)}</strong>
+              <div className="surface-inset flex flex-col gap-2 p-4">
+                <p className="label-mono">투자/저축 이체</p>
+                <p className="num text-2xl font-light tracking-tight text-sky-300">{won(year.totalTransfer)}</p>
                 <Yoy cur={year.totalTransfer} prev={year.prevTransfer} />
               </div>
             </div>
-            <Bars title="연간 카테고리별 지출" rows={year.byCategory.slice(0, 10)} />
           </>
         )}
       </div>
+
+      {!loading && year && <Bars title="연간 카테고리별 지출" rows={year.byCategory.slice(0, 10)} />}
 
       {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
       {drill && (drillView || drill.kind === "day") && (
