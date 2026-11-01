@@ -25,6 +25,9 @@ import {
   categoryOptions,
   DIRECTION_LABEL,
   formatAmount,
+  isClosed,
+  methodLabel,
+  openMethods,
   parseAmount,
   Refs,
   today,
@@ -337,7 +340,7 @@ function ManualForm({ refs, onAdded, onClose }: { refs: Refs; onAdded: () => voi
           onChange={(e) => setF({ ...f, paymentMethodId: e.target.value })}
         >
           <option value="">결제수단 선택</option>
-          {refs.paymentMethods.map((p) => (
+          {openMethods(refs.paymentMethods).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
@@ -701,9 +704,11 @@ export default function Transactions({
           </select>
           <select className={selCls} value={pmId} onChange={(e) => setPmId(e.target.value)}>
             <option value="">결제수단 전체</option>
-            {refs.paymentMethods.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
+            {[...refs.paymentMethods]
+              .sort((a, b) => Number(isClosed(a)) - Number(isClosed(b)))
+              .map((p) => (
+                <option key={p.id} value={p.id}>{methodLabel(p)}</option>
+              ))}
           </select>
           <input
             type="text"
@@ -890,6 +895,7 @@ export default function Transactions({
                       name={t.paymentMethodName}
                       type={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.type}
                       color={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.color}
+                      closedAt={refs.paymentMethods.find((p) => p.id === t.paymentMethodId)?.closedAt}
                     />
                   </td>
                   <td className="px-3 py-2.5">

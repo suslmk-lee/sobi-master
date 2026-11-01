@@ -2,7 +2,14 @@ import { FormEvent, useState } from "react";
 import { Pencil, X } from "lucide-react";
 import { ClassifyTransaction } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
-import { categoryOptions, formatAmount, parseAmount, Refs } from "./lib";
+import {
+  categoryOptions,
+  formatAmount,
+  methodLabel,
+  parseAmount,
+  Refs,
+  selectableMethods,
+} from "./lib";
 import Portal from "./components/ui/Portal";
 
 // 거래 한 건 수정 모달. 거래내역 탭과 통계의 월별 상세 드릴다운에서 같이 쓴다.
@@ -172,8 +179,8 @@ export default function EditModal({
                 onChange={(e) => setF({ ...f, paymentMethodId: e.target.value })}
               >
                 <option value="">미지정</option>
-                {refs.paymentMethods.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                {selectableMethods(refs.paymentMethods, f.paymentMethodId).map((p) => (
+                  <option key={p.id} value={p.id}>{methodLabel(p)}</option>
                 ))}
               </select>
             </label>

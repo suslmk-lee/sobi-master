@@ -23,14 +23,17 @@ import {
   SaveRule,
   SetBudget,
   SetCategoryParent,
+  SetPaymentMethodClosed,
 } from "../../wailsjs/go/main/App";
-import { CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import CloseCardModal from "../CloseCardModal";
+import { Archive, CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
 import { main, store } from "../../wailsjs/go/models";
 import AppearanceSettings from "../components/settings/AppearanceSettings";
 import {
   categoryOptions,
   formatAmount,
+  isClosed,
   mainCategories,
   parseAmount,
   Refs,
@@ -716,6 +719,7 @@ export default function SettingsPage({
   const [section, setSection] = useState<Section>("categories");
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [confirm, confirmUI] = useConfirm();
+  const [closing, setClosing] = useState<store.PaymentMethod | null>(null);
 
   const del = async (
     fn: (id: number) => Promise<void>,
@@ -800,18 +804,49 @@ export default function SettingsPage({
               desc="카드의 결제일·실적기간·실적한도는 카드 탭에서 관리합니다."
             />
             <ul className="space-y-2">
-              {refs.paymentMethods.map((p) => (
-                <li key={p.id} className="surface-inset flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-zinc-100">
-                  <span className="flex items-center gap-2">
-                    {p.name} <span className="chip">{PM_LABEL[p.type]}</span>
-                  </span>
-                  <button className="btn-icon hover:!text-rose-300" title="삭제" aria-label="삭제" onClick={() =>
-                    del(DeletePaymentMethod, p.id, `"${p.name}" 결제수단을 삭제할까요?`,
-                      "이 결제수단으로 기록된 거래는 그대로 남고 결제수단만 비워집니다.")
-                  }><Trash2 className="h-4 w-4" /></button>
-                </li>
-              ))}
+              {refs.paymentMethods.map((p) => {
+                const closed = isClosed(p);
+                return (
+                  <li key={p.id} className="surface-inset flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-zinc-100">
+                    <span className={`flex flex-wrap items-center gap-2 ${closed ? "opacity-70" : ""}`}>
+                      {p.name} <span className="chip">{PM_LABEL[p.type]}</span>
+                      {p.closedAt && (
+                        <span className="chip !border-amber-400/30 !bg-amber-500/10 !text-amber-300">
+                          {closed ? "해지" : "해지 예정"} {p.closedAt}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {p.closedAt ? (
+                        <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={async () => {
+                          await SetPaymentMethodClosed(p.id, "");
+                          reload();
+                        }}>해지 취소</button>
+                      ) : (
+                        <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setClosing(p)}>
+                          <Archive className="h-3.5 w-3.5" />해지
+                        </button>
+                      )}
+                      <button className="btn-icon hover:!text-rose-300" title="삭제" aria-label="삭제" onClick={() =>
+                        del(DeletePaymentMethod, p.id, `"${p.name}" 결제수단을 삭제할까요?`,
+                          "삭제하면 과거 거래의 결제수단 연결이 끊깁니다. 기록을 남기려면 '해지'를 쓰세요.")
+                      }><Trash2 className="h-4 w-4" /></button>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
+            {closing && (
+              <CloseCardModal
+                id={closing.id}
+                name={closing.name}
+                onClose={() => setClosing(null)}
+                onDone={() => {
+                  setClosing(null);
+                  reload();
+                }}
+              />
+            )}
             <AddRow
               placeholder="이름 (예: 신한카드 1234)"
               options={PM_LABEL}

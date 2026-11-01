@@ -4,13 +4,18 @@ import {
   GetAllCardBenefits,
   GetCardBreakdown,
   GetCardStatuses,
+  ListTransactions,
   SaveCard,
+  SetPaymentMethodClosed,
 } from "../../wailsjs/go/main/App";
-import { Check, CreditCard, Pencil, Trash2 } from "lucide-react";
+import { Archive, Check, ChevronRight, CreditCard, Pencil, Trash2 } from "lucide-react";
+import CloseCardModal from "../CloseCardModal";
+import EditModal from "../EditModal";
+import TxDrillModal from "../TxDrillModal";
 import IconTile from "../components/ui/IconTile";
 import { store } from "../../wailsjs/go/models";
 import RingGauge from "../components/ui/RingGauge";
-import { formatAmount, parseAmount, Refs, won } from "../lib";
+import { formatAmount, isClosed, parseAmount, Refs, today, won } from "../lib";
 import PrepaidSection from "../PrepaidSection";
 import Bars from "../Bars";
 import CardBenefits, { bpToPct as bpToPctLabel } from "../CardBenefits";
@@ -374,21 +379,47 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
       benefitNote: st.card.benefitNote || "",
     });
 
-  const remove = async (st: store.CardStatus) => {
+  const remove = async (card: store.PaymentMethod) => {
     const ok = await confirm({
-      title: `"${st.card.name}" 카드를 삭제할까요?`,
+      title: `"${card.name}" 카드를 삭제할까요?`,
       danger: true,
       confirmLabel: "삭제",
-      message: "이 카드로 기록된 거래는 그대로 남고 결제수단만 비워집니다. 카드 혜택 자료도 함께 삭제됩니다.",
+      message:
+        "삭제하면 과거 거래의 결제수단 연결이 끊기고 카드 혜택 자료도 함께 사라집니다. 기록을 남기려면 취소하고 '해지'를 쓰세요.",
     });
     if (!ok) return;
-    await DeletePaymentMethod(st.card.id);
-    if (selectedId === st.card.id) {
+    await DeletePaymentMethod(card.id);
+    if (selectedId === card.id) {
       setSelectedId(0);
       setBreakdown(null);
     }
     load();
     reloadRefs();
+  };
+
+  const [closing, setClosing] = useState<{ id: number; name: string } | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
+  const closedCards = refs.paymentMethods.filter((p) => p.type === "card" && isClosed(p));
+
+  const reopen = async (card: store.PaymentMethod) => {
+    await SetPaymentMethodClosed(card.id, "");
+    load();
+    reloadRefs();
+  };
+
+  // 해지한 카드 내역: 해지일 1년 전부터 오늘까지 이 카드의 거래를 불러와 드릴 모달로 보여 준다
+  const [drillCard, setDrillCard] = useState<store.PaymentMethod | null>(null);
+  const [drillTx, setDrillTx] = useState<store.Transaction[]>([]);
+  const [editTx, setEditTx] = useState<store.Transaction | null>(null);
+  const openDrill = async (card: store.PaymentMethod) => {
+    const d = new Date(card.closedAt);
+    d.setFullYear(d.getFullYear() - 1);
+    const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const txs = await ListTransactions(
+      new store.TxFilter({ from, to: today(), paymentMethodId: card.id, sort: "date_desc" })
+    );
+    setDrillTx(txs ?? []);
+    setDrillCard(card);
   };
 
   return (
@@ -449,10 +480,18 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
+                    className="btn-ghost !px-2.5 !py-1 text-xs !text-amber-300"
+                    title="해지 — 기록은 남기고 목록에서만 뺍니다"
+                    aria-label="해지"
+                    onClick={(e) => { e.stopPropagation(); setClosing({ id: st.card.id, name: st.card.name }); }}
+                  >
+                    <Archive className="h-3.5 w-3.5" />해지
+                  </button>
+                  <button
                     className="btn-icon hover:!text-rose-300"
                     title="삭제"
                     aria-label="삭제"
-                    onClick={(e) => { e.stopPropagation(); remove(st); }}
+                    onClick={(e) => { e.stopPropagation(); remove(st.card); }}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -527,7 +566,100 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
         )}
       </div>
 
+      {closedCards.length > 0 && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-sm font-semibold text-zinc-300 hover:text-white"
+            aria-expanded={showClosed}
+            onClick={() => setShowClosed((v) => !v)}
+          >
+            <ChevronRight className={`h-4 w-4 transition-transform ${showClosed ? "rotate-90" : ""}`} />
+            해지한 카드 ({closedCards.length})
+          </button>
+          {showClosed && (
+            <ul className="space-y-2">
+              {closedCards.map((c) => (
+                <li
+                  key={c.id}
+                  className="surface-inset flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm text-zinc-100"
+                >
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full opacity-60"
+                      style={{ background: c.color || autoColor(c.name) }}
+                    />
+                    <span className="truncate font-semibold text-zinc-300">{c.name}</span>
+                    {c.issuer && <span className="label-mono">{c.issuer}</span>}
+                    <span className="chip !border-amber-400/30 !bg-amber-500/10 !text-amber-300">
+                      해지 {c.closedAt}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => openDrill(c)}>
+                      내역
+                    </button>
+                    <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => reopen(c)}>
+                      해지 취소
+                    </button>
+                    <button
+                      className="btn-icon hover:!text-rose-300"
+                      title="삭제"
+                      aria-label="삭제"
+                      onClick={() => remove(c)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <PrepaidSection refs={refs} />
+
+      {closing && (
+        <CloseCardModal
+          id={closing.id}
+          name={closing.name}
+          onClose={() => setClosing(null)}
+          onDone={() => {
+            if (selectedId === closing.id) {
+              setSelectedId(0);
+              setBreakdown(null);
+            }
+            setClosing(null);
+            load();
+            reloadRefs();
+          }}
+        />
+      )}
+      {drillCard && (
+        <TxDrillModal
+          title={drillCard.name}
+          ym={drillCard.closedAt.slice(0, 7)}
+          heading={`${drillCard.name} 거래 내역 · 해지 ${drillCard.closedAt}`}
+          months={[]}
+          values={[]}
+          txs={drillTx}
+          onPickMonth={() => {}}
+          onEdit={setEditTx}
+          onClose={() => setDrillCard(null)}
+        />
+      )}
+      {editTx && (
+        <EditModal
+          tx={editTx}
+          refs={refs}
+          onClose={() => setEditTx(null)}
+          onSaved={() => {
+            setEditTx(null);
+            if (drillCard) openDrill(drillCard);
+          }}
+        />
+      )}
 
       {selected && (
         <div className="space-y-3">

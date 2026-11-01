@@ -59,3 +59,27 @@ export const KIND_OF_DIRECTION: Record<string, string> = {
   expense: "expense",
   transfer: "transfer",
 };
+
+// ── 결제수단 해지(보관) ──
+// closedAt 이 오늘 이전(또는 오늘)이면 해지된 결제수단이다. 빈 문자열은 사용 중.
+export const isClosed = (
+  pm: { closedAt?: string } | undefined | null,
+  now: string = today()
+) => !!pm && !!pm.closedAt && pm.closedAt <= now;
+
+export const openMethods = (list: store.PaymentMethod[]) =>
+  list.filter((p) => !isClosed(p));
+
+// 새 항목용 선택지: 사용 중인 것만. currentId 가 해지된 수단이면 그것만 예외로 남긴다.
+export const selectableMethods = (
+  list: store.PaymentMethod[],
+  currentId?: number | string | null
+) =>
+  list.filter(
+    (p) => !isClosed(p) || (currentId != null && String(p.id) === String(currentId))
+  );
+
+export const methodLabel = (pm: { name: string; closedAt?: string }) =>
+  isClosed(pm) ? `${pm.name} (해지)` : pm.name;
+
+export const CLOSED_HINT = "해지된 카드입니다 — 다른 결제수단으로 바꾸세요";

@@ -17,7 +17,18 @@ import IconTile from "./components/ui/IconTile";
 import Portal from "./components/ui/Portal";
 import CountUp from "./components/CountUp";
 import { useConfirm } from "./ConfirmModal";
-import { categoryOptions, formatAmount, parseAmount, Refs, today, won } from "./lib";
+import {
+  categoryOptions,
+  CLOSED_HINT,
+  formatAmount,
+  isClosed,
+  methodLabel,
+  parseAmount,
+  Refs,
+  selectableMethods,
+  today,
+  won,
+} from "./lib";
 
 const QUICK_MEMOS = ["커트", "펌", "염색", "클리닉"];
 
@@ -301,10 +312,13 @@ function PassForm({
         <Field label="충전 결제수단 (기본)">
           <select className="input-field" value={f.paymentMethodId} onChange={(e) => set({ paymentMethodId: e.target.value })}>
             <option value="">선택 안 함</option>
-            {refs.paymentMethods.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            {selectableMethods(refs.paymentMethods, f.paymentMethodId).map((p) => (
+              <option key={p.id} value={p.id}>{methodLabel(p)}</option>
             ))}
           </select>
+          {isClosed(refs.paymentMethods.find((p) => String(p.id) === String(f.paymentMethodId))) && (
+            <p className="mt-1 text-xs text-amber-300">{CLOSED_HINT}</p>
+          )}
         </Field>
         <Field label="메모" className="sm:col-span-2">
           <input className="input-field" value={f.memo} onChange={(e) => set({ memo: e.target.value })} />
@@ -544,10 +558,13 @@ function ChargeModal({
             <Field label="결제수단">
               <select className="input-field" value={pmId} onChange={(e) => setPmId(e.target.value)}>
                 <option value="">선택 안 함</option>
-                {refs.paymentMethods.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
+                {selectableMethods(refs.paymentMethods, pmId).map((m) => (
+                  <option key={m.id} value={m.id}>{methodLabel(m)}</option>
                 ))}
               </select>
+              {isClosed(refs.paymentMethods.find((m) => String(m.id) === pmId)) && (
+                <p className="mt-1 text-xs text-amber-300">{CLOSED_HINT}</p>
+              )}
             </Field>
             <Field label="귀속자">
               <select className="input-field" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
