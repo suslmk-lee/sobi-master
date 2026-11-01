@@ -62,6 +62,8 @@ const EMPTY = {
   annualFeeGlobal: "",
   benefitUrl: "",
   benefitNote: "",
+  // 해지일 — 폼에서 바꾸지 않고 그대로 돌려보낸다(빠뜨리면 저장할 때 해지 예정일이 지워진다)
+  closedAt: "",
 };
 
 type FormState = typeof EMPTY;
@@ -111,6 +113,7 @@ function CardForm({
           annualFeeGlobal: parseAmount(f.annualFeeGlobal) || 0,
           benefitUrl: f.benefitUrl.trim(),
           benefitNote: f.benefitNote.trim(),
+          closedAt: f.closedAt,
         })
       );
       setF({ ...EMPTY });
@@ -377,6 +380,7 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
       annualFeeGlobal: st.card.annualFeeGlobal ? formatAmount(String(st.card.annualFeeGlobal)) : "",
       benefitUrl: st.card.benefitUrl || "",
       benefitNote: st.card.benefitNote || "",
+      closedAt: st.card.closedAt || "",
     });
 
   const remove = async (card: store.PaymentMethod) => {
