@@ -36,7 +36,7 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
-import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Trash2, Undo2, Wand2, X } from "lucide-react";
+import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, Trash2, Undo2, Wand2, X } from "lucide-react";
 import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
 
@@ -856,6 +856,15 @@ export default function Transactions({
                         >
                           <Repeat className="h-3 w-3" />
                           정기{t.source === "subscription" ? " · 자동" : ""}
+                        </span>
+                      )}
+                      {t.prepaidName && (
+                        <span
+                          className="badge bg-sky-500/10 text-sky-300"
+                          title={`선불권 "${t.prepaidName}"의 충전 거래 (사용·차감은 지출로 잡히지 않음)`}
+                        >
+                          <Ticket className="h-3 w-3" />
+                          선불 충전 · {t.prepaidName}
                         </span>
                       )}
                       {t.excludePerf && (

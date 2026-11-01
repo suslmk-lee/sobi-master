@@ -10,7 +10,8 @@ import { Check, CreditCard, Pencil, Trash2 } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
 import { store } from "../../wailsjs/go/models";
 import RingGauge from "../components/ui/RingGauge";
-import { formatAmount, parseAmount, won } from "../lib";
+import { formatAmount, parseAmount, Refs, won } from "../lib";
+import PrepaidSection from "../PrepaidSection";
 import Bars from "../Bars";
 import CardBenefits, { bpToPct as bpToPctLabel } from "../CardBenefits";
 import PmChip, { autoColor, CHIP_PALETTE } from "../PmChip";
@@ -322,7 +323,7 @@ function CardForm({
   );
 }
 
-export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
+export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void; refs: Refs }) {
   const [statuses, setStatuses] = useState<store.CardStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<FormState>({ ...EMPTY });
@@ -525,6 +526,8 @@ export default function CardsPage({ reloadRefs }: { reloadRefs: () => void }) {
           <p className="label-mono">등록된 카드가 없습니다. 위에서 카드를 등록하세요.</p>
         )}
       </div>
+
+      <PrepaidSection refs={refs} />
 
       {selected && (
         <div className="space-y-3">
