@@ -36,6 +36,11 @@ type PaymentMethod struct {
 	// 예: 1일 결제 카드가 19 이면 "전전월 19일 ~ 전월 18일" 이용분이 1일에 청구된다.
 	// 0이면 미지정 — 실적 시작일(>1)을, 그것도 1이면 결제일 기준 기본값을 쓴다.
 	StatementStartDay int `json:"statementStartDay"`
+	// ClosedAt: 해지일(YYYY-MM-DD). 비어 있으면 사용 중.
+	// 해지한 결제수단은 지우지 않고 보관한다 — 과거 거래가 계속 이 결제수단에 연결돼 통계·내역이 유지된다.
+	// 새 거래·정기결제·선불권을 고를 때는 목록에서 빠지고, 실적·캐시백 대상에서도 빠진다.
+	// 해지 전에 쓴 카드값은 해지 뒤에도 청구되므로 자금 계획에는 남은 청구가 있으면 계속 나온다.
+	ClosedAt string `json:"closedAt"`
 	// PerfTarget: 실적한도(전월/당월 실적 충족 기준 금액). 0이면 미지정.
 	PerfTarget int64 `json:"perfTarget"`
 	// Color: 목록 칩 색상(hex, 예: "#3b5fd9"). 비어 있으면 이름 기반 자동 색.

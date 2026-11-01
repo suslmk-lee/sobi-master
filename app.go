@@ -1271,3 +1271,12 @@ func (a *App) GetCategoryTrend(year, month, n int, level string) (store.Category
 	}
 	return a.st.CategoryTrend(year, month, n, level)
 }
+
+// SetPaymentMethodClosed 는 결제수단(카드 등)을 해지 처리한다. closedAt 은 해지일(YYYY-MM-DD),
+// 빈 값이면 해지를 취소하고 다시 사용 중으로 돌린다. 거래 기록은 그대로 연결돼 남는다.
+func (a *App) SetPaymentMethodClosed(id int64, closedAt string) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	return fmt.Errorf("미구현")
+}
