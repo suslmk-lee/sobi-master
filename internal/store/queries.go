@@ -347,7 +347,10 @@ SELECT t.id, t.date, t.amount, t.direction, t.merchant, t.memo,
        -- 이 거래가 어떤 정기결제의 한 달치로 연결돼 있으면 그 이름. JOIN 대신 스칼라
        -- 하위 질의라 연결이 혹시 둘이어도 거래 행이 늘어나지 않는다.
        COALESCE((SELECT s.name FROM subscription_posts sp JOIN subscriptions s ON s.id = sp.subscription_id
-                 WHERE sp.transaction_id = t.id ORDER BY sp.ym DESC LIMIT 1), '')
+                 WHERE sp.transaction_id = t.id ORDER BY sp.ym DESC LIMIT 1), ''),
+       -- 선불권 충전으로 연결된 거래면 그 선불권 이름 (transaction_id 가 기본키라 최대 1건)
+       COALESCE((SELECT pp.name FROM prepaid_charges pc JOIN prepaid_passes pp ON pp.id = pc.pass_id
+                 WHERE pc.transaction_id = t.id), '')
 FROM transactions t
 LEFT JOIN members m ON m.id = t.member_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -361,7 +364,7 @@ func (s *Store) scanTx(rows *sql.Rows) (Transaction, error) {
 	var auto, excl int
 	err := rows.Scan(&t.ID, &t.Date, &t.Amount, &t.Direction, &t.Merchant, &t.Memo,
 		&mid, &cid, &pid, &t.Source, &auto, &excl, &t.PaidAt,
-		&t.MemberName, &t.CategoryName, &t.PaymentMethodName, &t.SubscriptionName)
+		&t.MemberName, &t.CategoryName, &t.PaymentMethodName, &t.SubscriptionName, &t.PrepaidName)
 	if err != nil {
 		return t, err
 	}

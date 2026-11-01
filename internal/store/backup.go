@@ -128,6 +128,38 @@ CREATE TABLE cash_balances (
 	memo       TEXT NOT NULL DEFAULT '',
 	created_at TEXT
 );
+CREATE TABLE prepaid_passes (
+	id                INTEGER PRIMARY KEY,
+	name              TEXT NOT NULL,
+	merchant          TEXT NOT NULL DEFAULT '',
+	discount_mode     TEXT NOT NULL DEFAULT 'none',
+	bonus_bp          INTEGER NOT NULL DEFAULT 0,
+	discount_bp       INTEGER NOT NULL DEFAULT 0,
+	opening_balance   INTEGER NOT NULL DEFAULT 0,
+	opening_date      TEXT NOT NULL DEFAULT '',
+	expires_at        TEXT NOT NULL DEFAULT '',
+	category_id       INTEGER,
+	payment_method_id INTEGER,
+	member_id         INTEGER,
+	memo              TEXT NOT NULL DEFAULT '',
+	active            INTEGER NOT NULL DEFAULT 1,
+	created_at        TEXT
+);
+CREATE TABLE prepaid_charges (
+	transaction_id INTEGER PRIMARY KEY,
+	pass_id        INTEGER NOT NULL,
+	credit         INTEGER NOT NULL
+);
+CREATE TABLE prepaid_uses (
+	id         INTEGER PRIMARY KEY,
+	pass_id    INTEGER NOT NULL,
+	date       TEXT NOT NULL,
+	list_price INTEGER NOT NULL DEFAULT 0,
+	deducted   INTEGER NOT NULL DEFAULT 0,
+	member_id  INTEGER,
+	memo       TEXT NOT NULL DEFAULT '',
+	created_at TEXT
+);
 `
 
 // BackupToSQLite 는 현재 DB(Supabase) 전체를 새 SQLite 파일로 스냅샷 백업한다.
@@ -304,6 +336,30 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				e := r.Scan(&id, &asOf, &amount, &memo, &createdAt)
 				return []interface{}{id, asOf, amount, memo, nullable2(createdAt)}, e
 			}),
+		copy("prepaid_passes",
+			`SELECT id, name, merchant, discount_mode, bonus_bp, discount_bp, opening_balance, opening_date, expires_at, category_id, payment_method_id, member_id, memo, active, created_at::text FROM prepaid_passes`,
+			`INSERT INTO prepaid_passes(id, name, merchant, discount_mode, bonus_bp, discount_bp, opening_balance, opening_date, expires_at, category_id, payment_method_id, member_id, memo, active, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, opening int64
+				var bonus, disc, active int
+				var name, merchant, mode, openDate, expires, memo string
+				var cid, pid, mid sql.NullInt64
+				var createdAt sql.NullString
+				e := r.Scan(&id, &name, &merchant, &mode, &bonus, &disc, &opening, &openDate, &expires, &cid, &pid, &mid, &memo, &active, &createdAt)
+				return []interface{}{id, name, merchant, mode, bonus, disc, opening, openDate, expires,
+					nullable(cid), nullable(pid), nullable(mid), memo, active, nullable2(createdAt)}, e
+			}),
+		copy("prepaid_uses",
+			`SELECT id, pass_id, date, list_price, deducted, member_id, memo, created_at::text FROM prepaid_uses`,
+			`INSERT INTO prepaid_uses(id, pass_id, date, list_price, deducted, member_id, memo, created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, pass, list, ded int64
+				var date, memo string
+				var mid sql.NullInt64
+				var createdAt sql.NullString
+				e := r.Scan(&id, &pass, &date, &list, &ded, &mid, &memo, &createdAt)
+				return []interface{}{id, pass, date, list, ded, nullable(mid), memo, nullable2(createdAt)}, e
+			}),
 		copy("transactions",
 			`SELECT id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at::text FROM transactions`,
 			`INSERT INTO transactions(id, date, amount, direction, merchant, memo, member_id, category_id, payment_method_id, source, auto_classified, exclude_perf, paid_at, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -315,6 +371,15 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var createdAt sql.NullString
 				e := r.Scan(&id, &date, &amount, &direction, &merchant, &memo, &mid, &cid, &pid, &source, &auto, &excl, &paidAt, &createdAt)
 				return []interface{}{id, date, amount, direction, merchant, memo, nullable(mid), nullable(cid), nullable(pid), source, auto, excl, paidAt, nullable2(createdAt)}, e
+			}),
+		// 충전 연결은 거래·선불권 뒤에 복사한다
+		copy("prepaid_charges",
+			`SELECT transaction_id, pass_id, credit FROM prepaid_charges`,
+			`INSERT INTO prepaid_charges(transaction_id, pass_id, credit) VALUES(?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var tid, pass, credit int64
+				e := r.Scan(&tid, &pass, &credit)
+				return []interface{}{tid, pass, credit}, e
 			}),
 	)
 	if err != nil {
