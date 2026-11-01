@@ -61,17 +61,17 @@ func roundDiv(n, d int64) int64 {
 	return -((-n + d/2) / d)
 }
 
-// prepaidCredit 는 결제액 paid 로 적립되는 금액. bonus 면 paid + paid×bp/10000, 그 외는 paid.
+// prepaidCredit 는 결제액 paid 로 적립되는 금액. bonus·both 면 paid + paid×bp/10000, 그 외는 paid.
 func prepaidCredit(mode string, bonusBp int, paid int64) int64 {
-	if mode == "bonus" {
+	if mode == "bonus" || mode == "both" {
 		return paid + roundDiv(paid*int64(bonusBp), 10000)
 	}
 	return paid
 }
 
-// prepaidDeduct 는 정가 list 를 쓸 때 차감되는 금액. discount 면 정가 × (1 − bp/10000), 그 외는 정가.
+// prepaidDeduct 는 정가 list 를 쓸 때 차감되는 금액. discount·both 면 정가 × (1 − bp/10000), 그 외는 정가.
 func prepaidDeduct(mode string, discountBp int, list int64) int64 {
-	if mode == "discount" {
+	if mode == "discount" || mode == "both" {
 		return roundDiv(list*int64(10000-discountBp), 10000)
 	}
 	return list
@@ -79,7 +79,7 @@ func prepaidDeduct(mode string, discountBp int, list int64) int64 {
 
 func normalizePrepaidMode(m string) string {
 	switch m {
-	case "bonus", "discount":
+	case "bonus", "discount", "both":
 		return m
 	}
 	return "none"

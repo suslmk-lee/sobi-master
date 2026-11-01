@@ -19,23 +19,19 @@ import CountUp from "./components/CountUp";
 import { useConfirm } from "./ConfirmModal";
 import { categoryOptions, formatAmount, parseAmount, Refs, today, won } from "./lib";
 
-const MODE_LABEL: Record<string, string> = {
-  bonus: "충전 보너스",
-  discount: "차감 할인",
-  none: "할인 없음",
-};
 const QUICK_MEMOS = ["커트", "펌", "염색", "클리닉"];
 
 // "10" → 1000 (만분율), 1000 → "10"
 const pctToBp = (s: string) => Math.round((Number(s) || 0) * 100);
 const bpToPct = (bp: number) => (bp ? String(bp / 100) : "");
 
-const rateOf = (p: store.PrepaidPass) =>
-  p.discountMode === "bonus" ? p.bonusBp : p.discountMode === "discount" ? p.discountBp : 0;
+// 충전 보너스 / 차감 할인이 붙는지 ("both" 는 둘 다)
+const hasBonus = (mode: string) => mode === "bonus" || mode === "both";
+const hasDiscount = (mode: string) => mode === "discount" || mode === "both";
 const bonusOf = (p: store.PrepaidPass, paid: number) =>
-  p.discountMode === "bonus" ? Math.round((paid * p.bonusBp) / 10000) : 0;
+  hasBonus(p.discountMode) ? Math.round((paid * p.bonusBp) / 10000) : 0;
 const deductOf = (p: store.PrepaidPass, list: number) =>
-  p.discountMode === "discount" ? Math.round((list * (10000 - p.discountBp)) / 10000) : list;
+  hasDiscount(p.discountMode) ? Math.round((list * (10000 - p.discountBp)) / 10000) : list;
 
 const idOrUndef = (s: string) => (s ? Number(s) : undefined);
 
@@ -151,7 +147,8 @@ function PassForm({
     name: pass?.name ?? "",
     merchant: pass?.merchant ?? "",
     mode: pass?.discountMode || "bonus",
-    pct: bpToPct(pass ? rateOf(pass) : 1000),
+    bonusPct: bpToPct(pass ? pass.bonusBp : 1000),
+    discountPct: bpToPct(pass ? pass.discountBp : 1000),
     opening: pass?.openingBalance ? formatAmount(String(pass.openingBalance)) : "",
     openingDate: pass?.openingDate ?? "",
     expiresAt: pass?.expiresAt ?? "",
@@ -172,7 +169,6 @@ function PassForm({
       setErr("이름을 입력하세요.");
       return;
     }
-    const bp = f.mode === "none" ? 0 : pctToBp(f.pct);
     setBusy(true);
     try {
       await SavePrepaidPass(
@@ -181,8 +177,8 @@ function PassForm({
           name: f.name.trim(),
           merchant: f.merchant.trim(),
           discountMode: f.mode,
-          bonusBp: f.mode === "bonus" ? bp : 0,
-          discountBp: f.mode === "discount" ? bp : 0,
+          bonusBp: hasBonus(f.mode) ? pctToBp(f.bonusPct) : 0,
+          discountBp: hasDiscount(f.mode) ? pctToBp(f.discountPct) : 0,
           openingBalance: parseAmount(f.opening) || 0,
           // 처음 잔액이 없으면 기준일도 비운다 — 기준일이 있으면 그 전의 충전(예: 지난달 충전 거래 연결)이 잔액에서 빠진다
           openingDate: (parseAmount(f.opening) || 0) > 0 ? f.openingDate || today() : "",
@@ -221,26 +217,43 @@ function PassForm({
               options={[
                 { v: "bonus", label: "충전 보너스" },
                 { v: "discount", label: "차감 할인" },
+                { v: "both", label: "보너스 + 할인" },
                 { v: "none", label: "할인 없음" },
               ]}
             />
-            {f.mode !== "none" && (
-              <div className="flex items-center gap-2">
+            {hasBonus(f.mode) && (
+              <label className="flex items-center gap-2">
+                <span className="text-sm text-zinc-400">보너스</span>
                 <input
-                  className="input-field num !w-24"
+                  className="input-field num !w-20"
                   inputMode="decimal"
                   placeholder="10"
-                  value={f.pct}
-                  onChange={(e) => set({ pct: e.target.value })}
-                  aria-label="요율 (%)"
+                  value={f.bonusPct}
+                  onChange={(e) => set({ bonusPct: e.target.value })}
+                  aria-label="충전 보너스율 (%)"
                 />
                 <span className="text-sm text-zinc-400">%</span>
-              </div>
+              </label>
+            )}
+            {hasDiscount(f.mode) && (
+              <label className="flex items-center gap-2">
+                <span className="text-sm text-zinc-400">할인</span>
+                <input
+                  className="input-field num !w-20"
+                  inputMode="decimal"
+                  placeholder="10"
+                  value={f.discountPct}
+                  onChange={(e) => set({ discountPct: e.target.value })}
+                  aria-label="차감 할인율 (%)"
+                />
+                <span className="text-sm text-zinc-400">%</span>
+              </label>
             )}
           </div>
           <p className="label-mono mt-1.5 whitespace-normal">
             {f.mode === "bonus" && "충전하면 결제액에 보너스를 더 적립합니다 (30만 원 충전 → 33만 원 적립). 차감은 정가 그대로."}
             {f.mode === "discount" && "적립은 결제액 그대로, 쓸 때 정가에서 할인율만큼 깎아 차감합니다."}
+            {f.mode === "both" && "충전하면 보너스를 더 적립하고, 쓸 때도 정가에서 할인율만큼 깎아 차감합니다 (예: 보너스 10%·할인 5%면 30만 원 충전 → 33만 원 적립, 정가 5만 원 → 4.75만 원 차감)."}
             {f.mode === "none" && "결제액만큼 적립하고 정가 그대로 차감합니다."}
           </p>
         </div>
@@ -394,7 +407,7 @@ function UseModal({
         <Field label="정가">
           <input className="input-field num" inputMode="numeric" autoFocus value={list} onChange={(e) => onList(e.target.value)} placeholder="0" />
         </Field>
-        <Field label={p.discountMode === "discount" ? `차감액 (${bpToPct(p.discountBp)}% 할인 적용)` : "차감액"}>
+        <Field label={hasDiscount(p.discountMode) ? `차감액 (${bpToPct(p.discountBp)}% 할인 적용)` : "차감액"}>
           <input
             className="input-field num"
             inputMode="numeric"
@@ -552,7 +565,7 @@ function ChargeModal({
             <span className="label-mono">적립액</span>
             <span className="num text-lg font-semibold text-emerald-300">
               {won(paid + bonus)}
-              {p.discountMode === "bonus" && <span className="ml-2 text-xs font-normal text-emerald-300/80">(보너스 {won(bonus)})</span>}
+              {hasBonus(p.discountMode) && <span className="ml-2 text-xs font-normal text-emerald-300/80">(보너스 {won(bonus)})</span>}
             </span>
           </div>
           <p className="mt-3 text-xs text-zinc-500">충전 금액은 결제한 날 지출로 잡힙니다.</p>
@@ -838,7 +851,6 @@ export default function PrepaidSection({ refs }: { refs: Refs }) {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {sorted.map((s) => {
           const p = s.pass;
-          const rate = rateOf(p);
           return (
             <div key={p.id} className={`surface p-5 ${p.active ? "" : "opacity-60"}`}>
               <div className="flex items-start justify-between gap-2">
@@ -857,9 +869,14 @@ export default function PrepaidSection({ refs }: { refs: Refs }) {
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {p.discountMode !== "none" && rate > 0 && (
+                {hasBonus(p.discountMode) && p.bonusBp > 0 && (
                   <span className="chip">
-                    {MODE_LABEL[p.discountMode]} <span className="num">{bpToPct(rate)}%</span>
+                    충전 보너스 <span className="num">{bpToPct(p.bonusBp)}%</span>
+                  </span>
+                )}
+                {hasDiscount(p.discountMode) && p.discountBp > 0 && (
+                  <span className="chip">
+                    차감 할인 <span className="num">{bpToPct(p.discountBp)}%</span>
                   </span>
                 )}
                 {s.low && <span className="badge bg-amber-500/15 text-amber-300">재충전 필요</span>}

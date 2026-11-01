@@ -9,6 +9,7 @@ package store
 // 할인 방식 (선불권마다 고른다):
 //   "bonus"    — 충전 보너스: 결제액에 BonusBp 만큼 더 적립 (30만 원 충전 → 33만 원 적립), 차감은 정가 그대로
 //   "discount" — 차감 할인: 적립은 결제액 그대로, 쓸 때 정가에서 DiscountBp 만큼 깎아 차감
+//   "both"     — 둘 다: 충전 때 BonusBp 만큼 더 적립하고, 쓸 때도 DiscountBp 만큼 깎아 차감
 //   "none"     — 할인 없음
 // 요율은 만분율(bp): 10% = 1000.
 
@@ -17,10 +18,10 @@ type PrepaidPass struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`     // 표시 이름 (예: "OO헤어 회원권")
 	Merchant string `json:"merchant"` // 가게 이름 — 충전 거래를 고를 때 가맹점 대조에 쓴다
-	// DiscountMode: "bonus" | "discount" | "none"
+	// DiscountMode: "bonus" | "discount" | "both" | "none"
 	DiscountMode string `json:"discountMode"`
-	BonusBp      int    `json:"bonusBp"`    // 충전 보너스율 (bonus 일 때)
-	DiscountBp   int    `json:"discountBp"` // 차감 할인율 (discount 일 때)
+	BonusBp      int    `json:"bonusBp"`    // 충전 보너스율 (bonus·both 일 때)
+	DiscountBp   int    `json:"discountBp"` // 차감 할인율 (discount·both 일 때)
 	// 앱을 쓰기 전부터 남아 있던 잔액. OpeningDate 이후의 충전·차감만 잔액 계산에 넣는다(빈 값이면 전부).
 	OpeningBalance int64  `json:"openingBalance"`
 	OpeningDate    string `json:"openingDate"` // YYYY-MM-DD

@@ -30,6 +30,16 @@ func TestPrepaidMath(t *testing.T) {
 	if normalizePrepaidMode("weird") != "none" || normalizePrepaidMode("bonus") != "bonus" {
 		t.Error("mode normalize")
 	}
+	// 보너스 + 할인이 함께: 충전 때 더 적립하고, 쓸 때도 깎아 차감한다
+	if normalizePrepaidMode("both") != "both" {
+		t.Error("both 가 보존되지 않음")
+	}
+	if got := prepaidCredit("both", 1000, 300000); got != 330000 {
+		t.Errorf("both credit = %d, want 330000", got)
+	}
+	if got := prepaidDeduct("both", 500, 50000); got != 47500 {
+		t.Errorf("both deduct = %d, want 47500", got)
+	}
 }
 
 func TestPrepaidUsage(t *testing.T) {
