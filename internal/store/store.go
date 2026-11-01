@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';
 -- 청구(이용)기간 시작일. 0이면 미지정 — 실적 시작일/결제일 기준 기본값을 쓴다(cashplan.go).
 ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS statement_start_day INTEGER NOT NULL DEFAULT 0;
+-- 해지일(YYYY-MM-DD). 빈 값이면 사용 중. 해지한 결제수단은 지우지 않고 보관한다.
+ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS closed_at TEXT NOT NULL DEFAULT '';
 -- 캐시백 설정. 요율은 만분율(bp)로 담는다: 1% = 100bp (소수점 요율도 정수로 정확히 표현).
 -- cashback_bonus_days 안에 카드대금을 갚은 결제에는 bonus 요율을 한 번 더 얹는다.
 -- 카드 혜택 자료(카드사 안내 기준). 실적 조건은 기존 perf_target 을 그대로 쓴다.

@@ -1278,5 +1278,7 @@ func (a *App) SetPaymentMethodClosed(id int64, closedAt string) error {
 	if err := a.ensure(); err != nil {
 		return err
 	}
-	return fmt.Errorf("미구현")
+	err := a.st.SetPaymentMethodClosed(id, closedAt)
+	logIf("결제수단 해지 설정", err)
+	return err
 }

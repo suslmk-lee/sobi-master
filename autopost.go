@@ -153,6 +153,16 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 		}
 	}
 	warnedYear := map[int]bool{}
+	// 해지된 결제수단의 정기결제는 그래도 반영하되, 바꿀 수 있게 한 번 알려 준다.
+	closedPM := map[int64]string{}
+	if pms, err := a.st.ListPaymentMethods(); err == nil {
+		for _, p := range pms {
+			if p.IsClosed(today.Format("2006-01-02")) {
+				closedPM[p.ID] = p.Name
+			}
+		}
+	}
+	warnedClosed := map[int64]bool{}
 
 	// 달 단위로 처리한다. 같은 달에 같은 가맹점 정기결제가 여럿이면(LG U+ 회선 셋) 한꺼번에
 	// 짝지어야 금액이 맞는 것끼리 묶인다. 정기결제마다 따로 찾으면 먼저 찾은 쪽이 엉뚱한
@@ -193,6 +203,13 @@ func (a *App) postDue(today time.Time) (AutoPostResult, error) {
 				warnedYear[y] = true
 				out.Warnings = append(out.Warnings, fmt.Sprintf(
 					"%d년 공휴일 표가 없어 음력 공휴일·대체공휴일은 반영하지 못했습니다. 설정 → 공휴일에서 추가하세요.", y))
+			}
+			if sub.PaymentMethodID != nil && !warnedClosed[sub.ID] {
+				if pmName, ok := closedPM[*sub.PaymentMethodID]; ok {
+					warnedClosed[sub.ID] = true
+					out.Warnings = append(out.Warnings, fmt.Sprintf(
+						"%s 정기결제의 결제수단(%s)이 해지됐습니다", sub.Name, pmName))
+				}
 			}
 			item := AutoPostItem{
 				SubscriptionID: sub.ID, Name: sub.Name, YM: ym,

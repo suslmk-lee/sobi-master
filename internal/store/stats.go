@@ -399,7 +399,7 @@ func (s *Store) CardPaces(today time.Time) ([]CardPace, error) {
 	}
 	out := []CardPace{}
 	for _, pm := range pms {
-		if pm.Type != "card" || pm.PerfTarget <= 0 {
+		if pm.Type != "card" || pm.PerfTarget <= 0 || pm.IsClosed(today.Format(dateLayout)) {
 			continue
 		}
 		start, end := perfPeriod(today, pm.CycleStartDay)

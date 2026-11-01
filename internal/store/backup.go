@@ -35,7 +35,8 @@ CREATE TABLE payment_methods (
 	annual_fee          INTEGER NOT NULL DEFAULT 0,
 	annual_fee_global   INTEGER NOT NULL DEFAULT 0,
 	benefit_url         TEXT NOT NULL DEFAULT '',
-	benefit_note        TEXT NOT NULL DEFAULT ''
+	benefit_note        TEXT NOT NULL DEFAULT '',
+	closed_at           TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE card_benefits (
 	id                INTEGER PRIMARY KEY,
@@ -234,16 +235,16 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name, kind, nullable(parent), order}, e
 			}),
 		copy("payment_methods",
-			`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods`,
-			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at FROM payment_methods`,
+			`INSERT INTO payment_methods(id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id, target, fee, feeG int64
 				var day, cycle, stmt, cbBp, cbBonusBp, cbDays int
-				var name, typ, issuer, color, bURL, bNote string
+				var name, typ, issuer, color, bURL, bNote, closedAt string
 				e := r.Scan(&id, &name, &typ, &issuer, &day, &cycle, &stmt, &target, &color, &cbBp, &cbBonusBp, &cbDays,
-					&fee, &feeG, &bURL, &bNote)
+					&fee, &feeG, &bURL, &bNote, &closedAt)
 				return []interface{}{id, name, typ, issuer, day, cycle, stmt, target, color, cbBp, cbBonusBp, cbDays,
-					fee, feeG, bURL, bNote}, e
+					fee, feeG, bURL, bNote, closedAt}, e
 			}),
 		copy("card_benefits",
 			`SELECT id, payment_method_id, area, kind, rate_bp, is_max, monthly_cap, note, needs_check, sort_order FROM card_benefits`,
