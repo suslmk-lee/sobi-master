@@ -276,7 +276,7 @@ func (s *Store) DeleteCategory(id int64) error {
 // ---- 결제수단 ----
 
 func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
-	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note FROM payment_methods ORDER BY id`)
+	rows, err := s.query(`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at FROM payment_methods ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func (s *Store) ListPaymentMethods() ([]PaymentMethod, error) {
 		var p PaymentMethod
 		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Issuer, &p.BillingDay, &p.CycleStartDay,
 			&p.StatementStartDay, &p.PerfTarget, &p.Color, &p.CashbackBp, &p.CashbackBonusBp, &p.CashbackBonusDays,
-			&p.AnnualFee, &p.AnnualFeeGlobal, &p.BenefitURL, &p.BenefitNote); err != nil {
+			&p.AnnualFee, &p.AnnualFeeGlobal, &p.BenefitURL, &p.BenefitNote, &p.ClosedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -301,6 +301,10 @@ func (s *Store) AddPaymentMethod(name, typ string) (PaymentMethod, error) {
 // SavePaymentMethod 는 ID 가 있으면 갱신, 없으면 새로 만든다. 카드 상세 정보 포함.
 func (s *Store) SavePaymentMethod(p PaymentMethod) (PaymentMethod, error) {
 	p.Name = strings.TrimSpace(p.Name)
+	p.ClosedAt = strings.TrimSpace(p.ClosedAt)
+	if !validDateOrEmpty(p.ClosedAt) {
+		return p, fmt.Errorf("해지일 형식이 올바르지 않습니다(YYYY-MM-DD): %q", p.ClosedAt)
+	}
 	if p.CycleStartDay < 1 || p.CycleStartDay > 31 {
 		p.CycleStartDay = 1
 	}
@@ -313,18 +317,39 @@ func (s *Store) SavePaymentMethod(p PaymentMethod) (PaymentMethod, error) {
 	if p.ID > 0 {
 		_, err := s.exec(`UPDATE payment_methods SET name=?, type=?, issuer=?, billing_day=?, cycle_start_day=?, statement_start_day=?, perf_target=?, color=?,
 	cashback_bp=?, cashback_bonus_bp=?, cashback_bonus_days=?,
-	annual_fee=?, annual_fee_global=?, benefit_url=?, benefit_note=? WHERE id=?`,
+	annual_fee=?, annual_fee_global=?, benefit_url=?, benefit_note=?, closed_at=? WHERE id=?`,
 			p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.StatementStartDay, p.PerfTarget, p.Color,
 			p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
-			p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote, p.ID)
+			p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote, p.ClosedAt, p.ID)
 		return p, err
 	}
-	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+	err := s.queryRow(`INSERT INTO payment_methods(name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
 		p.Name, p.Type, strings.TrimSpace(p.Issuer), p.BillingDay, p.CycleStartDay, p.StatementStartDay, p.PerfTarget, p.Color,
 		p.CashbackBp, p.CashbackBonusBp, p.CashbackBonusDays,
-		p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote).Scan(&p.ID)
+		p.AnnualFee, p.AnnualFeeGlobal, strings.TrimSpace(p.BenefitURL), p.BenefitNote, p.ClosedAt).Scan(&p.ID)
 	return p, err
+}
+
+// SetPaymentMethodClosed 는 해지일만 바꾼다. closedAt 이 비어 있으면 해지를 취소한다.
+func (s *Store) SetPaymentMethodClosed(id int64, closedAt string) error {
+	closedAt = strings.TrimSpace(closedAt)
+	if !validDateOrEmpty(closedAt) {
+		return fmt.Errorf("해지일 형식이 올바르지 않습니다(YYYY-MM-DD): %q", closedAt)
+	}
+	res, err := s.exec(`UPDATE payment_methods SET closed_at=? WHERE id=?`, closedAt, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("결제수단을 찾을 수 없습니다")
+	}
+	return nil
+}
+
+// IsClosed 는 today(YYYY-MM-DD) 시점에 해지된 결제수단인지. 해지일이 미래면 그날까지는 사용 중이다.
+func (p PaymentMethod) IsClosed(today string) bool {
+	return p.ClosedAt != "" && p.ClosedAt <= today
 }
 
 func (s *Store) DeletePaymentMethod(id int64) error {

@@ -280,7 +280,8 @@ WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
 	}
 	b.Due = b.Total - b.Prepaid
 	b.Projected = b.Due
-	if !b.Closed {
+	// 해지된 카드는 앞으로 쓰지 않으므로 예상 지출을 더하지 않는다(해지 전 이용분만 청구).
+	if !b.Closed && !pm.IsClosed(fmtDay(c.today)) {
 		sum, err := c.recentSum(pm.ID)
 		if err != nil {
 			return b, err
@@ -446,6 +447,9 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, 
 			b, err := bc.bill(pm, m.Year(), m.Month())
 			if err != nil {
 				return plan, err
+			}
+			if b.Total == 0 && pm.IsClosed(fmtDay(today)) {
+				continue // 해지된 카드의 빈 청구서는 보여 주지 않는다
 			}
 			bills = append(bills, b)
 		}

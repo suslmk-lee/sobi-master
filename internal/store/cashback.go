@@ -89,7 +89,7 @@ func (s *Store) Cashback(year, month int, today time.Time) (CashbackReport, erro
 	}
 	cards := []PaymentMethod{}
 	for _, pm := range pms {
-		if pm.CashbackBp > 0 || pm.CashbackBonusBp > 0 {
+		if (pm.CashbackBp > 0 || pm.CashbackBonusBp > 0) && !pm.IsClosed(today.Format(dateLayout)) {
 			cards = append(cards, pm)
 		}
 	}

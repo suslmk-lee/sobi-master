@@ -36,7 +36,7 @@ func (s *Store) CardStatuses(today time.Time) ([]CardStatus, error) {
 	}
 	out := []CardStatus{}
 	for _, pm := range pms {
-		if pm.Type != "card" {
+		if pm.Type != "card" || pm.IsClosed(today.Format(dateLayout)) {
 			continue
 		}
 		start, end := perfPeriod(today, pm.CycleStartDay)
