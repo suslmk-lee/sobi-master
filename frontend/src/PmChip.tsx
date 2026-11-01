@@ -1,4 +1,5 @@
 import { Banknote, CreditCard, Landmark, LucideIcon } from "lucide-react";
+import { isClosed } from "./lib";
 
 // 결제수단을 GitHub 라벨 스타일의 색상 칩으로 표시한다.
 // 카드 설정에서 지정한 색이 있으면 그 색을, 없으면 이름에서 결정적으로 계산한
@@ -40,17 +41,23 @@ export default function PmChip({
   name,
   type,
   color,
+  closedAt,
 }: {
   name: string;
   type?: string;
   color?: string;
+  closedAt?: string;
 }) {
   if (!name) return <span className="text-zinc-500">—</span>;
   const fg = color && color.trim() ? color : autoColor(name);
+  const closed = isClosed({ closedAt });
   const Icon = TYPE_ICON[type ?? "card"] ?? CreditCard;
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border py-0.5 pl-2 pr-2.5 text-xs font-semibold"
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border py-0.5 pl-2 pr-2.5 text-xs font-semibold${
+        closed ? " opacity-60" : ""
+      }`}
+      title={closed ? `해지된 카드 (${closedAt})` : undefined}
       style={{
         // 어두운 배경에서도 읽히도록 글자는 흰색 쪽으로 섞고, 배경·테두리는 사용자 색을 옅게 깐다
         backgroundColor: `color-mix(in srgb, ${fg} 22%, transparent)`,
@@ -60,6 +67,7 @@ export default function PmChip({
     >
       <Icon className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden="true" />
       {name}
+      {closed && <span className="text-[10px] font-medium text-amber-300">해지</span>}
     </span>
   );
 }

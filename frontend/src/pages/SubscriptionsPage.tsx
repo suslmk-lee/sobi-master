@@ -6,7 +6,17 @@ import {
   SaveSubscription,
 } from "../../wailsjs/go/main/App";
 import { main, store } from "../../wailsjs/go/models";
-import { categoryOptions, formatAmount, parseAmount, Refs, won } from "../lib";
+import {
+  categoryOptions,
+  CLOSED_HINT,
+  formatAmount,
+  isClosed,
+  methodLabel,
+  parseAmount,
+  Refs,
+  selectableMethods,
+  won,
+} from "../lib";
 import MonthPicker from "../MonthPicker";
 import ScheduleFields, { SCHEDULE_DEFAULTS, scheduleFromSub } from "../ScheduleFields";
 import { describeHolidayRule, describeSchedule } from "../subSchedule";
@@ -406,10 +416,13 @@ export default function SubscriptionsPage({
               onChange={(e) => setF({ ...f, paymentMethodId: e.target.value })}
             >
               <option value="">결제수단 선택</option>
-              {refs.paymentMethods.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+              {selectableMethods(refs.paymentMethods, f.paymentMethodId).map((p) => (
+                <option key={p.id} value={p.id}>{methodLabel(p)}</option>
               ))}
             </select>
+            {isClosed(refs.paymentMethods.find((p) => String(p.id) === String(f.paymentMethodId))) && (
+              <p className="text-xs text-amber-300 sm:col-span-2">{CLOSED_HINT}</p>
+            )}
             <input
               type="text"
               className="input-field"
