@@ -153,7 +153,7 @@ function PassForm({
     mode: pass?.discountMode || "bonus",
     pct: bpToPct(pass ? rateOf(pass) : 1000),
     opening: pass?.openingBalance ? formatAmount(String(pass.openingBalance)) : "",
-    openingDate: pass?.openingDate || today(),
+    openingDate: pass?.openingDate ?? "",
     expiresAt: pass?.expiresAt ?? "",
     categoryId: pass?.categoryId ? String(pass.categoryId) : "",
     paymentMethodId: pass?.paymentMethodId ? String(pass.paymentMethodId) : "",
@@ -184,7 +184,8 @@ function PassForm({
           bonusBp: f.mode === "bonus" ? bp : 0,
           discountBp: f.mode === "discount" ? bp : 0,
           openingBalance: parseAmount(f.opening) || 0,
-          openingDate: f.openingDate,
+          // 처음 잔액이 없으면 기준일도 비운다 — 기준일이 있으면 그 전의 충전(예: 지난달 충전 거래 연결)이 잔액에서 빠진다
+          openingDate: (parseAmount(f.opening) || 0) > 0 ? f.openingDate || today() : "",
           expiresAt: f.expiresAt,
           categoryId: idOrUndef(f.categoryId),
           paymentMethodId: idOrUndef(f.paymentMethodId),
@@ -254,8 +255,16 @@ function PassForm({
           <span className="label-mono mt-1 block whitespace-normal">앱 쓰기 전부터 남아 있던 잔액</span>
         </Field>
         <Field label="기준일">
-          <input type="date" className="input-field" value={f.openingDate} onChange={(e) => set({ openingDate: e.target.value })} />
-          <span className="label-mono mt-1 block whitespace-normal">이 날 이후의 충전·차감만 잔액에 더합니다</span>
+          <input
+            type="date"
+            className="input-field disabled:opacity-50"
+            value={f.openingDate}
+            disabled={!(parseAmount(f.opening) > 0)}
+            onChange={(e) => set({ openingDate: e.target.value })}
+          />
+          <span className="label-mono mt-1 block whitespace-normal">
+            처음 잔액을 넣을 때만 씁니다(비우면 오늘). 이 날 전의 충전·차감은 처음 잔액에 이미 들어 있는 것으로 봅니다
+          </span>
         </Field>
         <Field label="유효기간 (선택)">
           <input type="date" className="input-field" value={f.expiresAt} onChange={(e) => set({ expiresAt: e.target.value })} />
