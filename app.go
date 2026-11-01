@@ -26,6 +26,9 @@ type App struct {
 	cl  *classifier.Classifier
 	// lastDeleted 는 일괄/단건 삭제 직후 복원(Undo)을 위한 백업.
 	lastDeleted []store.Transaction
+	// lastDeletedLinks 는 삭제된 거래 중 선불권 충전이었던 것의 연결(원래 거래 ID 기준).
+	// 삭제 취소는 새 ID 로 거래를 다시 만들기 때문에, 이 표로 새 거래에 연결을 되살린다.
+	lastDeletedLinks map[int64]store.PrepaidLink
 	// backupMu 는 로컬 백업을 한 번에 하나만 수행하도록 직렬화한다.
 	backupMu   sync.Mutex
 	backupDone chan struct{}
@@ -434,8 +437,11 @@ func (a *App) DeleteTransaction(id int64) error {
 		return err
 	}
 	if t, err := a.st.GetTransaction(id); err == nil {
+		links, lerr := a.st.PrepaidLinksFor([]int64{id})
+		logIf("DeleteTransaction(선불권 연결 백업)", lerr)
 		a.mu.Lock()
 		a.lastDeleted = []store.Transaction{t}
+		a.lastDeletedLinks = links
 		a.mu.Unlock()
 	}
 	return a.st.DeleteTransaction(id)
@@ -450,10 +456,15 @@ func (a *App) BatchDelete(ids []int64) error {
 	if err != nil {
 		return err
 	}
+	links, err := a.st.PrepaidLinksFor(ids)
+	if err != nil {
+		return err
+	}
 	if err := a.st.DeleteTransactions(ids); err != nil {
 		return err
 	}
 	a.mu.Lock()
+	a.lastDeletedLinks = links
 	a.lastDeleted = backup
 	a.mu.Unlock()
 	return nil
@@ -466,13 +477,20 @@ func (a *App) UndoDelete() (int, error) {
 	}
 	a.mu.Lock()
 	backup := a.lastDeleted
+	links := a.lastDeletedLinks
 	a.lastDeleted = nil
+	a.lastDeletedLinks = nil
 	a.mu.Unlock()
 	n := 0
 	for _, t := range backup {
+		oldID := t.ID
 		t.ID = 0
-		if _, err := a.st.AddTransaction(t); err != nil {
+		newID, err := a.st.AddTransaction(t)
+		if err != nil {
 			return n, err
+		}
+		if l, ok := links[oldID]; ok {
+			logIf("UndoDelete(선불권 연결 복원)", a.st.RestorePrepaidLink(newID, l))
 		}
 		n++
 	}
@@ -1118,11 +1136,11 @@ func (a *App) GetAlerts() ([]Alert, error) {
 			switch {
 			case b.Over:
 				out = append(out, Alert{Kind: "budget", Level: "danger",
-					Title: b.Category + " 예산 초과",
+					Title:  b.Category + " 예산 초과",
 					Detail: fmt.Sprintf("%s / %s (%d%%)", won(b.Spent), won(b.Amount), b.Pct)})
 			case b.Pct >= 80:
 				out = append(out, Alert{Kind: "budget", Level: "warn",
-					Title: b.Category + " 예산 임박",
+					Title:  b.Category + " 예산 임박",
 					Detail: fmt.Sprintf("%s / %s (%d%%)", won(b.Spent), won(b.Amount), b.Pct)})
 			}
 		}
@@ -1132,7 +1150,7 @@ func (a *App) GetAlerts() ([]Alert, error) {
 		for _, p := range paces {
 			if !p.Achieved && p.Days > 0 && p.Elapsed*100/p.Days >= 60 {
 				out = append(out, Alert{Kind: "card", Level: "warn",
-					Title: p.Card.Name + " 실적 미달 주의",
+					Title:  p.Card.Name + " 실적 미달 주의",
 					Detail: fmt.Sprintf("%d/%d일차 · %s 더 써야 달성", p.Elapsed, p.Days, won(p.Target-p.Spent))})
 			}
 		}
@@ -1140,7 +1158,7 @@ func (a *App) GetAlerts() ([]Alert, error) {
 
 	if sum, err := a.st.MonthlySummary(y, m); err == nil && sum.UnclassifiedCount > 0 {
 		out = append(out, Alert{Kind: "unclassified", Level: "info",
-			Title: fmt.Sprintf("미분류 거래 %d건", sum.UnclassifiedCount),
+			Title:  fmt.Sprintf("미분류 거래 %d건", sum.UnclassifiedCount),
 			Detail: "규칙으로 일괄 분류하거나 거래내역에서 직접 분류하세요"})
 	}
 	return out, nil

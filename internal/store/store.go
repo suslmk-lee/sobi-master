@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS cash_balances (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `
-	_, err := s.db.Exec(schema)
+	_, err := s.db.Exec(schema + prepaidSchema)
 	return err
 }
 
