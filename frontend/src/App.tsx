@@ -217,7 +217,7 @@ export default function App() {
             setUnclassifiedOnly={setUnclassifiedOnly}
           />
         )}
-        {tab === "cards" && <CardsPage reloadRefs={loadRefs} />}
+        {tab === "cards" && <CardsPage reloadRefs={loadRefs} refs={refs} />}
         {tab === "subscriptions" && (
           <SubscriptionsPage refs={refs} month={month} setMonth={setMonth} />
         )}
