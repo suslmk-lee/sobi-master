@@ -737,8 +737,33 @@ type HabitPlace struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 	Total int64  `json:"total"`
-	Last  string `json:"last"` // 기간 안 마지막 방문일
-	New   bool   `json:"new"`  // 이 사람이 이 카테고리로 처음 간 날이 기간 안
+	First string `json:"first"` // 이 사람이 이 카테고리로 처음 간 날(전체 기록 기준)
+	Last  string `json:"last"`  // 기간 안 마지막 방문일
+	New   bool   `json:"new"`   // 처음 간 날이 분석 기간 안 (기간 = 분석 기간일 때만)
+}
+
+// '자주 간 곳'을 셀 기간.
+const (
+	PlaceSpanPeriod = "period" // 분석 기간(이번 달 등) 그대로
+	PlaceSpan3M     = "3m"     // 최근 3개월
+	PlaceSpan1Y     = "1y"     // 최근 1년
+)
+
+// placeRange 는 '자주 간 곳'을 셀 기간 [from, end]. 3m·1y 는 끝 날에서 거슬러 3개월·1년이고,
+// 기록이 시작되기 전 날은 dataStart 로 당겨 화면의 기간 표시가 실제 기록 범위와 맞게 한다.
+func placeRange(span string, from, end, dataStart time.Time) (time.Time, time.Time) {
+	switch span {
+	case PlaceSpan3M:
+		from = end.AddDate(0, -3, 1)
+	case PlaceSpan1Y:
+		from = end.AddDate(-1, 0, 1)
+	default:
+		return from, end
+	}
+	if !dataStart.IsZero() && from.Before(dataStart) {
+		from = dataStart
+	}
+	return from, end
 }
 
 // MemberHabit 은 한 사람이 한 카테고리(회사점심 등)에 반복해서 쓰는 모습:
@@ -756,9 +781,14 @@ type MemberHabit struct {
 	ElapsedDays      int  `json:"elapsedDays"`
 	SameDayCount     int  `json:"sameDayCount"`
 	SameDayPrevCount int  `json:"sameDayPrevCount"`
+	// '자주 간 곳'을 센 기간 (가게를 눌러 내역을 볼 때 같은 범위를 쓴다)
+	PlaceSpan  string `json:"placeSpan"`
+	PlacesFrom string `json:"placesFrom"`
+	PlacesTo   string `json:"placesTo"`
 }
 
-func (s *Store) MemberHabit(year, month int, memberID, categoryID int64, period string, today time.Time) (MemberHabit, error) {
+// MemberHabit 의 placeSpan 은 '자주 간 곳'을 셀 기간(period|3m|1y). 월별·요일 통계는 그대로 6개월이다.
+func (s *Store) MemberHabit(year, month int, memberID, categoryID int64, period, placeSpan string, today time.Time) (MemberHabit, error) {
 	today = dayOf(today)
 	r, end, sameDay := memberRange(year, month, period, today)
 	h := MemberHabit{CategoryID: categoryID, Months: []HabitMonth{}, Places: []HabitPlace{}, Weekday: make([]int, 7)}
@@ -894,11 +924,20 @@ GROUP BY 1`, categoryID, categoryID, memberID, fmtDay(end))
 	if err := frows.Err(); err != nil {
 		return h, err
 	}
-	from := fmtDay(r.From)
+	if placeSpan != PlaceSpan3M && placeSpan != PlaceSpan1Y {
+		placeSpan = PlaceSpanPeriod
+	}
+	pFrom, pTo := placeRange(placeSpan, r.From, end, start)
+	h.PlaceSpan, h.PlacesFrom, h.PlacesTo = placeSpan, fmtDay(pFrom), fmtDay(pTo)
+	periodFrom := fmtDay(r.From)
+	limit := 15
+	if placeSpan != PlaceSpanPeriod {
+		limit = 20 // 기간이 길면 가게가 많아진다
+	}
 	prow, err := s.query(`
 SELECT `+merchant+`, COUNT(*), SUM(t.amount), MAX(t.date) FROM transactions t
 WHERE `+catScopeT+` AND t.direction = 'expense' AND t.member_id = ? AND t.date >= ? AND t.date <= ?
-GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT 15`, categoryID, categoryID, memberID, from, fmtDay(end))
+GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT `+fmt.Sprint(limit), categoryID, categoryID, memberID, h.PlacesFrom, h.PlacesTo)
 	if err != nil {
 		return h, err
 	}
@@ -908,7 +947,8 @@ GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT 15`, categoryID, categoryID, memberID, 
 			prow.Close()
 			return h, err
 		}
-		p.New = firstSeen[p.Name] >= from
+		p.First = firstSeen[p.Name]
+		p.New = placeSpan == PlaceSpanPeriod && p.First >= periodFrom
 		h.Places = append(h.Places, p)
 	}
 	prow.Close()
