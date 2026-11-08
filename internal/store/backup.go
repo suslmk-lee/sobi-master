@@ -17,7 +17,8 @@ CREATE TABLE categories (
 	name       TEXT NOT NULL,
 	kind       TEXT NOT NULL DEFAULT 'expense',
 	parent_id  INTEGER,
-	sort_order INTEGER NOT NULL DEFAULT 0
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	fixed_cost INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE payment_methods (
 	id              INTEGER PRIMARY KEY,
@@ -224,15 +225,15 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name}, e
 			}),
 		copy("categories",
-			`SELECT id, name, kind, parent_id, sort_order FROM categories`,
-			`INSERT INTO categories(id, name, kind, parent_id, sort_order) VALUES(?,?,?,?,?)`,
+			`SELECT id, name, kind, parent_id, sort_order, fixed_cost FROM categories`,
+			`INSERT INTO categories(id, name, kind, parent_id, sort_order, fixed_cost) VALUES(?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id int64
 				var name, kind string
 				var parent sql.NullInt64
-				var order int
-				e := r.Scan(&id, &name, &kind, &parent, &order)
-				return []interface{}{id, name, kind, nullable(parent), order}, e
+				var order, fixed int
+				e := r.Scan(&id, &name, &kind, &parent, &order, &fixed)
+				return []interface{}{id, name, kind, nullable(parent), order, fixed}, e
 			}),
 		copy("payment_methods",
 			`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at FROM payment_methods`,

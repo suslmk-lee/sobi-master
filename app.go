@@ -303,6 +303,16 @@ func (a *App) MoveCategory(id int64, delta int) error {
 	return err
 }
 
+// SetCategoryFixed 는 카테고리의 고정비 표시를 켜거나 끈다(구성원 분석의 생활 소비에서 뺀다).
+func (a *App) SetCategoryFixed(id int64, fixed bool) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.SetCategoryFixed(id, fixed)
+	logIf("SetCategoryFixed", err)
+	return err
+}
+
 // SetCategoryParent 는 카테고리의 상위(주)를 바꾼다. parentID=0 이면 주로 승격.
 func (a *App) SetCategoryParent(id, parentID int64) error {
 	if err := a.ensure(); err != nil {
@@ -891,6 +901,41 @@ func (a *App) GetCategoryMonthly(year, month, n int, categoryID int64, by string
 		n = 6
 	}
 	return a.st.CategoryMonthly(year, month, n, categoryID, by)
+}
+
+// GetMemberAnalysis 는 구성원 한 사람의 기간(period: month|prev|recent30) 분석.
+func (a *App) GetMemberAnalysis(year, month int, memberID int64, period string) (store.MemberAnalysis, error) {
+	if err := a.ensure(); err != nil {
+		return store.MemberAnalysis{}, err
+	}
+	return a.st.MemberAnalysis(year, month, memberID, period, time.Now())
+}
+
+// GetMemberHabit 은 한 사람이 한 카테고리(회사점심 등)에 반복해서 쓰는 모습.
+func (a *App) GetMemberHabit(year, month int, memberID, categoryID int64, period string) (store.MemberHabit, error) {
+	if err := a.ensure(); err != nil {
+		return store.MemberHabit{}, err
+	}
+	return a.st.MemberHabit(year, month, memberID, categoryID, period, time.Now())
+}
+
+// GetMemberMonthly 는 한 사람의 월 × 항목 표. by 는 category|merchant|payment.
+func (a *App) GetMemberMonthly(year, month, n int, memberID int64, by string) (store.CategoryTrend, error) {
+	if err := a.ensure(); err != nil {
+		return store.CategoryTrend{}, err
+	}
+	if n < 1 || n > 24 {
+		n = 6
+	}
+	return a.st.MemberMonthly(year, month, n, memberID, by)
+}
+
+// GetMemberTx 는 구성원 분석의 막대·칸 하나의 거래 목록. by 는 category|merchant|payment|kind|all.
+func (a *App) GetMemberTx(memberID int64, from, to, by, key string, categoryID int64) ([]store.Transaction, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.MemberTx(memberID, from, to, by, key, categoryID)
 }
 
 // GetCategoryDetailTx 는 카테고리 상세 막대 한 줄의 거래 목록. 기간은 GetCategoryDetail 과 같은

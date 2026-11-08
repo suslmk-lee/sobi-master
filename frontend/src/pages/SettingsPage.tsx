@@ -537,7 +537,10 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                     {...dragProps(main.id, `main:${kind}`, mainIdx)}
                   >
                     {grip(main.id, `main:${kind}`)}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">{main.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
+                      {main.name}
+                      {main.fixedCost && <span className="badge ml-2 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
+                    </span>
                     {subs.length > 0 && (
                       <span className="label-mono">부 {subs.length}</span>
                     )}
@@ -594,6 +597,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                       <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm text-zinc-300">
                         <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                         {s.name}
+                        {s.fixedCost && <span className="badge ml-1 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
                       </span>
                       <select
                         className="input-field !w-auto !py-1.5 !text-xs"

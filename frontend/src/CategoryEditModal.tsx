@@ -1,12 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Pencil, X } from "lucide-react";
-import { RenameCategory } from "../wailsjs/go/main/App";
+import { RenameCategory, SetCategoryFixed } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import Portal from "./components/ui/Portal";
 
 const KIND_LABEL: Record<string, string> = { income: "수입", expense: "지출", transfer: "이체" };
 
-// 카테고리 수정 팝업 — 이름을 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
+// 카테고리 수정 팝업 — 이름과 고정비 표시를 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
+// 고정비로 표시하면 구성원 분석이 이 카테고리(주면 그 부까지)를 '생활 소비'에서 빼고 따로 보여 준다.
 // 상위(주) 이동은 목록의 선택 상자에서, 순서는 끌어서 바꾼다.
 export default function CategoryEditModal({
   cat,
@@ -20,6 +21,7 @@ export default function CategoryEditModal({
   onDone: () => void;
 }) {
   const [name, setName] = useState(cat.name);
+  const [fixed, setFixed] = useState(cat.fixedCost);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -32,7 +34,9 @@ export default function CategoryEditModal({
   }, [onClose]);
 
   const trimmed = name.trim();
-  const changed = trimmed !== "" && trimmed !== cat.name;
+  const renamed = trimmed !== cat.name;
+  const fixedChanged = fixed !== cat.fixedCost;
+  const changed = trimmed !== "" && (renamed || fixedChanged);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -40,7 +44,8 @@ export default function CategoryEditModal({
     setBusy(true);
     setErr("");
     try {
-      await RenameCategory(cat.id, trimmed);
+      if (renamed) await RenameCategory(cat.id, trimmed);
+      if (fixedChanged) await SetCategoryFixed(cat.id, fixed);
       onDone();
     } catch (ex) {
       setErr(String(ex));
@@ -93,8 +98,27 @@ export default function CategoryEditModal({
           <p className="text-xs text-zinc-500">
             이 카테고리로 분류된 거래·규칙·예산은 새 이름으로 그대로 이어집니다.
           </p>
+          {cat.kind === "expense" && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/[0.08] px-3 py-2.5">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={fixed || cat.parentFixed}
+                disabled={cat.parentFixed}
+                onChange={(e) => setFixed(e.target.checked)}
+              />
+              <span className="text-sm text-zinc-200">
+                고정비로 보기
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  {cat.parentFixed
+                    ? `상위 '${cat.parent}'가 고정비라 이 부도 고정비로 봅니다.`
+                    : "보험료·통신비처럼 매달 정해진 돈. 구성원 분석의 '생활 소비'에서 빼고 따로 보여 줍니다."}
+                </span>
+              </span>
+            </label>
+          )}
           {/* 자금 계획은 이름이 "급여"인 카테고리로 월급을 찾는다(cashplan.go) */}
-          {cat.name === "급여" && changed && (
+          {cat.name === "급여" && renamed && trimmed !== "" && (
             <p className="text-xs text-amber-300">
               자금 계획은 '급여' 카테고리로 월급을 찾습니다. 이름을 바꾸면 월급을 전체 수입 평균으로 계산합니다.
             </p>
