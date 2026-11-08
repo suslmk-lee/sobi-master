@@ -162,3 +162,34 @@ func TestSpendWindowDays(t *testing.T) {
 		t.Errorf("새 카드 예상: got %d", got)
 	}
 }
+
+func TestBuildTransfer(t *testing.T) {
+	bills := []CardBill{
+		{CardName: "B카드", DueDate: "2026-12-01", PeriodEnd: "2026-11-18", Due: 600000, Projected: 800000},
+		{CardName: "A카드", DueDate: "2026-12-01", PeriodEnd: "2026-11-19", Due: 300000, Projected: 450000},
+		{CardName: "C카드", DueDate: "2026-12-01", PeriodEnd: "2026-10-31", Closed: true, Due: 120000, Projected: 120000},
+		{CardName: "D카드", DueDate: "2026-11-02", PeriodEnd: "2026-10-18", Closed: true, Due: 500000, Projected: 500000}, // 월급 전 출금
+		{CardName: "E카드", DueDate: "2026-12-10", PeriodEnd: "2026-11-25", Due: 1, Projected: 1},                         // 그다음 월급날 출금 → 제외
+		{CardName: "F카드", DueDate: "2026-12-01", PeriodEnd: "2026-11-18", Due: 0, Projected: 0},                         // 쓴 돈 없음 → 제외
+	}
+	tr := buildTransfer(bills, "2026-11-10", "2026-12-10")
+	if len(tr.Bills) != 3 || tr.Bills[0].CardName != "A카드" || tr.Bills[2].CardName != "C카드" {
+		t.Fatalf("대상 청구서: %+v", tr.Bills)
+	}
+	// 확정 102만 + 예상 35만 + 여유 3.5만 = 140.5만 → 141만
+	if tr.Confirmed != 1020000 || tr.Estimated != 350000 || tr.Suggested != 1410000 {
+		t.Errorf("금액: 확정 %d 예상 %d 권장 %d", tr.Confirmed, tr.Estimated, tr.Suggested)
+	}
+	if tr.OpenUntil != "2026-11-19" {
+		t.Errorf("가장 늦은 마감일 %q", tr.OpenUntil)
+	}
+	// 모두 확정이면 여유 없이 만 원 단위로만 올림
+	done := buildTransfer(bills, "2026-11-01", "2026-11-10")
+	if done.Confirmed != 500000 || done.Estimated != 0 || done.Suggested != 500000 || done.OpenUntil != "" {
+		t.Errorf("확정만: %+v", done)
+	}
+	// 대상이 없으면 0 과 빈 목록
+	if none := buildTransfer(bills, "2027-01-01", "2027-02-01"); len(none.Bills) != 0 || none.Suggested != 0 {
+		t.Errorf("대상 없음: %+v", none)
+	}
+}

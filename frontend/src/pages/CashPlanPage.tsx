@@ -21,6 +21,7 @@ import {
 import { store } from "../../wailsjs/go/models";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Banknote,
   CalendarClock,
   ChevronRight,
@@ -211,6 +212,120 @@ function Callout({ tone, children }: { tone: "amber" | "rose"; children: React.R
     <div className={`surface flex items-start gap-3 border-l-2 px-5 py-3.5 ${t.bar}`}>
       <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${t.icon}`} />
       <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+// 월급날 카드값 통장으로 옮길 금액.
+// 월급(예: 10일)과 카드값 출금(다음 달 1일) 사이 20여 일 동안 카드값을 생활비와 섞이지 않게 따로 떼어 두도록,
+// 그 월급으로 낼 카드값(지금까지 이용 + 남은 기간 예상 + 여유)을 카드사별로 보여 준다.
+function TransferCard({
+  plan,
+  issuerOf,
+}: {
+  plan: store.CashPlan;
+  issuerOf: (cardId: number, cardName: string) => string;
+}) {
+  const t = plan.salaryTransfer;
+  const h = plan.holding;
+  if (!t || (t.bills.length === 0 && (!h || h.bills.length === 0))) return null;
+
+  // 카드사별로 묶는다 (카드값은 카드사 단위로 한 번에 빠져나간다)
+  const groups: { issuer: string; cards: string[]; due: string; confirmed: number; projected: number }[] = [];
+  for (const b of t.bills) {
+    const issuer = issuerOf(b.cardId, b.cardName);
+    let g = groups.find((x) => x.issuer === issuer && x.due === b.dueDate);
+    if (!g) {
+      g = { issuer, cards: [], due: b.dueDate, confirmed: 0, projected: 0 };
+      groups.push(g);
+    }
+    g.cards.push(b.cardName);
+    g.confirmed += b.due;
+    g.projected += b.projected;
+  }
+  const dueDates = [...new Set(t.bills.map((b) => b.dueDate))];
+
+  return (
+    <div className="surface p-5 sm:p-6">
+      <SectionHead
+        icon={ArrowRightLeft}
+        title="월급날 카드값 통장으로 옮길 금액"
+        sub={
+          t.bills.length > 0
+            ? `${dateLabel(t.from)} 월급 → ${dueDates.map(shortDate).join("·")} 출금분 (${shortDate(t.until)} 월급 전까지)`
+            : undefined
+        }
+      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+        <div className="surface-inset flex flex-col gap-2 p-4">
+          {t.bills.length > 0 ? (
+            <>
+              <p className="label-mono">권장 이체액</p>
+              <p className="num text-3xl font-light tracking-tight text-white">{won(t.suggested)}</p>
+              <p className="num text-xs leading-relaxed text-zinc-400">
+                지금까지 이용 {won(t.confirmed)}
+                {t.estimated > 0 && (
+                  <>
+                    {" "}
+                    + 남은 기간 예상 <span className="text-amber-300">{won(t.estimated)}</span> + 여유 10%
+                  </>
+                )}
+                {" "}(만 원 단위 올림)
+              </p>
+              {t.openUntil && (
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  {shortDate(t.openUntil)}에 이용기간이 끝나면 금액이 확정됩니다. 그때 차액만 맞추면 됩니다.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-zinc-500">다음 월급으로 낼 카드값이 아직 없습니다.</p>
+          )}
+          {h && h.bills.length > 0 && (
+            <p className="mt-auto border-t border-white/[0.07] pt-3 text-xs leading-relaxed text-zinc-300">
+              지금 카드값 통장에 있어야 할 금액{" "}
+              <strong className="num font-medium text-white">{won(h.suggested)}</strong>
+              <span className="text-zinc-500">
+                {" "}
+                · {[...new Set(h.bills.map((b) => shortDate(b.dueDate)))].join("·")} 출금
+                {h.openUntil ? " · 예상 포함" : " · 확정"}
+              </span>
+            </p>
+          )}
+        </div>
+        {groups.length > 0 && (
+          <div className="surface-inset overflow-x-auto p-4">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="table-head border-b border-white/[0.08]">
+                  <th className="py-2 pr-2 text-left font-normal">카드사</th>
+                  <th className="px-2 py-2 text-right font-normal">출금일</th>
+                  <th className="px-2 py-2 text-right font-normal">지금까지</th>
+                  <th className="py-2 pl-2 text-right font-normal">예상 청구</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => (
+                  <tr key={g.issuer + g.due} className="table-row text-zinc-200">
+                    <td className="py-2 pr-2">
+                      <span className="flex items-center gap-1.5">
+                        <Landmark className="h-3.5 w-3.5 shrink-0 text-zinc-500" strokeWidth={1.75} />
+                        {g.issuer}
+                      </span>
+                      <span className="block truncate pl-5 text-[11px] text-zinc-500">{g.cards.join(", ")}</span>
+                    </td>
+                    <td className="num px-2 py-2 text-right text-zinc-400">{shortDate(g.due)}</td>
+                    <td className="num px-2 py-2 text-right">{won(g.confirmed)}</td>
+                    <td className="num py-2 pl-2 text-right text-amber-300/90">
+                      {g.projected === g.confirmed ? won(g.projected) : `약 ${won(g.projected)}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -885,6 +1000,9 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
           <p className="num text-xs text-zinc-500">{plan.lowestDate ? `${shortDate(plan.lowestDate)} 기준` : ""}</p>
         </div>
       </div>
+
+      {/* 카드값 통장: 월급날 옮길 금액 */}
+      <TransferCard plan={plan} issuerOf={issuerOfCard} />
 
       {/* 잔액 흐름 */}
       <div className="surface p-5 sm:p-6">
