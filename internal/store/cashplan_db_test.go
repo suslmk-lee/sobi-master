@@ -74,17 +74,18 @@ func TestBuildCashPlan(t *testing.T) {
 	eq("bill.Closed", b.Closed, true)
 	eq("FollowingDue", plan.FollowingDue, "2026-12-01")
 	eq("FollowingTotal", plan.FollowingTotal, int64(70000))
-	// 첫 사용일 9/18 → 일평균은 44일(9/18~10/31)로 나눈다: 7만 + 42만/44 × 18일
-	eq("FollowingProjected", plan.FollowingProjected, int64(241818))
+	// 첫 사용일 9/18 → 일평균은 44일(9/18~10/31)로 나눈다. 선결제한 9/25 10만은 속도에서 뺀다:
+	// 7만 + (5만+20만+7만)/44 × 18일 = 7만 + 130,909
+	eq("FollowingProjected", plan.FollowingProjected, int64(200909))
 	eq("AfterNextDue", plan.AfterNextDue, int64(690000))
 	// 카드값 통장: 11/10 월급날 옮길 금액 = 12/1 청구(10/19~11/18, 아직 열림)
-	// 7만 + 예상 171,818 + 여유 10% 17,182 = 259,000 → 만 원 단위 올림 260,000
+	// 7만 + 예상 130,909 + 여유 10% 13,091 = 214,000 → 만 원 단위 올림 220,000
 	st2 := plan.SalaryTransfer
 	eq("Transfer.From", st2.From, "2026-11-10")
 	eq("Transfer.Until", st2.Until, "2026-12-10")
 	eq("Transfer.Confirmed", st2.Confirmed, int64(70000))
-	eq("Transfer.Estimated", st2.Estimated, int64(171818))
-	eq("Transfer.Suggested", st2.Suggested, int64(260000))
+	eq("Transfer.Estimated", st2.Estimated, int64(130909))
+	eq("Transfer.Suggested", st2.Suggested, int64(220000))
 	eq("Transfer.OpenUntil", st2.OpenUntil, "2026-11-18")
 	// 지금 보관 중이어야 할 금액 = 11/2 청구(확정 20만, 선결제 10만 제외)
 	eq("Holding.Confirmed", plan.Holding.Confirmed, int64(200000))
@@ -93,7 +94,7 @@ func TestBuildCashPlan(t *testing.T) {
 
 	wantDates := []string{"2026-11-02", "2026-11-05", "2026-11-10", "2026-12-01", "2026-12-07", "2026-12-10"} // 12/5 월세는 토요일이라 12/7
 	wantKinds := []string{"card", "subscription", "salary", "card", "subscription", "salary"}
-	wantBal := []int64{690000, 190000, 3190000, 2948182, 2448182, 5448182}
+	wantBal := []int64{690000, 190000, 3190000, 2989091, 2489091, 5489091}
 	if len(plan.Events) != len(wantDates) {
 		t.Fatalf("이벤트 %d개: %+v", len(plan.Events), plan.Events)
 	}
