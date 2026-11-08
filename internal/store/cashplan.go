@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"time"
@@ -606,6 +607,12 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, 
 		plan.Events = events
 	}
 
+	// 카드값 통장: 다음 월급날 옮길 금액(그 월급으로 낼 카드값)과 지금 보관 중이어야 할 금액
+	afterNext := monthStart(nextSalary).AddDate(0, 1, 0)
+	salaryAfter := salaryDate(cal, afterNext.Year(), afterNext.Month(), settings.SalaryDay)
+	plan.SalaryTransfer = buildTransfer(bills, plan.NextSalary, fmtDay(salaryAfter))
+	plan.Holding = buildTransfer(bills, todayStr, plan.NextSalary)
+
 	plan.SafeToSpend = safe - settings.Reserve
 	plan.DaysToSalary = int(nextSalary.Sub(today).Hours() / 24)
 	spendable := plan.SafeToSpend
@@ -618,6 +625,41 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, 
 	}
 	plan.DailyAllowance = spendable / int64(days)
 	return plan, nil
+}
+
+// transferBufferRate: 월급날 옮길 금액에서 '남은 기간 예상분'에 더하는 여유 비율.
+// 확정된(이미 쓴) 금액은 그대로 두고, 추정한 부분만 넉넉히 잡는다.
+const transferBufferRate = 0.1
+
+// buildTransfer 는 출금일이 [from, until) 인 카드 청구서를 모아 카드값 통장에 둘 금액을 계산한다.
+//   - Confirmed: 지금까지 이용한 금액(선결제 뺌) — 청구서 Due 의 합
+//   - Estimated: 이용기간이 끝나지 않은 카드의 남은 날 예상분 — Projected − Due 의 합
+//   - Suggested: Confirmed + Estimated × (1 + transferBufferRate) 를 만 원 단위로 올린 권장 이체액
+//   - OpenUntil: 아직 안 끝난 이용기간 중 가장 늦은 마감일 — 그날이 지나면 확정액으로 차이를 맞춘다
+func buildTransfer(bills []CardBill, from, until string) CardTransfer {
+	t := CardTransfer{From: from, Until: until, Bills: []CardBill{}}
+	for _, b := range bills {
+		if b.DueDate < from || b.DueDate >= until || b.Projected <= 0 {
+			continue
+		}
+		t.Bills = append(t.Bills, b)
+		t.Confirmed += b.Due
+		t.Estimated += b.Projected - b.Due
+		if !b.Closed && b.PeriodEnd > t.OpenUntil {
+			t.OpenUntil = b.PeriodEnd
+		}
+	}
+	sort.SliceStable(t.Bills, func(i, j int) bool {
+		if t.Bills[i].DueDate != t.Bills[j].DueDate {
+			return t.Bills[i].DueDate < t.Bills[j].DueDate
+		}
+		return t.Bills[i].CardName < t.Bills[j].CardName
+	})
+	if len(t.Bills) > 0 {
+		raw := t.Confirmed + t.Estimated + int64(math.Ceil(float64(t.Estimated)*transferBufferRate))
+		t.Suggested = (raw + 9999) / 10000 * 10000
+	}
+	return t
 }
 
 // balanceAdjust 는 잔액 기준일(asOf) 이후 오늘까지 통장에서 실제로 늘고 준 돈.

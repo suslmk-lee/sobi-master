@@ -229,6 +229,17 @@ type CardBill struct {
 	RemainDays int `json:"remainDays"`
 }
 
+// CardTransfer 는 출금일이 [From, Until) 인 카드 청구서를 모은 '카드값 통장에 둘 금액'.
+type CardTransfer struct {
+	From      string     `json:"from"`
+	Until     string     `json:"until"`
+	Bills     []CardBill `json:"bills"`
+	Confirmed int64      `json:"confirmed"` // 지금까지 이용한 금액(선결제 뺌)
+	Estimated int64      `json:"estimated"` // 이용기간이 남은 카드의 남은 날 예상분
+	Suggested int64      `json:"suggested"` // 권장 이체액 (예상분에 여유를 더해 만 원 단위로 올림)
+	OpenUntil string     `json:"openUntil"` // 아직 안 끝난 이용기간 중 가장 늦은 마감일 ("" 면 모두 확정)
+}
+
 // CashEvent 는 자금 흐름 타임라인의 한 항목. Amount 는 들어오면 +, 나가면 −.
 type CashEvent struct {
 	Date      string `json:"date"`      // YYYY-MM-DD
@@ -273,6 +284,12 @@ type CashPlan struct {
 	Events        []CashEvent `json:"events"`
 	LowestBalance int64       `json:"lowestBalance"` // 기간 중 가장 낮은 예상 잔액
 	LowestDate    string      `json:"lowestDate"`
+
+	// 카드값 통장: 월급이 10일, 카드값이 다음 달 1일처럼 떨어져 있으면 그 사이 카드값을 따로 떼어 둔다.
+	// SalaryTransfer 는 다음 월급날 옮길 금액(그다음 월급 전까지 빠질 카드값),
+	// Holding 은 지금 카드값 통장에 있어야 할 금액(오늘~다음 월급 전에 빠질 카드값, 없으면 Bills 가 빈 목록).
+	SalaryTransfer CardTransfer `json:"salaryTransfer"`
+	Holding        CardTransfer `json:"holding"`
 
 	// 다음 월급 전까지
 	SafeToSpend    int64 `json:"safeToSpend"`    // 다음 월급 전까지 추가로 써도 되는 돈 = 그 사이 최저 예상 잔액 − Reserve (음수면 0 아님, 그대로)

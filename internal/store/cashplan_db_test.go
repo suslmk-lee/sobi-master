@@ -77,6 +77,19 @@ func TestBuildCashPlan(t *testing.T) {
 	// 첫 사용일 9/18 → 일평균은 44일(9/18~10/31)로 나눈다: 7만 + 42만/44 × 18일
 	eq("FollowingProjected", plan.FollowingProjected, int64(241818))
 	eq("AfterNextDue", plan.AfterNextDue, int64(690000))
+	// 카드값 통장: 11/10 월급날 옮길 금액 = 12/1 청구(10/19~11/18, 아직 열림)
+	// 7만 + 예상 171,818 + 여유 10% 17,182 = 259,000 → 만 원 단위 올림 260,000
+	st2 := plan.SalaryTransfer
+	eq("Transfer.From", st2.From, "2026-11-10")
+	eq("Transfer.Until", st2.Until, "2026-12-10")
+	eq("Transfer.Confirmed", st2.Confirmed, int64(70000))
+	eq("Transfer.Estimated", st2.Estimated, int64(171818))
+	eq("Transfer.Suggested", st2.Suggested, int64(260000))
+	eq("Transfer.OpenUntil", st2.OpenUntil, "2026-11-18")
+	// 지금 보관 중이어야 할 금액 = 11/2 청구(확정 20만, 선결제 10만 제외)
+	eq("Holding.Confirmed", plan.Holding.Confirmed, int64(200000))
+	eq("Holding.Suggested", plan.Holding.Suggested, int64(200000))
+	eq("Holding.OpenUntil", plan.Holding.OpenUntil, "")
 
 	wantDates := []string{"2026-11-02", "2026-11-05", "2026-11-10", "2026-12-01", "2026-12-07", "2026-12-10"} // 12/5 월세는 토요일이라 12/7
 	wantKinds := []string{"card", "subscription", "salary", "card", "subscription", "salary"}
