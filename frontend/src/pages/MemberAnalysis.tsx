@@ -449,11 +449,14 @@ function SummaryCard({
           </div>
           )}
           {insights.length > 0 && (
-            <ul className="mt-3 space-y-1 rounded-2xl border-l-2 border-mint-400/60 bg-mint-400/[0.05] px-4 py-3 text-[13px] leading-relaxed text-zinc-300">
-              {insights.map((t, i) => (
-                <li key={i}>· {t}</li>
-              ))}
-            </ul>
+            <div className="surface-inset mt-3 px-4 py-3">
+              <p className="label-mono !normal-case">요약</p>
+              <ul className="mt-1.5 space-y-1 text-[13px] leading-relaxed text-zinc-300">
+                {insights.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}
@@ -767,7 +770,7 @@ function CashNote({ a }: { a: store.MemberAnalysis }) {
   const share = cash && a.total > 0 ? Math.round((cash.amount / a.total) * 100) : 0;
   if (share < 30) return null;
   return (
-    <p className="mt-3 rounded-2xl border-l-2 border-amber-300/60 bg-amber-500/[0.05] px-4 py-3 text-xs leading-relaxed text-zinc-300">
+    <p className="surface-inset mt-3 px-4 py-3 text-xs leading-relaxed text-zinc-300">
       현금이 {share}%입니다. 카드 실적이 모자란 달에는 현금 결제를 카드로 옮기면 실적을 채우기 쉽습니다.
     </p>
   );
@@ -952,7 +955,7 @@ function HabitView({
           })}
         </div>
         {missing.length > 0 && (
-          <p className="mt-3 rounded-xl border-l-2 border-rose-300/60 bg-rose-500/[0.05] px-3 py-2 text-xs leading-relaxed text-zinc-300">
+          <p className="mt-3 text-xs leading-relaxed text-zinc-400">
             {missing.join("·")}요일 기록이 한 번도 없습니다. 그날은 이 카테고리를 쓰지 않거나 다른 카테고리로 분류됐을 수 있습니다.
           </p>
         )}
