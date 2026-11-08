@@ -912,11 +912,12 @@ func (a *App) GetMemberAnalysis(year, month int, memberID int64, period string) 
 }
 
 // GetMemberHabit 은 한 사람이 한 카테고리(회사점심 등)에 반복해서 쓰는 모습.
-func (a *App) GetMemberHabit(year, month int, memberID, categoryID int64, period string) (store.MemberHabit, error) {
+// placeSpan 은 '자주 간 곳'을 셀 기간: period(분석 기간) | 3m | 1y.
+func (a *App) GetMemberHabit(year, month int, memberID, categoryID int64, period, placeSpan string) (store.MemberHabit, error) {
 	if err := a.ensure(); err != nil {
 		return store.MemberHabit{}, err
 	}
-	return a.st.MemberHabit(year, month, memberID, categoryID, period, time.Now())
+	return a.st.MemberHabit(year, month, memberID, categoryID, period, placeSpan, time.Now())
 }
 
 // GetMemberMonthly 는 한 사람의 월 × 항목 표. by 는 category|merchant|payment.

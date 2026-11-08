@@ -72,6 +72,11 @@ const rangePos = (v: number, min: number, max: number) =>
   v < min ? "평소보다 적은" : v > max ? "평소보다 많은" : "평소 범위의";
 
 type Drill = { title: string; from: string; to: string; by: string; key: string; categoryId?: number };
+// '자주 간 곳'을 셀 기간: 분석 기간 그대로 / 최근 3개월 / 최근 1년
+type PlaceSpan = "period" | "3m" | "1y";
+// "2026-10-21" → "10/21" (기준 연도와 다르면 "'25 11/9")
+const md = (d: string, baseYear?: string) =>
+  `${baseYear && d.slice(0, 4) !== baseYear ? `'${d.slice(2, 4)} ` : ""}${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
 export default function MemberAnalysis({ refs, month }: { refs: Refs; month: string }) {
   const tc = useThemeColors();
@@ -83,6 +88,7 @@ export default function MemberAnalysis({ refs, month }: { refs: Refs; month: str
   const [showAll, setShowAll] = useState(true); // 월별 추이에 고정비·큰 지출까지 쌓을지
 
   const [habitCat, setHabitCat] = useState(0); // 0 이면 분석이 고른 기본 카테고리
+  const [placeSpan, setPlaceSpan] = useState<PlaceSpan>("period");
   const [habit, setHabit] = useState<store.MemberHabit | null>(null);
   const [matrixBy, setMatrixBy] = useState<MatrixBy>("category");
   const [matrixMonths, setMatrixMonths] = useState(6);
@@ -118,10 +124,10 @@ export default function MemberAnalysis({ refs, month }: { refs: Refs; month: str
       setHabit(null);
       return;
     }
-    GetMemberHabit(y, m, memberId, habitId, period)
+    GetMemberHabit(y, m, memberId, habitId, period, placeSpan)
       .then(setHabit)
       .catch(() => setHabit(null));
-  }, [y, m, memberId, habitId, period, bump]);
+  }, [y, m, memberId, habitId, period, placeSpan, bump]);
 
   useEffect(() => {
     if (memberId === 0) return;
@@ -281,7 +287,18 @@ export default function MemberAnalysis({ refs, month }: { refs: Refs; month: str
           <HabitView
             habit={habit}
             periodLabel={a?.label ?? ""}
-            onPlace={(name) => openPeriod("merchant", name, name, habit.categoryId)}
+            placeSpan={placeSpan}
+            setPlaceSpan={setPlaceSpan}
+            onPlace={(name, spanLabel) =>
+              setDrill({
+                title: `${who} · ${name} · ${spanLabel}`,
+                from: habit.placesFrom,
+                to: habit.placesTo,
+                by: "merchant",
+                key: name,
+                categoryId: habit.categoryId,
+              })
+            }
             tc={tc}
             tick={tick}
           />
@@ -781,13 +798,17 @@ function CashNote({ a }: { a: store.MemberAnalysis }) {
 function HabitView({
   habit,
   periodLabel,
+  placeSpan,
+  setPlaceSpan,
   onPlace,
   tc,
   tick,
 }: {
   habit: store.MemberHabit;
   periodLabel: string;
-  onPlace: (name: string) => void;
+  placeSpan: PlaceSpan;
+  setPlaceSpan: (s: PlaceSpan) => void;
+  onPlace: (name: string, spanLabel: string) => void;
   tc: ReturnType<typeof useThemeColors>;
   tick: ReturnType<typeof useAxisTick>;
 }) {
@@ -809,6 +830,18 @@ function HabitView({
           return { diff: c.total - p.total, countEffect, priceEffect: c.total - p.total - countEffect, pAvg, cAvg };
         })()
       : null;
+  const long = habit.placeSpan === "3m" || habit.placeSpan === "1y";
+  const spanLabel = habit.placeSpan === "3m" ? "최근 3개월" : habit.placeSpan === "1y" ? "최근 1년" : periodLabel;
+  // 기록이 1년(3개월)보다 짧아 시작일이 당겨졌는지
+  const clamped = (() => {
+    if (!long) return false;
+    const to = new Date(habit.placesTo + "T00:00:00");
+    const want = new Date(to);
+    if (habit.placeSpan === "3m") want.setMonth(want.getMonth() - 3);
+    else want.setFullYear(want.getFullYear() - 1);
+    want.setDate(want.getDate() + 1);
+    return new Date(habit.placesFrom + "T00:00:00") > want;
+  })();
   const totalVisits = habit.weekday.reduce((s, v) => s + v, 0);
   const maxDay = Math.max(1, ...habit.weekday);
   // 평일 중 한 번도 없는 요일 (기록이 충분할 때만 말한다)
@@ -885,13 +918,30 @@ function HabitView({
       </div>
 
       <div className="surface-inset p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="label-mono !normal-case">{periodLabel} 자주 간 곳</span>
-          <span className="text-[11px] text-zinc-500">누르면 그 가게 내역</span>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="label-mono !normal-case">
+            {spanLabel} 자주 간 곳
+            {long && (
+              <span className="ml-1 text-zinc-500">
+                ({md(habit.placesFrom, habit.placesTo.slice(0, 4))}~{md(habit.placesTo)}
+                {clamped ? " · 기록 시작부터" : ""})
+              </span>
+            )}
+          </span>
+          <Seg
+            value={placeSpan}
+            options={[
+              { key: "period" as const, label: periodLabel || "기간" },
+              { key: "3m" as const, label: "3개월" },
+              { key: "1y" as const, label: "1년" },
+            ]}
+            onChange={setPlaceSpan}
+          />
         </div>
         {habit.places.length === 0 ? (
           <ChartEmpty>이 기간 기록이 없습니다.</ChartEmpty>
         ) : (
+          <div className="max-h-[360px] overflow-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="table-head border-b border-white/[0.08]">
@@ -899,6 +949,7 @@ function HabitView({
                 <th className="px-2 py-2 text-right font-normal">횟수</th>
                 <th className="px-2 py-2 text-right font-normal">합계</th>
                 <th className="px-2 py-2 text-right font-normal">건당</th>
+                {long && <th className="px-2 py-2 text-right font-normal">처음</th>}
                 <th className="py-2 pl-2 text-right font-normal">마지막</th>
               </tr>
             </thead>
@@ -907,7 +958,7 @@ function HabitView({
                 <tr
                   key={pl.name}
                   className="table-row cursor-pointer text-zinc-200"
-                  onClick={() => onPlace(pl.name)}
+                  onClick={() => onPlace(pl.name, spanLabel)}
                   title={`${pl.name} 내역 보기`}
                 >
                   <td className="max-w-[180px] truncate py-2 pr-2">
@@ -917,15 +968,19 @@ function HabitView({
                   <td className="num px-2 py-2 text-right">{pl.count}회</td>
                   <td className="num px-2 py-2 text-right">{pl.total.toLocaleString("ko-KR")}</td>
                   <td className="num px-2 py-2 text-right">{Math.round(pl.total / pl.count).toLocaleString("ko-KR")}</td>
-                  <td className="num py-2 pl-2 text-right text-zinc-500">
-                    {Number(pl.last.slice(5, 7))}/{Number(pl.last.slice(8))}
-                  </td>
+                  {long && (
+                    <td className="num px-2 py-2 text-right text-zinc-500">{pl.first ? md(pl.first, habit.placesTo.slice(0, 4)) : ""}</td>
+                  )}
+                  <td className="num py-2 pl-2 text-right text-zinc-500">{md(pl.last, habit.placesTo.slice(0, 4))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
-        <p className="mt-2 text-[11px] text-zinc-500">NEW = 이 기간에 처음 간 곳</p>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          {long ? "처음 = 이 카테고리로 그 가게에 처음 간 날 · 누르면 그 가게 내역" : "NEW = 이 기간에 처음 간 곳 · 누르면 그 가게 내역"}
+        </p>
       </div>
 
       <div className="surface-inset p-4">

@@ -80,6 +80,28 @@ func TestCompareWindows(t *testing.T) {
 	eq("3월", str(compareWindows(r, "month", end, time.Time{}))[:1], []string{"2026-02-01~2026-02-28"})
 }
 
+func TestPlaceRange(t *testing.T) {
+	from, end := date("2026-11-01"), date("2026-11-08")
+	cases := []struct {
+		span, dataStart, wantFrom string
+	}{
+		{PlaceSpanPeriod, "2026-06-01", "2026-11-01"}, // 분석 기간 그대로
+		{PlaceSpan3M, "2026-06-01", "2026-08-09"},     // 끝 날 포함 3개월
+		{PlaceSpan1Y, "", "2025-11-09"},               // 기록 시작을 모르면 1년 그대로
+		{PlaceSpan1Y, "2026-06-01", "2026-06-01"},     // 기록 시작 전은 당긴다
+	}
+	for _, c := range cases {
+		var ds time.Time
+		if c.dataStart != "" {
+			ds = date(c.dataStart)
+		}
+		f, e := placeRange(c.span, from, end, ds)
+		if fmtDay(f) != c.wantFrom || fmtDay(e) != "2026-11-08" {
+			t.Errorf("%s (start %s): %s~%s, want %s~2026-11-08", c.span, c.dataStart, fmtDay(f), fmtDay(e), c.wantFrom)
+		}
+	}
+}
+
 func TestTrendSplit(t *testing.T) {
 	ms := []MemberMonth{
 		{Month: "2026-06", Living: 610}, {Month: "2026-07", Living: 424}, {Month: "2026-08", Living: 618},
@@ -212,7 +234,7 @@ func TestMemberAnalysis(t *testing.T) {
 	}
 
 	// 반복 소비
-	h, err := st.MemberHabit(2026, 10, dad, lunch.ID, "month", today)
+	h, err := st.MemberHabit(2026, 10, dad, lunch.ID, "month", PlaceSpanPeriod, today)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,6 +257,24 @@ func TestMemberAnalysis(t *testing.T) {
 	txs, _ := st.MemberTx(dad, a.From, a.To, MemberByMerchant, "구내식당", lunch.ID)
 	if len(txs) != 2 {
 		t.Errorf("가게 내역 %d건", len(txs))
+	}
+	// 최근 1년: 기록 시작(9/7)부터 10월 말까지 — 9월 방문도 들어오고, NEW 대신 처음 간 날을 준다
+	hy, err := st.MemberHabit(2026, 10, dad, lunch.ID, "month", PlaceSpan1Y, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hy.PlaceSpan != PlaceSpan1Y || hy.PlacesFrom != "2026-09-07" || hy.PlacesTo != "2026-10-31" {
+		t.Errorf("1년 범위: %s %s~%s", hy.PlaceSpan, hy.PlacesFrom, hy.PlacesTo)
+	}
+	if len(hy.Places) != 3 || hy.Places[0].Name != "구내식당" || hy.Places[0].Count != 3 ||
+		hy.Places[0].First != "2026-09-08" || hy.Places[0].New {
+		t.Errorf("1년 가게: %+v", hy.Places)
+	}
+	for _, p := range hy.Places {
+		txs, _ := st.MemberTx(dad, hy.PlacesFrom, hy.PlacesTo, MemberByMerchant, p.Name, lunch.ID)
+		if len(txs) != p.Count {
+			t.Errorf("1년 %s: 목록 %d건, 표 %d건", p.Name, len(txs), p.Count)
+		}
 	}
 
 	// 월 × 항목 표
@@ -276,7 +316,7 @@ func TestMemberAnalysis(t *testing.T) {
 	if !last.Partial || last.ProjTotal != nov.ProjTotal {
 		t.Errorf("진행 중인 달 막대: %+v", last)
 	}
-	hn, err := st.MemberHabit(2026, 11, dad, lunch.ID, "month", today)
+	hn, err := st.MemberHabit(2026, 11, dad, lunch.ID, "month", PlaceSpanPeriod, today)
 	if err != nil {
 		t.Fatal(err)
 	}
