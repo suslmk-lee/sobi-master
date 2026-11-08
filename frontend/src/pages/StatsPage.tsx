@@ -23,6 +23,7 @@ import {
   GetCategoryMatrix,
   GetCategoryMemberBreakdown,
   GetCategoryMonthly,
+  GetCategoryDetailTx,
   GetCategoryMonthlyTx,
   GetMatrixCellTx,
   GetCategoryTrend,
@@ -236,11 +237,13 @@ export default function StatsPage({
   // 표의 칸을 누르면 그 달·그 항목의 거래를 모달로 열어 고칠 수 있게 한다.
   // kind 로 어느 표에서 열렸는지 구분한다 (item = 월별 상세, matrix = 카테고리 히트맵).
   // day = 지출 달력에서 고른 하루(key 는 "YYYY-MM-DD", label 은 "10월 12일 (월)")
+  // detail = 카테고리 상세 막대 한 줄(by 기준 항목 key, 기간은 상세의 기간 토글, label 은 모달 제목)
   const [drill, setDrill] = useState<{
-    kind: "item" | "matrix" | "day";
+    kind: "item" | "matrix" | "day" | "detail";
     key: string;
     ym: string;
     label?: string;
+    by?: CatBy;
   } | null>(null);
   const [drillTx, setDrillTx] = useState<store.Transaction[]>([]);
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
@@ -322,12 +325,13 @@ export default function StatsPage({
   useEffect(() => {
     setCatAll(false);
     setDrill(null);
-  }, [catId, catBy, catMonths, catLevel, month]);
+  }, [catId, catBy, catMonths, catLevel, month, catPeriod]);
 
   // 드릴다운: 고른 칸의 거래 목록.
   // 집계와 같은 기준으로 되짚어야 칸 금액과 목록 합계가 맞으므로 표마다 전용 조회를 쓴다.
   const loadDrill = useCallback(async () => {
     if (!drill) return;
+    const [y, m] = month.split("-").map(Number);
     try {
       setDrillTx(
         drill.kind === "day"
@@ -338,12 +342,14 @@ export default function StatsPage({
           ? await GetMatrixCellTx(drill.ym, drill.key, catLevel)
           : catId === 0
           ? []
+          : drill.kind === "detail"
+          ? await GetCategoryDetailTx(y, m, catId, catPeriod, drill.by ?? "member", drill.key)
           : await GetCategoryMonthlyTx(drill.ym, catId, catBy, drill.key)
       );
     } catch {
       setDrillTx([]);
     }
-  }, [drill, catId, catBy, catLevel]);
+  }, [drill, catId, catBy, catLevel, catPeriod, month]);
 
   useEffect(() => {
     loadDrill();
@@ -392,7 +398,11 @@ export default function StatsPage({
     ? catMonthly?.series ?? []
     : (catMonthly?.series ?? []).slice(0, CAT_ROW_LIMIT);
   // 드릴다운 모달의 추이 데이터. 연 표에 이미 있으니 다시 조회하지 않는다.
-  const drillSrc = drill ? (drill.kind === "matrix" ? matrix : catMonthly) : null;
+  // 하루(day)·상세 막대(detail)는 월별 추이가 없는 목록이라 그래프를 그리지 않는다.
+  const drillSrc = drill?.kind === "matrix" ? matrix : drill?.kind === "item" ? catMonthly : null;
+  // 상세 막대 한 줄을 눌렀을 때: 그 기간에 그 항목(사람·카드·가맹점·부)이 이 카테고리에 쓴 내역
+  const openDetailDrill = (by: CatBy, key: string) =>
+    detail && setDrill({ kind: "detail", by, key, ym: month, label: `${detail.category} · ${key} · ${detail.label}` });
   const drillRow = drillSrc?.series.find((s) => s.name === drill?.key) ?? null;
   const drillView =
     drillSrc && drillRow ? { months: drillSrc.months, values: drillRow.values } : null;
@@ -762,11 +772,11 @@ export default function StatsPage({
               <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
                 {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
                 {detail.isMain && detail.bySub.length > 0 && (
-                  <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
+                  <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} onPick={(k) => openDetailDrill("sub", k)} />
                 )}
-                <Bars title="누가 (귀속자별)" rows={detail.byMember} />
-                <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
-                <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
+                <Bars title="누가 (귀속자별)" rows={detail.byMember} onPick={(k) => openDetailDrill("member", k)} />
+                <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} onPick={(k) => openDetailDrill("payment", k)} />
+                <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} onPick={(k) => openDetailDrill("merchant", k)} />
                 <div className="surface h-full p-5 sm:p-6">
                   <SectionHead icon={TrendingUp} title="월별 추이" />
                   <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
@@ -814,11 +824,13 @@ export default function StatsPage({
       )}
 
       {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
-      {drill && (drillView || drill.kind === "day") && (
+      {drill && (drillView || drill.kind === "day" || drill.kind === "detail") && (
         <TxDrillModal
           title={drill.key}
           ym={drill.ym}
-          heading={drill.kind === "day" ? `${drill.label} 지출` : undefined}
+          heading={
+            drill.kind === "day" ? `${drill.label} 지출` : drill.kind === "detail" ? drill.label : undefined
+          }
           months={drillView?.months ?? []}
           values={drillView?.values ?? []}
           txs={drillTx}
