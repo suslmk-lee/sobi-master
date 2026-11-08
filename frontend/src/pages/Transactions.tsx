@@ -24,6 +24,7 @@ import { store } from "../../wailsjs/go/models";
 import {
   categoryOptions,
   DIRECTION_LABEL,
+  memberForCategory,
   formatAmount,
   isClosed,
   methodLabel,
@@ -327,7 +328,14 @@ function ManualForm({ refs, onAdded, onClose }: { refs: Refs; onAdded: () => voi
         <select
           className="input-field"
           value={f.categoryId}
-          onChange={(e) => setF({ ...f, categoryId: e.target.value })}
+          onChange={(e) =>
+            setF({
+              ...f,
+              categoryId: e.target.value,
+              // 카테고리 기본 귀속자 (직접 고른 귀속자는 그대로)
+              memberId: memberForCategory(refs.categories, f.categoryId, e.target.value, f.memberId, dadId ? String(dadId) : ""),
+            })
+          }
         >
           <option value="">카테고리 선택</option>
           {cats.map((c) => (
@@ -768,7 +776,14 @@ export default function Transactions({
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
-          <select className={selCls} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+          <select
+            className={selCls}
+            value={bulkCategory}
+            onChange={(e) => {
+              setBulkCategory(e.target.value);
+              setBulkMember(memberForCategory(refs.categories, bulkCategory, e.target.value, bulkMember));
+            }}
+          >
             <option value="">카테고리 변경</option>
             {categoryOptions(refs.categories).map((c) => (
               <option key={c.id} value={c.id}>{c.label}</option>

@@ -5,6 +5,7 @@ import { store } from "../wailsjs/go/models";
 import {
   categoryOptions,
   formatAmount,
+  memberForCategory,
   methodLabel,
   parseAmount,
   Refs,
@@ -163,7 +164,20 @@ export default function EditModal({
               <select
                 className="input-field"
                 value={f.categoryId}
-                onChange={(e) => setF({ ...f, categoryId: e.target.value })}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    categoryId: e.target.value,
+                    // 카테고리 기본 귀속자 (원래 귀속자 그대로일 때만)
+                    memberId: memberForCategory(
+                      refs.categories,
+                      f.categoryId,
+                      e.target.value,
+                      f.memberId,
+                      tx.memberId ? String(tx.memberId) : ""
+                    ),
+                  })
+                }
               >
                 <option value="">미지정</option>
                 {cats.map((c) => (

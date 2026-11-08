@@ -260,6 +260,9 @@ UPDATE categories SET fixed_cost = 1
 WHERE parent_id IS NULL AND name IN ('보험료', '통신비', '구독/렌탈', '대출상환')
   AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'seed.fixed_cost');
 INSERT INTO app_settings(key, value) VALUES ('seed.fixed_cost', '1') ON CONFLICT (key) DO NOTHING;
+-- 카테고리 기본 귀속자: 이 카테고리를 고르면 귀속자 칸을 이 사람으로 채운다(예: 부모요양비 → 부모님).
+-- 부는 자기 값이 없으면 주의 값을 따른다. 귀속자를 지우면 기본값도 비운다.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS default_member_id BIGINT REFERENCES members(id) ON DELETE SET NULL;
 `
 	_, err := s.db.Exec(schema + prepaidSchema)
 	return err

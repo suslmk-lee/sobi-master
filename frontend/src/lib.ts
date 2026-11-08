@@ -83,3 +83,30 @@ export const methodLabel = (pm: { name: string; closedAt?: string }) =>
   isClosed(pm) ? `${pm.name} (해지)` : pm.name;
 
 export const CLOSED_HINT = "해지된 카드입니다 — 다른 결제수단으로 바꾸세요";
+
+// 카테고리 기본 귀속자(설정 > 카테고리 수정). 부는 자기 값이 없으면 상위 주의 값을 쓴다.
+export function defaultMemberOf(categories: store.Category[], categoryId: string | number): number | undefined {
+  const c = categories.find((x) => x.id === Number(categoryId));
+  if (!c) return undefined;
+  return c.defaultMemberId ?? c.parentDefaultMemberId ?? undefined;
+}
+
+// 카테고리를 바꿀 때 귀속자 칸에 넣을 값.
+// 귀속자 칸이 비어 있거나, 폼 기본값(baseline) 그대로거나, 직전 카테고리의 기본 귀속자로 채워져 있던
+// 경우에만 새 카테고리의 기본 귀속자로 바꾼다 — 사용자가 직접 고른 다른 사람은 덮어쓰지 않는다.
+// 새 카테고리에 기본값이 없으면, 직전 기본값으로 채워져 있던 칸만 폼 기본값으로 되돌린다.
+export function memberForCategory(
+  categories: store.Category[],
+  prevCategoryId: string,
+  nextCategoryId: string,
+  currentMemberId: string,
+  baseline = ""
+): string {
+  const prev = defaultMemberOf(categories, prevCategoryId);
+  const next = defaultMemberOf(categories, nextCategoryId);
+  const filledByPrev = prev !== undefined && currentMemberId === String(prev);
+  const auto = currentMemberId === "" || currentMemberId === baseline || filledByPrev;
+  if (!auto) return currentMemberId;
+  if (next !== undefined) return String(next);
+  return filledByPrev ? baseline : currentMemberId;
+}

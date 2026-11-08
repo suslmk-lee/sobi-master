@@ -1,27 +1,31 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Pencil, X } from "lucide-react";
-import { RenameCategory, SetCategoryFixed } from "../wailsjs/go/main/App";
+import { RenameCategory, SetCategoryDefaultMember, SetCategoryFixed } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import Portal from "./components/ui/Portal";
 
 const KIND_LABEL: Record<string, string> = { income: "수입", expense: "지출", transfer: "이체" };
 
-// 카테고리 수정 팝업 — 이름과 고정비 표시를 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
+// 카테고리 수정 팝업 — 이름·기본 귀속자·고정비 표시를 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
 // 고정비로 표시하면 구성원 분석이 이 카테고리(주면 그 부까지)를 '생활 소비'에서 빼고 따로 보여 준다.
 // 상위(주) 이동은 목록의 선택 상자에서, 순서는 끌어서 바꾼다.
 export default function CategoryEditModal({
   cat,
+  members,
   subCount,
   onClose,
   onDone,
 }: {
   cat: store.Category;
+  members: store.Member[];
   subCount: number;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [name, setName] = useState(cat.name);
   const [fixed, setFixed] = useState(cat.fixedCost);
+  const initialMember = cat.defaultMemberId ? String(cat.defaultMemberId) : "";
+  const [defMember, setDefMember] = useState(initialMember);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -36,7 +40,11 @@ export default function CategoryEditModal({
   const trimmed = name.trim();
   const renamed = trimmed !== cat.name;
   const fixedChanged = fixed !== cat.fixedCost;
-  const changed = trimmed !== "" && (renamed || fixedChanged);
+  const memberChanged = defMember !== initialMember;
+  const changed = trimmed !== "" && (renamed || fixedChanged || memberChanged);
+  const parentMemberName = cat.parentDefaultMemberId
+    ? members.find((m) => m.id === cat.parentDefaultMemberId)?.name
+    : undefined;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,6 +54,7 @@ export default function CategoryEditModal({
     try {
       if (renamed) await RenameCategory(cat.id, trimmed);
       if (fixedChanged) await SetCategoryFixed(cat.id, fixed);
+      if (memberChanged) await SetCategoryDefaultMember(cat.id, defMember ? Number(defMember) : 0);
       onDone();
     } catch (ex) {
       setErr(String(ex));
@@ -98,6 +107,21 @@ export default function CategoryEditModal({
           <p className="text-xs text-zinc-500">
             이 카테고리로 분류된 거래·규칙·예산은 새 이름으로 그대로 이어집니다.
           </p>
+          <label className="block">
+            <span className="field-label">기본 귀속자</span>
+            <select className="input-field" value={defMember} onChange={(e) => setDefMember(e.target.value)}>
+              <option value="">{parentMemberName ? `상위 '${cat.parent}' 따름 (${parentMemberName})` : "없음"}</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-zinc-500">
+              거래·정기결제·규칙에서 이 카테고리를 고르면 귀속자 칸이 이 사람으로 바뀝니다. 직접 고른 귀속자는 바꾸지
+              않습니다.{subCount > 0 && " 부 카테고리도 따로 정하지 않으면 이 값을 따릅니다."}
+            </span>
+          </label>
           {cat.kind === "expense" && (
             <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/[0.08] px-3 py-2.5">
               <input

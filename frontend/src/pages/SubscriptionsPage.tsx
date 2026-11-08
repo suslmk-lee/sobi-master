@@ -11,6 +11,7 @@ import {
   CLOSED_HINT,
   formatAmount,
   isClosed,
+  memberForCategory,
   methodLabel,
   parseAmount,
   Refs,
@@ -393,7 +394,13 @@ export default function SubscriptionsPage({
             <select
               className="input-field"
               value={f.categoryId}
-              onChange={(e) => setF({ ...f, categoryId: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  categoryId: e.target.value,
+                  memberId: memberForCategory(refs.categories, f.categoryId, e.target.value, f.memberId),
+                })
+              }
             >
               <option value="">카테고리 선택</option>
               {cats.map((c) => (
