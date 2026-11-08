@@ -63,6 +63,13 @@ const monthRange = (ym: string) => {
 // 변화 정도를 말로: ±3% 안은 비슷, 15% 미만은 '소폭'
 const changeWord = (pct: number) =>
   Math.abs(pct) < 3 ? "비슷" : `${Math.abs(pct) < 15 ? "소폭 " : ""}${pct > 0 ? "증가" : "감소"}`;
+// 월말 예상은 추정이라 ±10% 안은 '비슷'으로 본다
+const projWord = (pct: number) => (Math.abs(pct) < 10 ? "비슷" : pct > 0 ? "많음" : "적음");
+// 진행 중인 달의 처음 며칠은 표본이 너무 작아 %를 보여 주지 않는다
+const EARLY_DAYS = 7;
+// 같은 날까지 생활 소비가 평소 범위의 어디쯤인지
+const rangePos = (v: number, min: number, max: number) =>
+  v < min ? "평소보다 적은" : v > max ? "평소보다 많은" : "평소 범위의";
 
 type Drill = { title: string; from: string; to: string; by: string; key: string; categoryId?: number };
 
@@ -200,7 +207,17 @@ export default function MemberAnalysis({ refs, month }: { refs: Refs; month: str
           <SectionHead
             icon={TrendingUp}
             title="무엇이 늘었나"
-            sub={a ? `${a.label} ↔ ${a.avgWindows > 0 ? `최근 ${a.avgWindows}개월 평균` : "비교 기록 없음"} · 누르면 내역` : undefined}
+            sub={
+              !a
+                ? undefined
+                : a.avgWindows === 0
+                ? `${a.label} · 비교 기록 없음 · 누르면 내역`
+                : a.inProgress
+                ? `${a.label} ${a.elapsedDays}일까지 ↔ 최근 ${a.avgWindows}개월 같은 날까지 평균${
+                    a.elapsedDays < EARLY_DAYS ? " · 아직 초반이라 참고용" : ""
+                  }`
+                : `${a.label} ↔ 최근 ${a.avgWindows}개월 평균 · 누르면 내역`
+            }
           />
           {!a ? (
             <Sk h={200} r={12} />
@@ -384,6 +401,9 @@ function SummaryCard({
         </div>
       ) : (
         <>
+          {a.inProgress ? (
+            <InProgressTiles a={a} />
+          ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tile label={`${a.label} 지출`}>
               <p className="num text-2xl font-light tracking-tight text-rose-300">{won(a.total)}</p>
@@ -427,6 +447,7 @@ function SummaryCard({
               </p>
             </Tile>
           </div>
+          )}
           {insights.length > 0 && (
             <ul className="mt-3 space-y-1 rounded-2xl border-l-2 border-mint-400/60 bg-mint-400/[0.05] px-4 py-3 text-[13px] leading-relaxed text-zinc-300">
               {insights.map((t, i) => (
@@ -436,6 +457,67 @@ function SummaryCard({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// 진행 중인 달의 요약: 며칠치로 %를 내면 한 건에 크게 흔들리므로
+// 지금까지 금액 + 월말 예상(지난 3개월과 견줌) + 같은 날까지 생활 소비의 평소 범위로 보여 준다.
+function InProgressTiles({ a }: { a: store.MemberAnalysis }) {
+  const early = a.elapsedDays < EARLY_DAYS;
+  const projPct = pctOf(a.projTotal, a.fullAvg3);
+  const livingPct = pctOf(a.projLiving, a.fullLivingAvg3);
+  const hasRange = a.avgWindows > 0;
+  const pos = rangePos(a.living, a.rangeLivingMin, a.rangeLivingMax);
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Tile label={`${a.label} 지출 · ${a.elapsedDays}일째 / ${a.periodDays}일`}>
+        <p className="num text-2xl font-light tracking-tight text-rose-300">{won(a.total)}</p>
+        <p className="num text-xs text-zinc-500">
+          가족 전체 지출의 {a.familyTotal > 0 ? Math.round((a.total / a.familyTotal) * 100) : 0}% · {a.txCount}건
+          {early && <span className="badge ml-1.5 bg-amber-500/10 text-amber-300">초반 · 참고용</span>}
+        </p>
+      </Tile>
+      <Tile label="월말 예상">
+        <p className="num text-2xl font-light tracking-tight text-white">약 {won(a.projTotal)}</p>
+        <p className="num text-xs text-zinc-500">
+          생활 {compact(a.projLiving)} + 고정비 {compact(a.projFixed)}
+          {a.projBig > 0 && ` + 큰 지출 ${compact(a.projBig)}`}
+        </p>
+        {a.fullAvg3 > 0 && (
+          <p className="num text-xs text-zinc-400">
+            지난 3개월 평균 {compact(a.fullAvg3)}
+            {Math.abs(projPct) < 10 ? "과 " : "보다 "}
+            <span className={Math.abs(projPct) < 10 ? "text-zinc-200" : projPct > 0 ? "text-rose-300" : "text-emerald-300"}>
+              {projWord(projPct)}
+            </span>
+            {!early && Math.abs(projPct) >= 10 && <> <PctDelta pct={projPct} /></>}
+          </p>
+        )}
+      </Tile>
+      <Tile label={`생활 소비 · ${a.elapsedDays}일까지`}>
+        <p className="num text-2xl font-light tracking-tight text-white">{won(a.living)}</p>
+        {hasRange ? (
+          <p className="num text-xs text-zinc-500">
+            평소 같은 날까지 {compact(a.rangeLivingMin)}~{compact(a.rangeLivingMax)} →{" "}
+            <span className="text-zinc-200">{pos === "평소 범위의" ? "평소 범위" : `${pos} 편`}</span>
+          </p>
+        ) : (
+          <p className="text-xs text-zinc-500">비교할 기록이 아직 없습니다</p>
+        )}
+        {a.fullLivingAvg3 > 0 && (
+          <p className="num text-xs text-zinc-400">
+            월말 예상 {compact(a.projLiving)} · 평소 {compact(a.fullLivingAvg3)}
+            {!early && Math.abs(livingPct) >= 10 && <> <PctDelta pct={livingPct} /></>}
+          </p>
+        )}
+      </Tile>
+      <Tile label="건당 평균">
+        <p className="num text-2xl font-light tracking-tight text-white">{won(a.txCount ? a.total / a.txCount : 0)}</p>
+        <p className="num text-xs text-zinc-500">
+          생활 소비 {a.livingCount}건 · 건당 {won(a.livingCount ? a.living / a.livingCount : 0)}
+        </p>
+      </Tile>
     </div>
   );
 }
@@ -451,6 +533,7 @@ function Tile({ label, children }: { label: string; children: ReactNode }) {
 
 // 요약 아래 한 줄 설명들: 총액과 생활 소비가 어떻게 다른지, 가장 크게 늘어난 것, 반복 소비 변화
 function buildInsights(a: store.MemberAnalysis, habit: store.MemberHabit | null): string[] {
+  if (a.inProgress) return buildProgressInsights(a);
   const out: string[] = [];
   if (a.avgWindows > 0 && a.avg3 > 0) {
     const tp = pctOf(a.total, a.avg3);
@@ -483,6 +566,34 @@ function buildInsights(a: store.MemberAnalysis, habit: store.MemberHabit | null)
   return out;
 }
 
+// 진행 중인 달의 설명: 단정 대신 "이대로면 ~", "~한 페이스"로 말한다
+function buildProgressInsights(a: store.MemberAnalysis): string[] {
+  const out: string[] = [];
+  if (a.elapsedDays < EARLY_DAYS)
+    out.push(`아직 ${a.elapsedDays}일째라 한두 건에도 숫자가 크게 움직입니다. 아래는 참고용입니다.`);
+  if (a.fullAvg3 > 0) {
+    const pct = pctOf(a.projTotal, a.fullAvg3);
+    const word = Math.abs(pct) < 10 ? "비슷한" : pct > 0 ? `${Math.abs(pct)}% 많은` : `${Math.abs(pct)}% 적은`;
+    out.push(`이대로면 ${a.label}은 약 ${won(a.projTotal)}으로, 지난 3개월 평균(${compact(a.fullAvg3)})과 ${word} 수준이 예상됩니다.`);
+  }
+  if (a.avgWindows > 0) {
+    out.push(
+      `생활 소비는 ${a.elapsedDays}일까지 ${compact(a.living)}으로 ${rangePos(a.living, a.rangeLivingMin, a.rangeLivingMax)} 페이스입니다 (평소 같은 날까지 ${compact(
+        a.rangeLivingMin
+      )}~${compact(a.rangeLivingMax)}).`
+    );
+  }
+  const big = a.bigItems[0];
+  if (big) {
+    out.push(
+      `큰 지출 ${big.merchant || "(내용 없음)"} ${won(big.amount)}${
+        a.bigItems.length > 1 ? ` 등 ${a.bigItems.length}건` : ""
+      }은 남은 날로 늘려 잡지 않고 그대로만 넣었습니다.`
+    );
+  }
+  return out;
+}
+
 // ---- ② 월별 추이 ----
 
 function MonthlyChart({
@@ -499,11 +610,19 @@ function MonthlyChart({
   tick: ReturnType<typeof useAxisTick>;
 }) {
   const C = { living: tc.accent, fixed: cv("sky-400"), big: cv("amber-400") };
-  const data = months.map((x) => ({
-    ...x,
-    label: monthLabel(x.month) + (x.partial ? "*" : ""),
-    total: x.living + x.fixed + x.big,
-  }));
+  const data = months.map((x) => {
+    const total = x.living + x.fixed + x.big;
+    // 진행 중인 달: 월말 예상에서 지금까지를 뺀 '남은 예상분'을 위에 점선으로 얹는다
+    const rest = x.partial ? Math.max(0, showAll ? x.projTotal - total : x.projLiving - x.living) : 0;
+    return {
+      ...x,
+      label: monthLabel(x.month) + (x.partial ? "*" : ""),
+      total,
+      rest,
+      livingLine: x.partial && x.projLiving > 0 ? x.projLiving : x.living,
+    };
+  });
+  const hasProj = data.some((d) => d.rest > 0);
   if (data.every((d) => d.total === 0)) return <ChartEmpty>이 기간에 기록된 지출이 없습니다.</ChartEmpty>;
   const keys = (showAll ? ["living", "fixed", "big"] : ["living"]) as ("living" | "fixed" | "big")[];
   return (
@@ -521,6 +640,12 @@ function MonthlyChart({
           <LegendDot color={cv("zinc-200")} dashed />
           생활 소비 흐름
         </span>
+        {hasProj && (
+          <span className="inline-flex items-center gap-1.5">
+            <i className="inline-block h-2.5 w-2.5 rounded-[3px] border border-dashed border-zinc-300" />
+            월말 예상 (남은 날)
+          </span>
+        )}
       </div>
       <div style={{ height: 240 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -533,16 +658,14 @@ function MonthlyChart({
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const d = payload[0].payload as (typeof data)[number];
-                return (
-                  <ChartTip
-                    head={`${d.label} · 합계 ${won(d.total)}`}
-                    rows={(["living", "fixed", "big"] as const).map((k) => ({
-                      color: C[k],
-                      value: won(d[k]),
-                      name: KIND_LABEL[k],
-                    }))}
-                  />
-                );
+                const rows = (["living", "fixed", "big"] as const).map((k) => ({
+                  color: C[k],
+                  value: won(d[k]),
+                  name: KIND_LABEL[k],
+                }));
+                if (d.partial && d.projTotal > 0)
+                  rows.push({ color: cv("zinc-300"), value: `약 ${won(d.projTotal)}`, name: "월말 예상 (추정)" });
+                return <ChartTip head={`${d.label} · ${d.partial ? "지금까지" : "합계"} ${won(d.total)}`} rows={rows} />;
               }}
             />
             {keys.map((k, i) => (
@@ -551,19 +674,27 @@ function MonthlyChart({
                 dataKey={k}
                 stackId="s"
                 fill={C[k]}
-                radius={i === keys.length - 1 ? [4, 4, 0, 0] : 0}
+                radius={i === keys.length - 1 && !hasProj ? [4, 4, 0, 0] : 0}
                 cursor="pointer"
                 onClick={(d: any) => d?.payload && onPick(d.payload.month, k)}
                 maxBarSize={48}
                 isAnimationActive={false}
-              >
-                {data.map((d) => (
-                  <Cell key={d.month} fillOpacity={d.partial ? 0.4 : 1} />
-                ))}
-              </Bar>
+              />
             ))}
+            {hasProj && (
+              <Bar
+                dataKey="rest"
+                stackId="s"
+                fill={cv("zinc-300", 0.06)}
+                stroke={cv("zinc-300", 0.7)}
+                strokeDasharray="4 3"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={48}
+                isAnimationActive={false}
+              />
+            )}
             <Line
-              dataKey="living"
+              dataKey="livingLine"
               stroke={cv("zinc-200")}
               strokeDasharray="4 4"
               strokeWidth={1.5}
@@ -573,7 +704,11 @@ function MonthlyChart({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      {data.some((d) => d.partial) && <p className="mt-1 text-[11px] text-zinc-500">* 진행 중인 달 (오늘까지)</p>}
+      {data.some((d) => d.partial) && (
+        <p className="mt-1 text-[11px] text-zinc-500">
+          * 진행 중인 달 — 진한 막대는 오늘까지, 점선은 월말 예상분(큰 지출은 늘려 잡지 않음)
+        </p>
+      )}
     </div>
   );
 }
@@ -658,8 +793,10 @@ function HabitView({
     label: monthLabel(x.month) + (x.partial ? "*" : ""),
     avg: x.count > 0 ? Math.round(x.total / x.count) : null,
   }));
-  // 직전 달 → 기준 달 변화를 '횟수 영향'과 '건당 금액 영향'으로 나눈다 (합 = 합계 차이)
-  const [p, c] = habit.months.slice(-2);
+  // 끝난 두 달의 변화를 '횟수 영향'과 '건당 금액 영향'으로 나눈다 (합 = 합계 차이).
+  // 진행 중인 달은 며칠치라 한 달 전체와 견주지 않고, 아래에 '같은 날까지 횟수'로 따로 보여 준다.
+  const [p, c] = habit.months.filter((x) => !x.partial).slice(-2);
+  const cur = habit.months[habit.months.length - 1];
   const decomp =
     p && c && p.count > 0 && c.count > 0
       ? (() => {
@@ -729,13 +866,18 @@ function HabitView({
         {decomp && (
           <div className="mt-2 space-y-1 text-xs">
             <p className="label-mono !normal-case">
-              {monthLabel(p.month)} → {monthLabel(c.month)}
-              {c.partial ? "*" : ""} 변화 나눠 보기
+              {monthLabel(p.month)} → {monthLabel(c.month)} 변화 나눠 보기
             </p>
             <Row k={`합계 (${compact(p.total)} → ${compact(c.total)})`} v={decomp.diff} />
             <Row k={`횟수 영향 (${p.count} → ${c.count}회)`} v={decomp.countEffect} />
             <Row k={`건당 금액 영향 (${won(decomp.pAvg)} → ${won(decomp.cAvg)})`} v={decomp.priceEffect} />
           </div>
+        )}
+        {habit.inProgress && cur?.partial && (
+          <p className="mt-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-xs text-zinc-300">
+            {monthLabel(cur.month)} {habit.elapsedDays}일까지 <strong className="num">{habit.sameDayCount}회</strong>
+            <span className="text-zinc-500"> · 지난달 같은 날까지 {habit.sameDayPrevCount}회</span>
+          </p>
         )}
       </div>
 

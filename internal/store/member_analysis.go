@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 )
@@ -75,6 +76,9 @@ type MemberMonth struct {
 	Fixed   int64  `json:"fixed"`
 	Big     int64  `json:"big"`
 	Partial bool   `json:"partial"` // 아직 끝나지 않은 달
+	// 진행 중인 달이면 월말 예상(생활 소비·전체). 막대 위에 예상분을 덧그려 다른 달과 높이를 견주게 한다.
+	ProjLiving int64 `json:"projLiving"`
+	ProjTotal  int64 `json:"projTotal"`
 }
 
 type MemberCatDelta struct {
@@ -133,6 +137,24 @@ type MemberAnalysis struct {
 
 	// 반복 소비의 기본 카테고리: 최근 90일 이 사람이 가장 자주 쓴 카테고리(0 이면 없음)
 	HabitCategoryID int64 `json:"habitCategoryId"`
+
+	// 진행 중인 달(기간=이번 달, 오늘이 말일 전)은 며칠치 표본이라 한 건에 %가 크게 흔들린다.
+	// 그래서 % 대신 월말 예상과 '같은 날까지 평소 범위'로 본다.
+	InProgress  bool `json:"inProgress"`
+	ElapsedDays int  `json:"elapsedDays"` // 기간 시작부터 오늘까지(오늘 포함)
+	PeriodDays  int  `json:"periodDays"`  // 기간 전체 일수
+	// 월말 예상: 생활 소비는 남은 날을 평소 속도와 이번 달 속도를 섞어 채우고(지난 날이 많을수록 이번 달 쪽),
+	// 고정비는 카테고리별로 직전 달들의 중앙값과 이미 빠진 금액 중 큰 값, 큰 지출은 이미 쓴 것만(늘려 잡지 않음).
+	ProjLiving int64 `json:"projLiving"`
+	ProjFixed  int64 `json:"projFixed"`
+	ProjBig    int64 `json:"projBig"`
+	ProjTotal  int64 `json:"projTotal"`
+	// 직전 3개월 '한 달 전체' 평균 — 월말 예상과 견준다
+	FullAvg3       int64 `json:"fullAvg3"`
+	FullLivingAvg3 int64 `json:"fullLivingAvg3"`
+	// 비교 기간들(진행 중이면 같은 날까지)의 생활 소비 최소~최대 — %보다 덜 흔들리는 '평소 범위'
+	RangeLivingMin int64 `json:"rangeLivingMin"`
+	RangeLivingMax int64 `json:"rangeLivingMax"`
 }
 
 // memberRange 는 분석 기간을 정한다. categoryDetailRange 와 같되, 진행 중인 달(period=month)은
@@ -163,6 +185,8 @@ func memberRange(year, month int, period string, today time.Time) (r detailRange
 func compareWindows(r detailRange, period string, end, dataStart time.Time) [][2]time.Time {
 	var out [][2]time.Time
 	span := int(end.Sub(r.From).Hours() / 24)
+	// 기간이 달 전체면 비교도 달 전체 — 일수로 맞추면 30일 달 기준에서 31일 달의 말일이 빠진다
+	wholeMonth := !end.Before(r.To)
 	for k := 1; k <= 3; k++ {
 		var a, b time.Time
 		if period == "recent30" {
@@ -174,7 +198,7 @@ func compareWindows(r detailRange, period string, end, dataStart time.Time) [][2
 			}
 			a = firstOfMonth(y, m)
 			b = a.AddDate(0, 0, span)
-			if last := lastOfMonth(y, m); b.After(last) {
+			if last := lastOfMonth(y, m); wholeMonth || b.After(last) {
 				b = last
 			}
 		}
@@ -307,7 +331,7 @@ func (s *Store) dataStart() (time.Time, error) {
 // MemberAnalysis 는 구성원 한 사람의 기간(period: month|prev|recent30) 분석.
 func (s *Store) MemberAnalysis(year, month int, memberID int64, period string, today time.Time) (MemberAnalysis, error) {
 	today = dayOf(today)
-	r, end, _ := memberRange(year, month, period, today)
+	r, end, sameDay := memberRange(year, month, period, today)
 	a := MemberAnalysis{
 		MemberID: memberID, Label: r.Label, PrevLabel: r.PrevLabel,
 		From: fmtDay(r.From), To: fmtDay(end),
@@ -367,13 +391,19 @@ WHERE direction = 'expense' AND date >= ? AND date <= ?`, a.From, a.To).Scan(&a.
 	windows := compareWindows(r, period, end, start)
 	a.AvgWindows = len(windows)
 	avgCat := map[string]int64{}
-	for _, w := range windows {
+	for i, w := range windows {
 		sp, err := s.memberSpend(memberID, w[0], w[1])
 		if err != nil {
 			return a, err
 		}
 		a.Avg3 += sp.Total
 		a.LivingAvg3 += sp.Living
+		if i == 0 || sp.Living < a.RangeLivingMin {
+			a.RangeLivingMin = sp.Living
+		}
+		if sp.Living > a.RangeLivingMax {
+			a.RangeLivingMax = sp.Living
+		}
 		byCat, err := s.memberByMainCat(memberID, w[0], w[1])
 		if err != nil {
 			return a, err
@@ -474,6 +504,13 @@ SELECT ym, kind, SUM(amount) FROM (
 		a.Months = a.Months[1:]
 	}
 	recent, prior := trendSplit(a.Months, startYM)
+
+	// 진행 중인 달: 월말 예상
+	if sameDay {
+		if err := s.projectMonth(&a, memberID, r, period, end, start, cur); err != nil {
+			return a, err
+		}
+	}
 	a.RecentLabel, a.RecentAvg = monthSpanLabel(a.Months, recent), avgLiving(a.Months, recent)
 	a.PriorLabel, a.PriorAvg = monthSpanLabel(a.Months, prior), avgLiving(a.Months, prior)
 
@@ -541,6 +578,134 @@ func monthInProgress(y, m int, today time.Time) bool {
 	return !today.Before(firstOfMonth(y, m)) && today.Before(lastOfMonth(y, m))
 }
 
+// projectMonth 는 진행 중인 달의 월말 예상과 직전 달들의 한 달 전체 평균을 채운다.
+func (s *Store) projectMonth(a *MemberAnalysis, memberID int64, r detailRange, period string,
+	end, dataStart time.Time, cur spendSums) error {
+	a.InProgress = true
+	a.ElapsedDays = dayDiff(r.From, end) + 1
+	a.PeriodDays = dayDiff(r.From, r.To) + 1
+
+	// 직전 달들 '전체' (기록 시작 전 달은 뺀다)
+	full := compareWindows(r, period, r.To, dataStart)
+	var histLiving int64
+	histDays := 0
+	fixedWins := make([]map[string]int64, 0, len(full))
+	for _, w := range full {
+		sp, err := s.memberSpend(memberID, w[0], w[1])
+		if err != nil {
+			return err
+		}
+		a.FullAvg3 += sp.Total
+		a.FullLivingAvg3 += sp.Living
+		histLiving += sp.Living
+		histDays += dayDiff(w[0], w[1]) + 1
+		fc, err := s.memberFixedByCat(memberID, w[0], w[1])
+		if err != nil {
+			return err
+		}
+		fixedWins = append(fixedWins, fc)
+	}
+	if n := int64(len(full)); n > 0 {
+		a.FullAvg3 /= n
+		a.FullLivingAvg3 /= n
+	}
+	curFixed, err := s.memberFixedByCat(memberID, r.From, end)
+	if err != nil {
+		return err
+	}
+	a.ProjLiving = projectLiving(cur.Living, a.ElapsedDays, a.PeriodDays, histLiving, histDays)
+	a.ProjFixed = projectFixed(curFixed, fixedWins)
+	a.ProjBig = cur.Big
+	a.ProjTotal = a.ProjLiving + a.ProjFixed + a.ProjBig
+	if n := len(a.Months); n > 0 && a.Months[n-1].Partial {
+		a.Months[n-1].ProjLiving, a.Months[n-1].ProjTotal = a.ProjLiving, a.ProjTotal
+	}
+	return nil
+}
+
+// memberFixedByCat 은 기간의 고정비를 주 카테고리별로 합한다.
+func (s *Store) memberFixedByCat(memberID int64, from, to time.Time) (map[string]int64, error) {
+	rows, err := s.query(`
+SELECT name, SUM(amount) FROM (
+  SELECT `+nameCategory+` AS name, t.amount, `+spendKindExpr+` AS kind `+memberFrom+`
+  WHERE t.direction = 'expense' AND t.member_id = ? AND t.date >= ? AND t.date <= ?
+) x WHERE kind = 'fixed' GROUP BY name`, memberID, fmtDay(from), fmtDay(to))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var name string
+		var amt int64
+		if err := rows.Scan(&name, &amt); err != nil {
+			return nil, err
+		}
+		out[name] = amt
+	}
+	return out, rows.Err()
+}
+
+// projectLiving 은 생활 소비의 월말 예상: 지금까지 + 남은 날 × 하루 속도.
+// 하루 속도는 이번 달 속도와 평소 속도(histLiving / histDays)를 지난 날 비율로 섞는다 —
+// 월초에는 며칠치 표본보다 평소 속도를 믿고, 월말로 갈수록 이번 달 실제 속도를 믿는다.
+// 평소 기록이 없으면 이번 달 속도만 쓴다.
+func projectLiving(living int64, elapsed, periodDays int, histLiving int64, histDays int) int64 {
+	remaining := periodDays - elapsed
+	if remaining <= 0 || elapsed <= 0 {
+		return living
+	}
+	rate := float64(living) / float64(elapsed)
+	if histDays > 0 {
+		w := float64(elapsed) / float64(periodDays)
+		rate = w*rate + (1-w)*float64(histLiving)/float64(histDays)
+	}
+	return living + int64(math.Round(rate*float64(remaining)))
+}
+
+// projectFixed 는 고정비의 월말 예상: 카테고리마다 직전 달들의 중앙값과 이번 달 이미 빠진 금액 중 큰 값.
+// 보험 연납처럼 한 달만 튄 금액에 끌려가지 않게 평균 대신 중앙값을 쓴다.
+func projectFixed(cur map[string]int64, wins []map[string]int64) int64 {
+	names := map[string]bool{}
+	for k := range cur {
+		names[k] = true
+	}
+	for _, w := range wins {
+		for k := range w {
+			names[k] = true
+		}
+	}
+	var sum int64
+	for name := range names {
+		vals := make([]int64, len(wins))
+		for i, w := range wins {
+			vals[i] = w[name]
+		}
+		v := cur[name]
+		if m := median64(vals); m > v {
+			v = m
+		}
+		sum += v
+	}
+	return sum
+}
+
+func median64(vals []int64) int64 {
+	if len(vals) == 0 {
+		return 0
+	}
+	s := append([]int64(nil), vals...)
+	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	n := len(s)
+	if n%2 == 1 {
+		return s[n/2]
+	}
+	return (s[n/2-1] + s[n/2]) / 2
+}
+
+// dayDiff 는 a 에서 b 까지의 날 수(같은 날이면 0).
+func dayDiff(a, b time.Time) int { return int(b.Sub(a).Hours() / 24) }
+
 func avgLiving(months []MemberMonth, idx []int) int64 {
 	if len(idx) == 0 {
 		return 0
@@ -586,11 +751,16 @@ type MemberHabit struct {
 	Weekday     []int        `json:"weekday"` // 일~토 7칸
 	WeekdayFrom string       `json:"weekdayFrom"`
 	WeekdayTo   string       `json:"weekdayTo"`
+	// 진행 중인 달이면 오늘까지 횟수와 전월 같은 날까지 횟수 (한 달 전체끼리 견주지 않도록)
+	InProgress       bool `json:"inProgress"`
+	ElapsedDays      int  `json:"elapsedDays"`
+	SameDayCount     int  `json:"sameDayCount"`
+	SameDayPrevCount int  `json:"sameDayPrevCount"`
 }
 
 func (s *Store) MemberHabit(year, month int, memberID, categoryID int64, period string, today time.Time) (MemberHabit, error) {
 	today = dayOf(today)
-	r, end, _ := memberRange(year, month, period, today)
+	r, end, sameDay := memberRange(year, month, period, today)
 	h := MemberHabit{CategoryID: categoryID, Months: []HabitMonth{}, Places: []HabitPlace{}, Weekday: make([]int, 7)}
 
 	var parent sql.NullString
@@ -642,6 +812,24 @@ GROUP BY 1`, categoryID, categoryID, memberID, first, last)
 	if err := rows.Err(); err != nil {
 		return h, err
 	}
+	if sameDay {
+		h.InProgress = true
+		h.ElapsedDays = dayDiff(r.From, end) + 1
+		count := func(from, to time.Time) (int, error) {
+			var n int
+			err := s.queryRow(`SELECT COUNT(*) FROM transactions t
+WHERE `+catScopeT+` AND t.direction = 'expense' AND t.member_id = ? AND t.date >= ? AND t.date <= ?`,
+				categoryID, categoryID, memberID, fmtDay(from), fmtDay(to)).Scan(&n)
+			return n, err
+		}
+		if h.SameDayCount, err = count(r.From, end); err != nil {
+			return h, err
+		}
+		if h.SameDayPrevCount, err = count(r.PrevFrom, r.PrevTo); err != nil {
+			return h, err
+		}
+	}
+
 	// 기록 시작 전 달은 막대에서 뺀다(MemberAnalysis 와 같은 규칙)
 	start, err := s.dataStart()
 	if err != nil {

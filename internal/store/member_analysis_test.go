@@ -67,6 +67,14 @@ func TestCompareWindows(t *testing.T) {
 	r, end, _ = memberRange(2026, 11, "recent30", today)
 	eq("최근 30일", str(compareWindows(r, "recent30", end, time.Time{})),
 		[]string{"2026-09-10~2026-10-09", "2026-08-11~2026-09-09", "2026-07-12~2026-08-10"})
+	// 30일짜리 9월(끝난 달)의 비교 달은 31일짜리 8·7월도 말일까지 전부
+	r, end, _ = memberRange(2026, 9, "month", today)
+	eq("9월", str(compareWindows(r, "month", end, time.Time{})),
+		[]string{"2026-08-01~2026-08-31", "2026-07-01~2026-07-31", "2026-06-01~2026-06-30"})
+	// 진행 중인 11월의 '한 달 전체' 비교(월말 예상용)도 31일 달은 말일까지
+	r, _, _ = memberRange(2026, 11, "month", today)
+	eq("11월 전체", str(compareWindows(r, "month", r.To, time.Time{})),
+		[]string{"2026-10-01~2026-10-31", "2026-09-01~2026-09-30", "2026-08-01~2026-08-31"})
 	// 31일까지 본 3월의 비교 달 2월은 말일에서 끊긴다
 	r, end, _ = memberRange(2026, 3, "month", date("2026-04-02"))
 	eq("3월", str(compareWindows(r, "month", end, time.Time{}))[:1], []string{"2026-02-01~2026-02-28"})
@@ -236,5 +244,85 @@ func TestMemberAnalysis(t *testing.T) {
 	}
 	if s := findSeries(mt.Series, "식비"); s == nil || s.Values[0] != 18000 || s.Values[1] != 28000 {
 		t.Errorf("월 × 카테고리 식비: %+v", s)
+	}
+
+	// 진행 중인 달(11/8): 큰 지출은 늘려 잡지 않고, 아직 안 빠진 통신비는 월말 예상에 넣는다
+	if err := st.SetCategoryFixed(tele, true); err != nil {
+		t.Fatal(err)
+	}
+	add("2026-11-01", "옷가게", 800000, food, dad, nil) // 큰 지출 (생활 소비 아님)
+	add("2026-11-03", "구내식당", 8000, lunch.ID, dad, nil)
+	nov, err := st.MemberAnalysis(2026, 11, dad, "month", today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nov.InProgress || nov.ElapsedDays != 8 || nov.PeriodDays != 30 || nov.PrevLabel != "전월 같은 날까지" {
+		t.Fatalf("진행 중 표시: %+v", nov)
+	}
+	if nov.ProjBig != 800000 {
+		t.Errorf("큰 지출은 그대로: %d", nov.ProjBig)
+	}
+	if nov.ProjFixed != 50000 { // 9·10월 통신비 중앙값 5만, 11월은 아직 0
+		t.Errorf("고정비 예상 %d, want 50000", nov.ProjFixed)
+	}
+	// 생활 소비: 8,000 + 22일 × (8/30 × 1,000/일 + 22/30 × 평소 속도)
+	if want := projectLiving(8000, 8, 30, 18000+28000, 30+31); nov.ProjLiving != want {
+		t.Errorf("생활 소비 예상 %d, want %d", nov.ProjLiving, want)
+	}
+	if nov.ProjTotal != nov.ProjLiving+nov.ProjFixed+nov.ProjBig {
+		t.Errorf("예상 합계 %d", nov.ProjTotal)
+	}
+	last := nov.Months[len(nov.Months)-1]
+	if !last.Partial || last.ProjTotal != nov.ProjTotal {
+		t.Errorf("진행 중인 달 막대: %+v", last)
+	}
+	hn, err := st.MemberHabit(2026, 11, dad, lunch.ID, "month", today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hn.InProgress || hn.SameDayCount != 1 || hn.SameDayPrevCount != 3 { // 10/5·6·7 은 10월 8일 이전
+		t.Errorf("반복 소비 같은 날까지: %+v", hn)
+	}
+}
+
+func TestProjectLiving(t *testing.T) {
+	// 월초(8/30일): 이번 달 하루 1,000원, 평소 하루 20,000원 → 평소 쪽으로 기운다
+	got := projectLiving(8000, 8, 30, 20000*90, 90)
+	rate := 8.0/30*1000 + 22.0/30*20000
+	if want := int64(8000 + int(rate*22+0.5)); got != want {
+		t.Errorf("월초 예상 %d, want %d", got, want)
+	}
+	// 말일 전날(29/30일): 거의 이번 달 속도
+	got = projectLiving(290000, 29, 30, 20000*90, 90)
+	if got < 290000+10000 || got > 290000+11000 {
+		t.Errorf("월말 예상 %d", got)
+	}
+	// 평소 기록이 없으면 이번 달 속도만
+	if got := projectLiving(10000, 10, 30, 0, 0); got != 30000 {
+		t.Errorf("기록 없음 %d", got)
+	}
+	// 남은 날이 없으면 그대로
+	if got := projectLiving(10000, 30, 30, 1, 1); got != 10000 {
+		t.Errorf("말일 %d", got)
+	}
+}
+
+func TestProjectFixed(t *testing.T) {
+	wins := []map[string]int64{
+		{"보험료": 165919, "통신비": 60000},
+		{"보험료": 504999, "통신비": 70000}, // 연납으로 튄 달
+		{"보험료": 165919},               // 통신비가 안 빠진 달
+	}
+	// 중앙값: 보험료 165,919 (튄 달에 끌려가지 않음), 통신비 60,000
+	if got := projectFixed(map[string]int64{}, wins); got != 165919+60000 {
+		t.Errorf("아직 아무것도 안 빠짐: %d", got)
+	}
+	// 이미 빠진 금액이 더 크면 그 금액
+	if got := projectFixed(map[string]int64{"통신비": 90000}, wins); got != 165919+90000 {
+		t.Errorf("이미 빠진 통신비: %d", got)
+	}
+	// 새 고정비(직전 달엔 없음)는 이미 빠진 만큼
+	if got := projectFixed(map[string]int64{"구독": 990}, nil); got != 990 {
+		t.Errorf("비교 기록 없음: %d", got)
 	}
 }
