@@ -216,6 +216,9 @@ type CardBill struct {
 	Due         int64  `json:"due"`         // 결제일에 빠질 금액 = Total - Prepaid (지금까지 기준)
 	Projected   int64  `json:"projected"`   // 기간이 열려 있으면 기간 끝까지의 예상 청구액, 닫혔으면 Due 와 같음
 	TxCount     int    `json:"txCount"`
+	// 예상분(Projected − Due)의 근거: 최근 AvgDays 일 일평균 × 남은 RemainDays 일. 예상분이 없으면 둘 다 0.
+	AvgDays    int `json:"avgDays"`
+	RemainDays int `json:"remainDays"`
 }
 
 // CashEvent 는 자금 흐름 타임라인의 한 항목. Amount 는 들어오면 +, 나가면 −.

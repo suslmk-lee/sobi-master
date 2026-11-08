@@ -70,6 +70,46 @@ function EstBadge() {
   return <span className="badge bg-amber-500/10 text-amber-300">예상</span>;
 }
 
+// 청구 예상액 중 아직 쓰지 않은 남은 기간의 추정분 (기간이 끝났거나 해지한 카드는 0)
+const estPart = (b: store.CardBill) => Math.max(0, b.projected - b.due);
+
+// 카드 청구 상세 팝업 위에 붙이는 금액 구성 설명. 목록에는 기록된 거래만 나오므로
+// 출금 예상액과 목록 합계가 왜 다른지(남은 기간 예상분·선결제) 여기서 풀어 준다.
+function BillBreakdown({ bill }: { bill: store.CardBill }) {
+  const est = estPart(bill);
+  const daily = bill.remainDays > 0 ? Math.round(est / bill.remainDays) : 0;
+  return (
+    <div className="surface-inset mb-4 space-y-1 px-4 py-3 text-xs text-zinc-400">
+      <p>
+        {shortDate(bill.dueDate)} 출금 {bill.closed ? "확정" : "예상"}{" "}
+        <strong className="num font-medium text-rose-300">{won(bill.projected)}</strong>
+        {est > 0 && (
+          <>
+            {" = 지금까지 이용 "}
+            <span className="num text-zinc-200">{won(bill.due)}</span>
+            {` + 남은 ${bill.remainDays}일 예상 `}
+            <span className="num text-amber-300">{won(est)}</span>
+          </>
+        )}
+      </p>
+      {est > 0 && (
+        <p className="text-zinc-500">
+          예상분은 이 카드의 최근 {bill.avgDays}일 일평균(약 <span className="num">{won(daily)}</span>)을 남은
+          날짜만큼 더한 값입니다. 아래 목록에는 실제로 기록된 거래만 나옵니다.
+        </p>
+      )}
+      {!bill.closed && est === 0 && (
+        <p className="text-zinc-500">이용기간이 끝나지 않아 금액이 더 늘어날 수 있습니다.</p>
+      )}
+      {bill.prepaid > 0 && (
+        <p className="text-zinc-500">
+          이미 갚은 <span className="num">{won(bill.prepaid)}</span>은 출금액에서 뺐습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // 같은 날짜의 카드 출금을 카드사별로 묶는다. 카드사 대금은 카드사 단위로 한 번에 빠져나가기 때문이다.
 // 카드가 아닌 항목(월급·정기결제)은 그대로 두고, 묶음은 그 카드사가 처음 나온 자리에 놓는다.
 type TimelineItem =
@@ -134,6 +174,11 @@ function EventRow({
         {ev.label}
       </span>
       {ev.estimated && !nested && <EstBadge />}
+      {bill && estPart(bill) > 0 && (
+        <span className="num hidden whitespace-nowrap text-xs text-zinc-500 sm:inline">
+          이용 {won(bill.due)} + 예상 {won(estPart(bill))}
+        </span>
+      )}
       <span
         className={`num whitespace-nowrap ${nested ? "text-xs text-zinc-300" : "text-sm font-medium"} ${
           nested ? "" : ev.amount >= 0 ? "text-emerald-300" : "text-rose-300"
@@ -1016,6 +1061,16 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
           title={drill.cardName}
           ym={drill.periodEnd.slice(0, 7)}
           heading={`${drill.cardName} 이용 내역 · ${drill.periodStart} ~ ${drill.periodEnd}`}
+          summary={
+            // 팝업에서 거래를 고치면 계획을 다시 불러오므로, 같은 카드·출금일의 최신 청구서로 설명한다
+            <BillBreakdown
+              bill={
+                [...(plan?.nextDueBills ?? []), ...(plan?.followingBills ?? [])].find(
+                  (b) => b.cardId === drill.cardId && b.dueDate === drill.dueDate
+                ) ?? drill
+              }
+            />
+          }
           months={[]}
           values={[]}
           txs={drillTx}

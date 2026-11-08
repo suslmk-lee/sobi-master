@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, BarChart3, Pencil, X } from "lucide-react";
 import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
@@ -49,6 +49,7 @@ export default function TxDrillModal({
   onEdit,
   onClose,
   heading,
+  summary,
 }: {
   title: string;
   ym: string; // "YYYY-MM"
@@ -60,6 +61,8 @@ export default function TxDrillModal({
   onClose: () => void;
   // heading 을 주면 "항목 · N월" 대신 이 제목을 쓴다(지출 달력의 "10월 12일 (월)" 등)
   heading?: string;
+  // 제목 아래, 목록 위에 덧붙일 설명(자금 계획의 "이용 + 예상" 구성 등)
+  summary?: ReactNode;
 }) {
   const active = months.indexOf(ym);
   const total = values.reduce((s, v) => s + v, 0);
@@ -155,6 +158,8 @@ export default function TxDrillModal({
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {summary}
 
           {/* 이 항목이 달마다 어떻게 움직였는지 먼저 보여 준다 */}
           {months.length > 0 && values.length === months.length && (

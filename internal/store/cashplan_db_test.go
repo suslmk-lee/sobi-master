@@ -74,12 +74,13 @@ func TestBuildCashPlan(t *testing.T) {
 	eq("bill.Closed", b.Closed, true)
 	eq("FollowingDue", plan.FollowingDue, "2026-12-01")
 	eq("FollowingTotal", plan.FollowingTotal, int64(70000))
-	eq("FollowingProjected", plan.FollowingProjected, int64(154000)) // 7만 + 42만/90 × 18일
+	// 첫 사용일 9/18 → 일평균은 44일(9/18~10/31)로 나눈다: 7만 + 42만/44 × 18일
+	eq("FollowingProjected", plan.FollowingProjected, int64(241818))
 	eq("AfterNextDue", plan.AfterNextDue, int64(690000))
 
 	wantDates := []string{"2026-11-02", "2026-11-05", "2026-11-10", "2026-12-01", "2026-12-07", "2026-12-10"} // 12/5 월세는 토요일이라 12/7
 	wantKinds := []string{"card", "subscription", "salary", "card", "subscription", "salary"}
-	wantBal := []int64{690000, 190000, 3190000, 3036000, 2536000, 5536000}
+	wantBal := []int64{690000, 190000, 3190000, 2948182, 2448182, 5448182}
 	if len(plan.Events) != len(wantDates) {
 		t.Fatalf("이벤트 %d개: %+v", len(plan.Events), plan.Events)
 	}
