@@ -985,6 +985,72 @@ func prevMonthOf(y, m int) (int, int) {
 	return y, m - 1
 }
 
+// detailRange 는 카테고리 상세의 기간 범위·비교 기간·표시 이름.
+type detailRange struct {
+	From, To, PrevFrom, PrevTo time.Time
+	Label, PrevLabel           string
+	BudgetMonth                string // 예산을 적용할 달 "YYYY-MM" (달력상 한 달이 아니면 "")
+	AnchorY, AnchorM           int    // 월별 추이의 기준 달
+}
+
+// categoryDetailRange 는 period(month|prev|recent30)에 따른 기간을 정한다.
+// 상세 집계(CategoryDetail)와 막대 거래 목록(CategoryDetailTx)이 같은 범위를 써야 금액이 맞는다.
+func categoryDetailRange(year, month int, period string, today time.Time) detailRange {
+	var r detailRange
+	switch period {
+	case "recent30":
+		r.To = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+		r.From = r.To.AddDate(0, 0, -29)
+		r.PrevTo = r.From.AddDate(0, 0, -1)
+		r.PrevFrom = r.PrevTo.AddDate(0, 0, -29)
+		r.Label, r.PrevLabel = "최근 30일", "이전 30일"
+		r.AnchorY, r.AnchorM = r.To.Year(), int(r.To.Month())
+	case "prev":
+		py, pm := prevMonthOf(year, month)
+		r.From, r.To = firstOfMonth(py, pm), lastOfMonth(py, pm)
+		ppy, ppm := prevMonthOf(py, pm)
+		r.PrevFrom, r.PrevTo = firstOfMonth(ppy, ppm), lastOfMonth(ppy, ppm)
+		r.Label, r.PrevLabel = fmt.Sprintf("%d월", pm), "전월"
+		r.BudgetMonth = fmt.Sprintf("%04d-%02d", py, pm)
+		r.AnchorY, r.AnchorM = py, pm
+	default: // month
+		r.From, r.To = firstOfMonth(year, month), lastOfMonth(year, month)
+		py, pm := prevMonthOf(year, month)
+		r.PrevFrom, r.PrevTo = firstOfMonth(py, pm), lastOfMonth(py, pm)
+		r.Label, r.PrevLabel = fmt.Sprintf("%d월", month), "전월"
+		r.BudgetMonth = fmt.Sprintf("%04d-%02d", year, month)
+		r.AnchorY, r.AnchorM = year, month
+	}
+	return r
+}
+
+// detailNameExpr 는 카테고리 상세 막대(무엇에·누가·어느 카드로·어디서)의 항목 이름 식.
+// 집계와 거래 목록이 같은 식을 써야 막대 금액과 목록 합계가 어긋나지 않는다.
+// pmAlias 는 payment_methods 조인 별칭(집계 쪽 pm, 거래 목록 쪽 p). 부는 categories 별칭 c 를 쓴다.
+func detailNameExpr(by, pmAlias string) string {
+	switch by {
+	case BreakMember:
+		return nameMember
+	case BreakPayment:
+		return `COALESCE(` + pmAlias + `.name,'(미지정)')`
+	case BreakSub:
+		return `CASE WHEN c.parent_id IS NULL THEN '(직접)' ELSE c.name END`
+	default: // merchant
+		return `CASE WHEN t.merchant='' THEN '(내용 없음)' ELSE t.merchant END`
+	}
+}
+
+// CategoryDetailTx 는 카테고리 상세 막대 한 줄(by 기준 항목 key)에 해당하는 기간 거래 목록.
+// 막대를 눌러 "이 기간에 이 사람(카드·가맹점·부)이 이 카테고리에 쓴 내역"을 열어 볼 때 쓴다.
+// 주 카테고리면 하위 부 지출까지 포함한다. by 는 sub|merchant|member|payment.
+func (s *Store) CategoryDetailTx(year, month int, categoryID int64, period string, today time.Time, by, key string) ([]Transaction, error) {
+	r := categoryDetailRange(year, month, period, today)
+	q := txSelect + `WHERE ` + catScopeT + ` AND t.direction='expense'
+AND t.date >= ? AND t.date <= ? AND ` + detailNameExpr(by, "p") + ` = ?
+ORDER BY t.date, t.id`
+	return s.scanTxList(q, categoryID, categoryID, r.From.Format(dateLayout), r.To.Format(dateLayout), key)
+}
+
 // CategoryDetail 은 카테고리 하나를 골라 기간(period: month|prev|recent30) 기준으로
 // 총액·비중·이전 기간/예산 대비, 귀속자·결제수단·가맹점 분해, 최근 n개월 추이를 돌려준다.
 // 예산은 달력상 한 달과 일치하는 기간(month/prev)에만 적용한다. n<1 이면 6.
@@ -995,35 +1061,11 @@ func (s *Store) CategoryDetail(year, month int, categoryID int64, period string,
 	d := CategoryDetail{CategoryID: categoryID, ByMember: []NamedAmount{}, ByPayment: []NamedAmount{}, TopMerchants: []NamedAmount{}}
 
 	// 기간 범위 결정
-	var from, to, prevFrom, prevTo time.Time
-	var budgetMonth string // "YYYY-MM" (예산 적용 달) 또는 "" (미적용)
-	var anchorY, anchorM int
-	switch period {
-	case "recent30":
-		to = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
-		from = to.AddDate(0, 0, -29)
-		prevTo = from.AddDate(0, 0, -1)
-		prevFrom = prevTo.AddDate(0, 0, -29)
-		d.Label, d.PrevLabel = "최근 30일", "이전 30일"
-		anchorY, anchorM = to.Year(), int(to.Month())
-	case "prev":
-		py, pm := prevMonthOf(year, month)
-		from, to = firstOfMonth(py, pm), lastOfMonth(py, pm)
-		ppy, ppm := prevMonthOf(py, pm)
-		prevFrom, prevTo = firstOfMonth(ppy, ppm), lastOfMonth(ppy, ppm)
-		d.Label, d.PrevLabel = fmt.Sprintf("%d월", pm), "전월"
-		budgetMonth = fmt.Sprintf("%04d-%02d", py, pm)
-		anchorY, anchorM = py, pm
-	default: // month
-		from, to = firstOfMonth(year, month), lastOfMonth(year, month)
-		py, pm := prevMonthOf(year, month)
-		prevFrom, prevTo = firstOfMonth(py, pm), lastOfMonth(py, pm)
-		d.Label, d.PrevLabel = fmt.Sprintf("%d월", month), "전월"
-		budgetMonth = fmt.Sprintf("%04d-%02d", year, month)
-		anchorY, anchorM = year, month
-	}
-	fromS, toS := from.Format("2006-01-02"), to.Format("2006-01-02")
-	pFromS, pToS := prevFrom.Format("2006-01-02"), prevTo.Format("2006-01-02")
+	r := categoryDetailRange(year, month, period, today)
+	d.Label, d.PrevLabel = r.Label, r.PrevLabel
+	budgetMonth, anchorY, anchorM := r.BudgetMonth, r.AnchorY, r.AnchorM
+	fromS, toS := r.From.Format(dateLayout), r.To.Format(dateLayout)
+	pFromS, pToS := r.PrevFrom.Format(dateLayout), r.PrevTo.Format(dateLayout)
 
 	// 표시 이름(부면 "주 > 부")과 주/부 여부
 	var parentName sql.NullString
@@ -1092,21 +1134,21 @@ WHERE direction='expense' AND date >= ? AND date <= ?`, fromS, toS).Scan(&grand)
 	// 귀속자별 / 결제수단별 / 상위 가맹점 (기간 범위, 주면 하위 부 포함)
 	var err error
 	if d.ByMember, err = s.scanNamed(`
-SELECT `+nameMember+`, SUM(t.amount)
+SELECT `+detailNameExpr(BreakMember, "pm")+`, SUM(t.amount)
 FROM transactions t `+joinMember+`
 WHERE `+catScopeT+` AND t.direction='expense' AND t.date >= ? AND t.date <= ?
 GROUP BY 1 ORDER BY SUM(t.amount) DESC`, categoryID, categoryID, fromS, toS); err != nil {
 		return d, err
 	}
 	if d.ByPayment, err = s.scanNamed(`
-SELECT `+namePayment+`, SUM(t.amount)
+SELECT `+detailNameExpr(BreakPayment, "pm")+`, SUM(t.amount)
 FROM transactions t `+joinPayment+`
 WHERE `+catScopeT+` AND t.direction='expense' AND t.date >= ? AND t.date <= ?
 GROUP BY 1 ORDER BY SUM(t.amount) DESC`, categoryID, categoryID, fromS, toS); err != nil {
 		return d, err
 	}
 	if d.TopMerchants, err = s.scanNamed(`
-SELECT CASE WHEN t.merchant='' THEN '(내용 없음)' ELSE t.merchant END, SUM(t.amount)
+SELECT `+detailNameExpr(BreakMerchant, "pm")+`, SUM(t.amount)
 FROM transactions t
 WHERE `+catScopeT+` AND t.direction='expense' AND t.date >= ? AND t.date <= ?
 GROUP BY 1 ORDER BY SUM(t.amount) DESC LIMIT 10`, categoryID, categoryID, fromS, toS); err != nil {
@@ -1116,7 +1158,7 @@ GROUP BY 1 ORDER BY SUM(t.amount) DESC LIMIT 10`, categoryID, categoryID, fromS,
 	d.BySub = []NamedAmount{}
 	if d.IsMain {
 		if d.BySub, err = s.scanNamed(`
-SELECT CASE WHEN c.parent_id IS NULL THEN '(직접)' ELSE c.name END, SUM(t.amount)
+SELECT `+detailNameExpr(BreakSub, "pm")+`, SUM(t.amount)
 FROM transactions t JOIN categories c ON c.id = t.category_id
 WHERE `+catScopeT+` AND t.direction='expense' AND t.date >= ? AND t.date <= ?
 GROUP BY 1 ORDER BY SUM(t.amount) DESC`, categoryID, categoryID, fromS, toS); err != nil {

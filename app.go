@@ -883,6 +883,15 @@ func (a *App) GetCategoryMonthly(year, month, n int, categoryID int64, by string
 	return a.st.CategoryMonthly(year, month, n, categoryID, by)
 }
 
+// GetCategoryDetailTx 는 카테고리 상세 막대 한 줄의 거래 목록. 기간은 GetCategoryDetail 과 같은
+// period(month|prev|recent30) 기준, by 는 sub|merchant|member|payment, key 는 막대에 찍힌 이름 그대로.
+func (a *App) GetCategoryDetailTx(year, month int, categoryID int64, period, by, key string) ([]store.Transaction, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	return a.st.CategoryDetailTx(year, month, categoryID, period, time.Now(), by, key)
+}
+
 // GetCategoryMonthlyTx 는 월 × 항목 표의 칸 하나에 들어 있는 거래 목록.
 // ym 은 "YYYY-MM", key 는 표에 찍힌 항목 이름 그대로.
 func (a *App) GetCategoryMonthlyTx(ym string, categoryID int64, by, key string) ([]store.Transaction, error) {
