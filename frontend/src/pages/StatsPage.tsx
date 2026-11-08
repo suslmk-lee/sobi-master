@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -56,6 +56,8 @@ import {
 import { autoColor } from "../PmChip";
 import { Sk } from "../Skeleton";
 import IconTile from "../components/ui/IconTile";
+import { PctDelta, SectionHead, Seg } from "../components/ui/StatsUi";
+import MemberAnalysis from "./MemberAnalysis";
 import { useThemeColors } from "../appearance/AppearanceContext";
 
 type Dim = "paymentMethod" | "member" | "category";
@@ -96,48 +98,13 @@ function Yoy({ cur, prev, goodWhenDown }: { cur: number; prev: number; goodWhenD
   );
 }
 
-// 전월(기간) 대비 증감 텍스트 — 지출 기준이라 증가가 나쁨
-function PctDelta({ pct, suffix }: { pct: number; suffix?: string }) {
-  const color = pct > 0 ? "text-rose-300" : pct < 0 ? "text-emerald-300" : "text-zinc-300";
-  return (
-    <span className={`num text-xs ${color}`}>
-      {pct > 0 ? "▲" : pct < 0 ? "▼" : ""} {Math.abs(pct)}%
-      {suffix && <span className="text-zinc-500"> {suffix}</span>}
-    </span>
-  );
-}
-
-// 세그먼트 토글 버튼 그룹
-function Seg<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { key: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="glass-pill flex gap-1 overflow-x-auto p-1" role="group">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          className={`pill-item ${value === o.key ? "pill-item-active" : ""}`}
-          aria-pressed={value === o.key}
-          onClick={() => onChange(o.key)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// 통계 서브메뉴. 카테고리 상세는 기간·카테고리 선택이 아래 모든 카드에 걸리므로 화면을 따로 둔다.
-type View = "overview" | "category";
+// 통계 서브메뉴. 카테고리 상세·구성원 분석은 위에서 고른 대상(카테고리·사람)과 기간이
+// 아래 모든 카드에 걸리므로 화면을 따로 둔다.
+type View = "overview" | "category" | "member";
 const VIEWS: { key: View; label: string; desc: string; icon: LucideIcon }[] = [
   { key: "overview", label: "전체 통계", desc: "추이 · 히트맵 · 귀속자 · 카드 · 연간", icon: BarChart3 },
   { key: "category", label: "카테고리 상세", desc: "한 카테고리를 요약 · 구성 · 월별로", icon: Layers },
+  { key: "member", label: "구성원 분석", desc: "한 사람의 소비를 요약 · 추이 · 습관으로", icon: UserRound },
 ];
 
 function StatsNav({ value, onChange }: { value: View; onChange: (v: View) => void }) {
@@ -163,32 +130,6 @@ function StatsNav({ value, onChange }: { value: View; onChange: (v: View) => voi
         );
       })}
     </nav>
-  );
-}
-
-// 카드 내부 섹션 헤더 (IconTile + 제목 + 부제 + 우측 컨트롤)
-function SectionHead({
-  icon,
-  title,
-  sub,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  sub?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <IconTile icon={icon} tone="mint" size="sm" />
-        <div className="min-w-0">
-          <h3 className="section-title">{title}</h3>
-          {sub && <p className="label-mono mt-0.5 !normal-case">{sub}</p>}
-        </div>
-      </div>
-      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
-    </div>
   );
 }
 
@@ -822,6 +763,9 @@ export default function StatsPage({
           )}
         </>
       )}
+
+      {/* 한 사람의 소비: 요약·추이·무엇이 늘었나·반복 소비·카드·월별 표 (자체 팝업을 가진다) */}
+      {view === "member" && <MemberAnalysis refs={refs} month={month} />}
 
       {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
       {drill && (drillView || drill.kind === "day" || drill.kind === "detail") && (

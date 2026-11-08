@@ -19,6 +19,10 @@ type Category struct {
 	// 조회 편의용
 	Parent   string `json:"parent"`   // 주 카테고리 이름 (주 자신이면 "")
 	FullName string `json:"fullName"` // "식비 > 배달" 또는 "통신비"
+	// FixedCost 는 고정비 표시(구성원 분석의 생활 소비에서 뺀다). ParentFixed 는 상위 주에 표시가 켜져 있는지 —
+	// 부는 자기 표시가 없어도 주가 고정비면 고정비로 본다.
+	FixedCost   bool `json:"fixedCost"`
+	ParentFixed bool `json:"parentFixed"`
 }
 
 // PaymentMethod 의 Type 은 card | cash | bank 중 하나.

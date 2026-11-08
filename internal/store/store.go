@@ -253,6 +253,13 @@ CREATE TABLE IF NOT EXISTS cash_balances (
 	memo       TEXT NOT NULL DEFAULT '',
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 고정비 표시: 구성원 분석이 '생활 소비'를 볼 때 빼는 카테고리(보험료·통신비 등). 부는 주의 표시를 따른다.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS fixed_cost INTEGER NOT NULL DEFAULT 0;
+-- 처음 한 번만 흔한 고정비 주 카테고리에 표시를 켜 둔다. 그 뒤로는 설정에서 바꾼 값을 그대로 둔다.
+UPDATE categories SET fixed_cost = 1
+WHERE parent_id IS NULL AND name IN ('보험료', '통신비', '구독/렌탈', '대출상환')
+  AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'seed.fixed_cost');
+INSERT INTO app_settings(key, value) VALUES ('seed.fixed_cost', '1') ON CONFLICT (key) DO NOTHING;
 `
 	_, err := s.db.Exec(schema + prepaidSchema)
 	return err
@@ -290,6 +297,11 @@ WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL)
 			c.name, c.kind, i, c.name); err != nil {
 			return err
 		}
+	}
+	// 새 DB 는 스키마의 1회 고정비 표시보다 카테고리가 늦게 생기므로 여기서 기본 고정비를 켠다.
+	if _, err := s.exec(`UPDATE categories SET fixed_cost = 1
+WHERE parent_id IS NULL AND name IN ('통신비', '대출상환')`); err != nil {
+		return err
 	}
 	return nil
 }
