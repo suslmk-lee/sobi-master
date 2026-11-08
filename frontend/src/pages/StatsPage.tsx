@@ -132,6 +132,39 @@ function Seg<T extends string>({
   );
 }
 
+// 통계 서브메뉴. 카테고리 상세는 기간·카테고리 선택이 아래 모든 카드에 걸리므로 화면을 따로 둔다.
+type View = "overview" | "category";
+const VIEWS: { key: View; label: string; desc: string; icon: LucideIcon }[] = [
+  { key: "overview", label: "전체 통계", desc: "추이 · 히트맵 · 귀속자 · 카드 · 연간", icon: BarChart3 },
+  { key: "category", label: "카테고리 상세", desc: "한 카테고리를 요약 · 구성 · 월별로", icon: Layers },
+];
+
+function StatsNav({ value, onChange }: { value: View; onChange: (v: View) => void }) {
+  return (
+    <nav className="surface flex gap-1 overflow-x-auto p-2" aria-label="통계 메뉴">
+      {VIEWS.map((v) => {
+        const Icon = v.icon;
+        const active = value === v.key;
+        return (
+          <button
+            key={v.key}
+            type="button"
+            className={`pill-item !rounded-xl text-left ${active ? "pill-item-active" : ""}`}
+            aria-current={active ? "page" : undefined}
+            onClick={() => onChange(v.key)}
+          >
+            <span className="flex items-center gap-2 text-sm">
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              {v.label}
+            </span>
+            <span className="label-mono mt-0.5 block !text-[10px]">{v.desc}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 // 카드 내부 섹션 헤더 (IconTile + 제목 + 부제 + 우측 컨트롤)
 function SectionHead({
   icon,
@@ -170,6 +203,7 @@ export default function StatsPage({
   setMonth: (m: string) => void;
 }) {
   const theme = useThemeColors();
+  const [view, setView] = useState<View>("overview");
   const [dim, setDim] = useState<Dim>("paymentMethod");
   const [mode, setMode] = useState<Mode>("cumulative");
 
@@ -256,9 +290,10 @@ export default function StatsPage({
     }
   }, [month, catLevel, bump]);
 
+  // 보이는 화면의 데이터만 읽는다(서브메뉴를 바꾸면 그 화면 기준으로 새로 읽는다)
   useEffect(() => {
-    load();
-  }, [load]);
+    if (view === "overview") load();
+  }, [load, view]);
 
   // 카테고리 미선택 시 첫 지출 카테고리를 기본 선택
   useEffect(() => {
@@ -267,21 +302,21 @@ export default function StatsPage({
 
   // 선택 카테고리 상세 조회 (월/카테고리/기간 변경 시)
   useEffect(() => {
-    if (catId === 0) return;
+    if (catId === 0 || view !== "category") return;
     const [y, m] = month.split("-").map(Number);
     GetCategoryDetail(y, m, catId, catPeriod)
       .then(setDetail)
       .catch(() => setDetail(null));
-  }, [month, catId, catPeriod, bump]);
+  }, [view, month, catId, catPeriod, bump]);
 
   // 선택 카테고리의 월 × 항목 표 (기간 토글과 무관하게 항상 최근 N개월 기준)
   useEffect(() => {
-    if (catId === 0) return;
+    if (catId === 0 || view !== "category") return;
     const [y, m] = month.split("-").map(Number);
     GetCategoryMonthly(y, m, catMonths, catId, catBy)
       .then(setCatMonthly)
       .catch(() => setCatMonthly(null));
-  }, [month, catId, catBy, catMonths, bump]);
+  }, [view, month, catId, catBy, catMonths, bump]);
 
   // 기준·카테고리를 바꾸면 다시 상위 항목부터 보고, 열려 있던 드릴다운은 닫는다
   useEffect(() => {
@@ -376,391 +411,407 @@ export default function StatsPage({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <MonthPicker value={month} onChange={setMonth} />
-          {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다 */}
-          <span className="label-mono">카테고리 기준</span>
-          <Seg<"main" | "sub">
-            value={catLevel}
-            options={[
-              { key: "main", label: "주" },
-              { key: "sub", label: "부" },
-            ]}
-            onChange={setCatLevel}
-          />
-        </div>
-      </div>
-
-      {/* 대표 차트: 이번 달 지금까지를 지난달 이맘때와 견준다 */}
-      <div className="surface p-5 sm:p-6">
-        <SectionHead
-          icon={GitCompare}
-          title="전월 동일시점 누적 비교"
-          sub="이번 달 지금까지 쓴 돈을 지난달 같은 날까지와 견줍니다"
-        />
-        {loading || !compare ? <Sk h={420} r={14} /> : <CompareChart data={compare} />}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Activity} title="일별 · 누적 지출 추이">
-          <Seg value={dim} options={DIM_LABEL} onChange={setDim} />
-          <Seg<Mode>
-            value={mode}
-            options={[
-              { key: "daily", label: "일별" },
-              { key: "cumulative", label: "누적" },
-            ]}
-            onChange={setMode}
-          />
-        </SectionHead>
-        {loading ? (
-          <Sk h={240} r={12} />
-        ) : (
-          <LineChart
-            series={dimSeries}
-            xLabels={dayLabels}
-            cumulative={mode === "cumulative"}
-            height={240}
-          />
-        )}
-      </div>
-
-      <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
-        {/* 옆 달력과 높이를 맞춘다(카드가 늘어나고 막대 영역이 남는 높이를 채움) */}
-        <div className="surface flex h-full flex-col p-5 sm:p-6">
-          <SectionHead icon={CalendarDays} title="요일별 평균 지출" sub="지나간 날 기준 하루 평균" />
-          <div className="flex min-h-0 flex-1 flex-col">
-            {loading || !compare ? <Sk h={280} r={12} /> : <WeekdayPanel data={compare} />}
-          </div>
-        </div>
-
-        {/* 요일별 평균을 날짜 단위로 펼친 달력. 날짜를 누르면 그날 내역이 열린다 */}
-        <div className="surface h-full p-5 sm:p-6">
-          <SectionHead icon={Calendar} title="지출 달력" sub="날짜를 누르면 그날 쓴 내역" />
-          {loading || !compare ? (
-            <Sk h={280} r={12} />
-          ) : (
-            <SpendCalendar
-              data={compare}
-              onPickDay={(date, label) => setDrill({ kind: "day", key: date, ym: date.slice(0, 7), label })}
-            />
+          {/* 카테고리 관련 집계(일별·추이·히트맵·귀속자 구성)의 주/부 기준을 한 번에 바꾼다.
+              카테고리 상세는 고른 카테고리 하나만 보므로 이 기준과 무관하다. */}
+          {view === "overview" && (
+            <>
+              <span className="label-mono">카테고리 기준</span>
+              <Seg<"main" | "sub">
+                value={catLevel}
+                options={[
+                  { key: "main", label: "주" },
+                  { key: "sub", label: "부" },
+                ]}
+                onChange={setCatLevel}
+              />
+            </>
           )}
         </div>
       </div>
 
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={TrendingUp} title="카테고리별 6개월 추이" />
-        {loading ? (
-          <Sk h={220} r={12} />
-        ) : (
-          <LineChart series={catSeries} xLabels={catLabels} />
-        )}
-      </div>
+      <StatsNav value={view} onChange={setView} />
 
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Layers} title="카테고리 상세 분석">
-          <Seg
-            value={catPeriod}
-            options={[
-              { key: "month", label: "이번 달" },
-              { key: "recent30", label: "최근 30일" },
-              { key: "prev", label: "전월" },
-            ]}
-            onChange={setCatPeriod}
-          />
-          {/* 주를 고르면 하위 부 지출까지 합산해서 보여준다 */}
-          <select
-            className="input-field !w-auto"
-            value={catId}
-            onChange={(e) => setCatId(Number(e.target.value))}
-          >
-            {categoryOptions(expenseCats).map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
-        </SectionHead>
-        {!detail ? (
-          <Sk h={200} r={12} />
-        ) : detail.total === 0 && detail.trend.every((v) => v === 0) ? (
-          <p className="text-sm text-zinc-500">이 카테고리의 지출 내역이 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
-              <p className="label-mono !normal-case">{detail.label} 지출</p>
-              <p className="num text-2xl font-light tracking-tight text-rose-300">{won(detail.total)}</p>
-              <p className="num text-xs text-zinc-500">전체 지출의 {detail.share}%</p>
+      {view === "overview" && (
+        <>
+          {/* 대표 차트: 이번 달 지금까지를 지난달 이맘때와 견준다 */}
+          <div className="surface p-5 sm:p-6">
+            <SectionHead
+              icon={GitCompare}
+              title="전월 동일시점 누적 비교"
+              sub="이번 달 지금까지 쓴 돈을 지난달 같은 날까지와 견줍니다"
+            />
+            {loading || !compare ? <Sk h={420} r={14} /> : <CompareChart data={compare} />}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Activity} title="일별 · 누적 지출 추이">
+              <Seg value={dim} options={DIM_LABEL} onChange={setDim} />
+              <Seg<Mode>
+                value={mode}
+                options={[
+                  { key: "daily", label: "일별" },
+                  { key: "cumulative", label: "누적" },
+                ]}
+                onChange={setMode}
+              />
+            </SectionHead>
+            {loading ? (
+              <Sk h={240} r={12} />
+            ) : (
+              <LineChart
+                series={dimSeries}
+                xLabels={dayLabels}
+                cumulative={mode === "cumulative"}
+                height={240}
+              />
+            )}
+          </div>
+
+          <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
+            {/* 옆 달력과 높이를 맞춘다(카드가 늘어나고 막대 영역이 남는 높이를 채움) */}
+            <div className="surface flex h-full flex-col p-5 sm:p-6">
+              <SectionHead icon={CalendarDays} title="요일별 평균 지출" sub="지나간 날 기준 하루 평균" />
+              <div className="flex min-h-0 flex-1 flex-col">
+                {loading || !compare ? <Sk h={280} r={12} /> : <WeekdayPanel data={compare} />}
+              </div>
             </div>
-            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
-              <p className="label-mono !normal-case">{detail.prevLabel} 대비</p>
-              {detail.prev > 0 ? (
-                <p className="num text-2xl font-light tracking-tight">
-                  <PctDelta pct={detailPrevDelta} />
-                </p>
+
+            {/* 요일별 평균을 날짜 단위로 펼친 달력. 날짜를 누르면 그날 내역이 열린다 */}
+            <div className="surface h-full p-5 sm:p-6">
+              <SectionHead icon={Calendar} title="지출 달력" sub="날짜를 누르면 그날 쓴 내역" />
+              {loading || !compare ? (
+                <Sk h={280} r={12} />
               ) : (
-                <p className="text-sm text-zinc-500">{detail.prevLabel} 데이터 없음</p>
+                <SpendCalendar
+                  data={compare}
+                  onPickDay={(date, label) => setDrill({ kind: "day", key: date, ym: date.slice(0, 7), label })}
+                />
               )}
-              <p className="num text-xs text-zinc-500">{detail.prevLabel} {won(detail.prev)}</p>
             </div>
-            <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
-              <p className="label-mono">예산</p>
-              {detail.budget > 0 ? (
-                <>
-                  <p
-                    className={`num text-2xl font-light tracking-tight ${
-                      detail.over ? "text-rose-300" : "text-white"
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={TrendingUp} title="카테고리별 6개월 추이" />
+            {loading ? (
+              <Sk h={220} r={12} />
+            ) : (
+              <LineChart series={catSeries} xLabels={catLabels} />
+            )}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Grid3x3} title="카테고리 × 월 히트맵" />
+            {loading || !matrix ? (
+              <Sk h={220} r={12} />
+            ) : (
+              <Heatmap
+                rows={matrix.series}
+                months={matrix.months}
+                onCell={(key, ym) => setDrill({ kind: "matrix", key, ym })}
+              />
+            )}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Users} title={`카테고리별 귀속자 구성 (${Number(month.slice(5))}월)`} />
+            {loading ? <Sk h={120} r={12} /> : <StackedBars data={catMember} />}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Users} title={`귀속자별 카테고리 구성 (${Number(month.slice(5))}월)`} />
+            {loading ? <Sk h={120} r={12} /> : <StackedBars data={memberCat} />}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={UserRound} title={`귀속자별 지출 요약 (${Number(month.slice(5))}월)`} />
+            {loading ? (
+              <Sk h={120} r={12} />
+            ) : memberStats.length === 0 ? (
+              <p className="text-sm text-zinc-500">데이터 없음</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {memberStats.map((s) => {
+                  const pct = s.prev ? Math.round(((s.total - s.prev) / s.prev) * 100) : 0;
+                  return (
+                    <div className="surface-inset flex flex-col gap-2 p-4" key={s.member}>
+                      <strong className="text-sm font-medium text-white">
+                        {s.member} <span className="num text-xs font-normal text-zinc-500">({s.share}%)</span>
+                      </strong>
+                      <span className="num text-2xl font-light tracking-tight text-rose-300">{won(s.total)}</span>
+                      {s.prev > 0 ? (
+                        <PctDelta pct={pct} suffix="전월 대비" />
+                      ) : (
+                        <span className="text-xs text-zinc-500">전월 데이터 없음</span>
+                      )}
+                      <span className="num text-xs text-zinc-500">
+                        최다 카테고리: {s.topCategory || "-"}
+                        {s.topCategoryAmount ? ` · ${won(s.topCategoryAmount)}` : ""}
+                      </span>
+                      <span className="num text-xs text-zinc-500">
+                        최다 가맹점: {s.topMerchant || "-"}
+                        {s.topMerchantAmount ? ` · ${won(s.topMerchantAmount)}` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={TrendingUp} title="귀속자별 6개월 추이" />
+            {loading ? <Sk h={220} r={12} /> : <LineChart series={memberSeries} xLabels={memberLabels} />}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={CreditCard} title="카드별 카테고리 구성" />
+            {loading ? <Sk h={120} r={12} /> : <StackedBars data={cardCat} />}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead
+              icon={Repeat}
+              title={`고정비 · 정기결제 (${Number(month.slice(5))}월)`}
+              sub={recurring.length > 0 ? `${recurring.length} items` : undefined}
+            />
+            {loading ? (
+              <Sk h={100} r={12} />
+            ) : recurring.length === 0 ? (
+              <p className="text-sm text-zinc-500">
+                학습된 정기 거래가 없습니다. 거래를 분류하면 규칙이 쌓이고 여기에 표시됩니다.
+              </p>
+            ) : (
+              <ul className="divide-y divide-white/[0.05]">
+                {recurring.map((r, i) => (
+                  <li
+                    key={i}
+                    className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm ${
+                      r.seen ? "text-zinc-400" : "text-zinc-100"
                     }`}
                   >
-                    {detail.budgetPct}%
-                  </p>
-                  <p className="num text-xs text-zinc-500">{won(detail.total)} / {won(detail.budget)}</p>
-                </>
-              ) : (
-                <p className="text-sm text-zinc-500">
-                  {catPeriod === "recent30" ? "기간 예산 없음" : "미설정"}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {detail && !(detail.total === 0 && detail.trend.every((v) => v === 0)) && (
-        <>
-          <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
-            {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
-            {detail.isMain && detail.bySub.length > 0 && (
-              <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
-            )}
-            <Bars title="누가 (귀속자별)" rows={detail.byMember} />
-            <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
-            <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
-            <div className="surface h-full p-5 sm:p-6">
-              <SectionHead icon={TrendingUp} title="월별 추이" />
-              <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
-            </div>
-          </div>
-
-          {/* 달마다 총액만 보면 왜 늘었는지 모른다. 항목을 쪼개야 그게 보인다. */}
-          <div className="surface p-5 sm:p-6">
-            <SectionHead icon={Grid3x3} title="월별 상세 — 무엇에 썼나">
-              <Seg value={catBy} options={CAT_BY} onChange={setCatBy} />
-              <select
-                className="input-field !w-auto"
-                value={catMonths}
-                onChange={(e) => setCatMonths(Number(e.target.value))}
-              >
-                {[3, 6, 12, 24].map((n) => (
-                  <option key={n} value={n}>최근 {n}개월</option>
+                    <span className="font-medium text-white">{r.label || r.merchant}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">{r.merchant}</span>
+                    {r.seen ? (
+                      <span className="badge num bg-emerald-500/10 text-emerald-300">
+                        빠짐 · {won(r.seenAmount)}
+                        {r.seenDate ? ` (${r.seenDate.slice(5)})` : ""}
+                      </span>
+                    ) : (
+                      <span className="badge num bg-amber-500/10 text-amber-300">
+                        예정 · {won(r.amountMin)}~{won(r.amountMax)}
+                      </span>
+                    )}
+                  </li>
                 ))}
-              </select>
-            </SectionHead>
-            {!catMonthly ? (
-              <Sk h={200} r={12} />
-            ) : catMonthly.series.length === 0 ? (
-              <p className="text-sm text-zinc-500">이 기간에 기록된 지출이 없습니다.</p>
+              </ul>
+            )}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Gauge} title="카드 실적기간 누적 진행률" />
+            {loading ? (
+              <Sk h={120} r={12} />
+            ) : paces.length === 0 ? (
+              <p className="text-sm text-zinc-500">실적 목표가 설정된 카드가 없습니다. 카드 탭에서 실적한도를 입력하세요.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {paces.map((p) => {
+                  const c = p.card.color || autoColor(p.card.name);
+                  const remaining = p.target - p.spent;
+                  return (
+                    <div className="surface-inset flex flex-col gap-2 p-4" key={p.card.id}>
+                      <strong className="flex items-center gap-2 text-sm font-medium text-white">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c }} />
+                        <span className="truncate">
+                          {p.card.issuer ? `${p.card.issuer} ` : ""}
+                          {p.card.name}
+                        </span>
+                      </strong>
+                      <span className="label-mono num !normal-case">
+                        {p.periodStart} ~ {p.periodEnd} · {p.elapsed}/{p.days}일차
+                      </span>
+                      <PaceSparkline pace={p} />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="num text-sm text-zinc-200">
+                          {won(p.spent)} <span className="text-zinc-500">/ 목표 {won(p.target)}</span>
+                        </span>
+                        {p.achieved ? (
+                          <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>실적 달성 ✓</span>
+                        ) : p.onTrack ? (
+                          <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>달성 페이스</span>
+                        ) : (
+                          <span className={`${PACE_BADGE} bg-amber-500/10 text-amber-300`}>미달 우려</span>
+                        )}
+                      </div>
+                      <span className="num text-xs text-zinc-500">
+                        {p.achieved
+                          ? `목표 ${won(p.spent - p.target)} 초과`
+                          : `${won(remaining)} 남음 · 현재 페이스 예상 ${won(p.projected)}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={CalendarRange} title={`연간 요약 (${Number(month.slice(0, 4))}년)`} />
+            {loading || !year ? (
+              <Sk h={220} r={12} />
             ) : (
               <>
-                <Heatmap
-                  rows={catMonthlyRows}
-                  months={catMonthly.months}
-                  onCell={(key, ym) => setDrill({ kind: "item", key, ym })}
-                />
-                {catMonthly.series.length > CAT_ROW_LIMIT && (
-                  <button className="btn-ghost mt-3 !py-1.5 !text-xs" onClick={() => setCatAll((v) => !v)}>
-                    {catAll
-                      ? "상위 항목만 보기"
-                      : `나머지 ${catMonthly.series.length - CAT_ROW_LIMIT}개 항목 더 보기`}
-                  </button>
-                )}
+                <TrendChart points={year.months} />
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="surface-inset flex flex-col gap-2 p-4">
+                    <p className="label-mono">수입</p>
+                    <p className="num text-2xl font-light tracking-tight text-emerald-300">{won(year.totalIncome)}</p>
+                    <Yoy cur={year.totalIncome} prev={year.prevIncome} />
+                  </div>
+                  <div className="surface-inset flex flex-col gap-2 p-4">
+                    <p className="label-mono">지출</p>
+                    <p className="num text-2xl font-light tracking-tight text-rose-300">{won(year.totalExpense)}</p>
+                    <Yoy cur={year.totalExpense} prev={year.prevExpense} goodWhenDown />
+                  </div>
+                  <div className="surface-inset flex flex-col gap-2 p-4">
+                    <p className="label-mono">투자/저축 이체</p>
+                    <p className="num text-2xl font-light tracking-tight text-sky-300">{won(year.totalTransfer)}</p>
+                    <Yoy cur={year.totalTransfer} prev={year.prevTransfer} />
+                  </div>
+                </div>
               </>
             )}
           </div>
+
+          {!loading && year && <Bars title="연간 카테고리별 지출" rows={year.byCategory.slice(0, 10)} />}
         </>
       )}
 
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Grid3x3} title="카테고리 × 월 히트맵" />
-        {loading || !matrix ? (
-          <Sk h={220} r={12} />
-        ) : (
-          <Heatmap
-            rows={matrix.series}
-            months={matrix.months}
-            onCell={(key, ym) => setDrill({ kind: "matrix", key, ym })}
-          />
-        )}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Users} title={`카테고리별 귀속자 구성 (${Number(month.slice(5))}월)`} />
-        {loading ? <Sk h={120} r={12} /> : <StackedBars data={catMember} />}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Users} title={`귀속자별 카테고리 구성 (${Number(month.slice(5))}월)`} />
-        {loading ? <Sk h={120} r={12} /> : <StackedBars data={memberCat} />}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={UserRound} title={`귀속자별 지출 요약 (${Number(month.slice(5))}월)`} />
-        {loading ? (
-          <Sk h={120} r={12} />
-        ) : memberStats.length === 0 ? (
-          <p className="text-sm text-zinc-500">데이터 없음</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {memberStats.map((s) => {
-              const pct = s.prev ? Math.round(((s.total - s.prev) / s.prev) * 100) : 0;
-              return (
-                <div className="surface-inset flex flex-col gap-2 p-4" key={s.member}>
-                  <strong className="text-sm font-medium text-white">
-                    {s.member} <span className="num text-xs font-normal text-zinc-500">({s.share}%)</span>
-                  </strong>
-                  <span className="num text-2xl font-light tracking-tight text-rose-300">{won(s.total)}</span>
-                  {s.prev > 0 ? (
-                    <PctDelta pct={pct} suffix="전월 대비" />
-                  ) : (
-                    <span className="text-xs text-zinc-500">전월 데이터 없음</span>
-                  )}
-                  <span className="num text-xs text-zinc-500">
-                    최다 카테고리: {s.topCategory || "-"}
-                    {s.topCategoryAmount ? ` · ${won(s.topCategoryAmount)}` : ""}
-                  </span>
-                  <span className="num text-xs text-zinc-500">
-                    최다 가맹점: {s.topMerchant || "-"}
-                    {s.topMerchantAmount ? ` · ${won(s.topMerchantAmount)}` : ""}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={TrendingUp} title="귀속자별 6개월 추이" />
-        {loading ? <Sk h={220} r={12} /> : <LineChart series={memberSeries} xLabels={memberLabels} />}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={CreditCard} title="카드별 카테고리 구성" />
-        {loading ? <Sk h={120} r={12} /> : <StackedBars data={cardCat} />}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead
-          icon={Repeat}
-          title={`고정비 · 정기결제 (${Number(month.slice(5))}월)`}
-          sub={recurring.length > 0 ? `${recurring.length} items` : undefined}
-        />
-        {loading ? (
-          <Sk h={100} r={12} />
-        ) : recurring.length === 0 ? (
-          <p className="text-sm text-zinc-500">
-            학습된 정기 거래가 없습니다. 거래를 분류하면 규칙이 쌓이고 여기에 표시됩니다.
-          </p>
-        ) : (
-          <ul className="divide-y divide-white/[0.05]">
-            {recurring.map((r, i) => (
-              <li
-                key={i}
-                className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm ${
-                  r.seen ? "text-zinc-400" : "text-zinc-100"
-                }`}
+      {/* 고른 카테고리 하나를 요약·구성·월별 상세까지 한 화면에서 본다 */}
+      {view === "category" && (
+        <>
+          <div className="surface p-5 sm:p-6">
+            <SectionHead icon={Layers} title="카테고리 상세 분석">
+              <Seg
+                value={catPeriod}
+                options={[
+                  { key: "month", label: "이번 달" },
+                  { key: "recent30", label: "최근 30일" },
+                  { key: "prev", label: "전월" },
+                ]}
+                onChange={setCatPeriod}
+              />
+              {/* 주를 고르면 하위 부 지출까지 합산해서 보여준다 */}
+              <select
+                className="input-field !w-auto"
+                value={catId}
+                onChange={(e) => setCatId(Number(e.target.value))}
               >
-                <span className="font-medium text-white">{r.label || r.merchant}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">{r.merchant}</span>
-                {r.seen ? (
-                  <span className="badge num bg-emerald-500/10 text-emerald-300">
-                    빠짐 · {won(r.seenAmount)}
-                    {r.seenDate ? ` (${r.seenDate.slice(5)})` : ""}
-                  </span>
-                ) : (
-                  <span className="badge num bg-amber-500/10 text-amber-300">
-                    예정 · {won(r.amountMin)}~{won(r.amountMax)}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={Gauge} title="카드 실적기간 누적 진행률" />
-        {loading ? (
-          <Sk h={120} r={12} />
-        ) : paces.length === 0 ? (
-          <p className="text-sm text-zinc-500">실적 목표가 설정된 카드가 없습니다. 카드 탭에서 실적한도를 입력하세요.</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {paces.map((p) => {
-              const c = p.card.color || autoColor(p.card.name);
-              const remaining = p.target - p.spent;
-              return (
-                <div className="surface-inset flex flex-col gap-2 p-4" key={p.card.id}>
-                  <strong className="flex items-center gap-2 text-sm font-medium text-white">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c }} />
-                    <span className="truncate">
-                      {p.card.issuer ? `${p.card.issuer} ` : ""}
-                      {p.card.name}
-                    </span>
-                  </strong>
-                  <span className="label-mono num !normal-case">
-                    {p.periodStart} ~ {p.periodEnd} · {p.elapsed}/{p.days}일차
-                  </span>
-                  <PaceSparkline pace={p} />
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="num text-sm text-zinc-200">
-                      {won(p.spent)} <span className="text-zinc-500">/ 목표 {won(p.target)}</span>
-                    </span>
-                    {p.achieved ? (
-                      <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>실적 달성 ✓</span>
-                    ) : p.onTrack ? (
-                      <span className={`${PACE_BADGE} bg-emerald-500/10 text-emerald-300`}>달성 페이스</span>
-                    ) : (
-                      <span className={`${PACE_BADGE} bg-amber-500/10 text-amber-300`}>미달 우려</span>
-                    )}
-                  </div>
-                  <span className="num text-xs text-zinc-500">
-                    {p.achieved
-                      ? `목표 ${won(p.spent - p.target)} 초과`
-                      : `${won(remaining)} 남음 · 현재 페이스 예상 ${won(p.projected)}`}
-                  </span>
+                {categoryOptions(expenseCats).map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+            </SectionHead>
+            {!detail ? (
+              <Sk h={200} r={12} />
+            ) : detail.total === 0 && detail.trend.every((v) => v === 0) ? (
+              <p className="text-sm text-zinc-500">이 카테고리의 지출 내역이 없습니다.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+                  <p className="label-mono !normal-case">{detail.label} 지출</p>
+                  <p className="num text-2xl font-light tracking-tight text-rose-300">{won(detail.total)}</p>
+                  <p className="num text-xs text-zinc-500">전체 지출의 {detail.share}%</p>
                 </div>
-              );
-            })}
+                <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+                  <p className="label-mono !normal-case">{detail.prevLabel} 대비</p>
+                  {detail.prev > 0 ? (
+                    <p className="num text-2xl font-light tracking-tight">
+                      <PctDelta pct={detailPrevDelta} />
+                    </p>
+                  ) : (
+                    <p className="text-sm text-zinc-500">{detail.prevLabel} 데이터 없음</p>
+                  )}
+                  <p className="num text-xs text-zinc-500">{detail.prevLabel} {won(detail.prev)}</p>
+                </div>
+                <div className="surface-inset flex min-w-0 flex-col gap-2 p-4">
+                  <p className="label-mono">예산</p>
+                  {detail.budget > 0 ? (
+                    <>
+                      <p
+                        className={`num text-2xl font-light tracking-tight ${
+                          detail.over ? "text-rose-300" : "text-white"
+                        }`}
+                      >
+                        {detail.budgetPct}%
+                      </p>
+                      <p className="num text-xs text-zinc-500">{won(detail.total)} / {won(detail.budget)}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-zinc-500">
+                      {catPeriod === "recent30" ? "기간 예산 없음" : "미설정"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="surface p-5 sm:p-6">
-        <SectionHead icon={CalendarRange} title={`연간 요약 (${Number(month.slice(0, 4))}년)`} />
-        {loading || !year ? (
-          <Sk h={220} r={12} />
-        ) : (
-          <>
-            <TrendChart points={year.months} />
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="surface-inset flex flex-col gap-2 p-4">
-                <p className="label-mono">수입</p>
-                <p className="num text-2xl font-light tracking-tight text-emerald-300">{won(year.totalIncome)}</p>
-                <Yoy cur={year.totalIncome} prev={year.prevIncome} />
+          {detail && !(detail.total === 0 && detail.trend.every((v) => v === 0)) && (
+            <>
+              <div className="grid items-stretch gap-4 lg:grid-cols-2 lg:gap-5">
+                {/* 주 카테고리면 하위 부 구성부터 보여준다 */}
+                {detail.isMain && detail.bySub.length > 0 && (
+                  <Bars title="무엇에 (부 카테고리별)" rows={detail.bySub} />
+                )}
+                <Bars title="누가 (귀속자별)" rows={detail.byMember} />
+                <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} />
+                <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} />
+                <div className="surface h-full p-5 sm:p-6">
+                  <SectionHead icon={TrendingUp} title="월별 추이" />
+                  <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
+                </div>
               </div>
-              <div className="surface-inset flex flex-col gap-2 p-4">
-                <p className="label-mono">지출</p>
-                <p className="num text-2xl font-light tracking-tight text-rose-300">{won(year.totalExpense)}</p>
-                <Yoy cur={year.totalExpense} prev={year.prevExpense} goodWhenDown />
-              </div>
-              <div className="surface-inset flex flex-col gap-2 p-4">
-                <p className="label-mono">투자/저축 이체</p>
-                <p className="num text-2xl font-light tracking-tight text-sky-300">{won(year.totalTransfer)}</p>
-                <Yoy cur={year.totalTransfer} prev={year.prevTransfer} />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
 
-      {!loading && year && <Bars title="연간 카테고리별 지출" rows={year.byCategory.slice(0, 10)} />}
+              {/* 달마다 총액만 보면 왜 늘었는지 모른다. 항목을 쪼개야 그게 보인다. */}
+              <div className="surface p-5 sm:p-6">
+                <SectionHead icon={Grid3x3} title="월별 상세 — 무엇에 썼나">
+                  <Seg value={catBy} options={CAT_BY} onChange={setCatBy} />
+                  <select
+                    className="input-field !w-auto"
+                    value={catMonths}
+                    onChange={(e) => setCatMonths(Number(e.target.value))}
+                  >
+                    {[3, 6, 12, 24].map((n) => (
+                      <option key={n} value={n}>최근 {n}개월</option>
+                    ))}
+                  </select>
+                </SectionHead>
+                {!catMonthly ? (
+                  <Sk h={200} r={12} />
+                ) : catMonthly.series.length === 0 ? (
+                  <p className="text-sm text-zinc-500">이 기간에 기록된 지출이 없습니다.</p>
+                ) : (
+                  <>
+                    <Heatmap
+                      rows={catMonthlyRows}
+                      months={catMonthly.months}
+                      onCell={(key, ym) => setDrill({ kind: "item", key, ym })}
+                    />
+                    {catMonthly.series.length > CAT_ROW_LIMIT && (
+                      <button className="btn-ghost mt-3 !py-1.5 !text-xs" onClick={() => setCatAll((v) => !v)}>
+                        {catAll
+                          ? "상위 항목만 보기"
+                          : `나머지 ${catMonthly.series.length - CAT_ROW_LIMIT}개 항목 더 보기`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
 
       {/* 표의 칸 하나를 열어 보는 모달 — 월별 상세 표와 히트맵이 같이 쓴다 */}
       {drill && (drillView || drill.kind === "day") && (
