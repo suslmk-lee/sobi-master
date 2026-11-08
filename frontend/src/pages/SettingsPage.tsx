@@ -36,6 +36,7 @@ import {
   formatAmount,
   isClosed,
   mainCategories,
+  memberForCategory,
   parseAmount,
   Refs,
   thisMonth,
@@ -300,7 +301,17 @@ function RuleSection({ refs }: { refs: Refs }) {
             <option key={m.id} value={m.id}>{m.name}</option>
           ))}
         </select>
-        <select className="input-field" value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
+        <select
+          className="input-field"
+          value={f.categoryId}
+          onChange={(e) =>
+            setF({
+              ...f,
+              categoryId: e.target.value,
+              memberId: memberForCategory(refs.categories, f.categoryId, e.target.value, f.memberId),
+            })
+          }
+        >
           <option value="">카테고리</option>
           {categoryOptions(refs.categories).map((c) => (
             <option key={c.id} value={c.id}>{c.label}</option>
@@ -490,6 +501,15 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
   );
 
   const allMains = mainCategories(refs.categories);
+  // 카테고리 기본 귀속자 표시 (자기 값만 — 부가 주를 따르는 경우는 주에만 표시)
+  const memberBadge = (id?: number) => {
+    const name = id ? refs.members.find((m) => m.id === id)?.name : undefined;
+    return name ? (
+      <span className="badge ml-1.5 bg-white/[0.06] !text-[10px] text-zinc-300" title="카테고리 기본 귀속자">
+        → {name}
+      </span>
+    ) : null;
+  };
 
   const KIND_BADGE: Record<string, string> = {
     income: "bg-emerald-500/15 text-emerald-300",
@@ -504,6 +524,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
       {editing && (
         <CategoryEditModal
           cat={editing}
+          members={refs.members}
           subCount={refs.categories.filter((c) => c.parentId === editing.id).length}
           onClose={() => setEditing(null)}
           onDone={() => {
@@ -540,6 +561,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
                       {main.name}
                       {main.fixedCost && <span className="badge ml-2 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
+                      {memberBadge(main.defaultMemberId)}
                     </span>
                     {subs.length > 0 && (
                       <span className="label-mono">부 {subs.length}</span>
@@ -598,6 +620,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                         <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                         {s.name}
                         {s.fixedCost && <span className="badge ml-1 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
+                        {memberBadge(s.defaultMemberId)}
                       </span>
                       <select
                         className="input-field !w-auto !py-1.5 !text-xs"

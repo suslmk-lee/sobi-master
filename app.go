@@ -313,6 +313,16 @@ func (a *App) SetCategoryFixed(id int64, fixed bool) error {
 	return err
 }
 
+// SetCategoryDefaultMember 는 카테고리 기본 귀속자를 정한다(0 이면 비움).
+func (a *App) SetCategoryDefaultMember(id, memberID int64) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.SetCategoryDefaultMember(id, memberID)
+	logIf("SetCategoryDefaultMember", err)
+	return err
+}
+
 // SetCategoryParent 는 카테고리의 상위(주)를 바꾼다. parentID=0 이면 주로 승격.
 func (a *App) SetCategoryParent(id, parentID int64) error {
 	if err := a.ensure(); err != nil {

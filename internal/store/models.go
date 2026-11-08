@@ -23,6 +23,10 @@ type Category struct {
 	// 부는 자기 표시가 없어도 주가 고정비면 고정비로 본다.
 	FixedCost   bool `json:"fixedCost"`
 	ParentFixed bool `json:"parentFixed"`
+	// DefaultMemberID 는 카테고리 기본 귀속자(없으면 nil). ParentDefaultMemberID 는 상위 주의 기본 귀속자 —
+	// 부는 자기 값이 없으면 이 값을 쓴다. 화면은 카테고리를 고를 때 귀속자 칸을 이 값으로 채운다.
+	DefaultMemberID       *int64 `json:"defaultMemberId"`
+	ParentDefaultMemberID *int64 `json:"parentDefaultMemberId"`
 }
 
 // PaymentMethod 의 Type 은 card | cash | bank 중 하나.

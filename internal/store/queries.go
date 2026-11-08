@@ -48,7 +48,7 @@ func (s *Store) ListCategories() ([]Category, error) {
 	// 순서 값이 같으면 이름으로 갈라 항상 같은 결과가 나오게 한다.
 	rows, err := s.query(`
 SELECT c.id, c.name, c.kind, c.parent_id, COALESCE(p.name, ''), c.sort_order,
-       c.fixed_cost = 1, COALESCE(p.fixed_cost, 0) = 1
+       c.fixed_cost = 1, COALESCE(p.fixed_cost, 0) = 1, c.default_member_id, p.default_member_id
 FROM categories c LEFT JOIN categories p ON p.id = c.parent_id
 ORDER BY COALESCE(p.kind, c.kind),
          COALESCE(p.sort_order, c.sort_order), COALESCE(p.name, c.name),
@@ -60,11 +60,14 @@ ORDER BY COALESCE(p.kind, c.kind),
 	out := []Category{}
 	for rows.Next() {
 		var c Category
-		var pid sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &pid, &c.Parent, &c.SortOrder, &c.FixedCost, &c.ParentFixed); err != nil {
+		var pid, dm, pdm sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &pid, &c.Parent, &c.SortOrder, &c.FixedCost, &c.ParentFixed,
+			&dm, &pdm); err != nil {
 			return nil, err
 		}
 		c.ParentID = scanNullableID(pid)
+		c.DefaultMemberID = scanNullableID(dm)
+		c.ParentDefaultMemberID = scanNullableID(pdm)
 		c.FullName = c.Name
 		if c.Parent != "" {
 			c.FullName = c.Parent + " > " + c.Name
@@ -308,6 +311,30 @@ func (s *Store) SetCategoryFixed(id int64, fixed bool) error {
 		v = 1
 	}
 	res, err := s.exec(`UPDATE categories SET fixed_cost=? WHERE id=?`, v, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetCategoryDefaultMember 는 카테고리 기본 귀속자를 정한다. memberID 가 0 이면 비운다
+// (부는 비우면 상위 주의 기본 귀속자를 따른다).
+func (s *Store) SetCategoryDefaultMember(id, memberID int64) error {
+	var v interface{}
+	if memberID > 0 {
+		var n int
+		if err := s.queryRow(`SELECT COUNT(*) FROM members WHERE id=?`, memberID).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("귀속자를 찾을 수 없습니다")
+		}
+		v = memberID
+	}
+	res, err := s.exec(`UPDATE categories SET default_member_id=? WHERE id=?`, v, id)
 	if err != nil {
 		return err
 	}

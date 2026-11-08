@@ -22,6 +22,7 @@ import {
   CLOSED_HINT,
   formatAmount,
   isClosed,
+  memberForCategory,
   methodLabel,
   parseAmount,
   Refs,
@@ -302,7 +303,16 @@ function PassForm({
           </select>
         </Field>
         <Field label="충전 카테고리 (기본)">
-          <select className="input-field" value={f.categoryId} onChange={(e) => set({ categoryId: e.target.value })}>
+          <select
+            className="input-field"
+            value={f.categoryId}
+            onChange={(e) =>
+              set({
+                categoryId: e.target.value,
+                memberId: memberForCategory(refs.categories, f.categoryId, e.target.value, f.memberId),
+              })
+            }
+          >
             <option value="">선택 안 함</option>
             {categoryOptions(refs.categories, "expense").map((c) => (
               <option key={c.id} value={c.id}>{c.label}</option>

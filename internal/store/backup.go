@@ -18,7 +18,8 @@ CREATE TABLE categories (
 	kind       TEXT NOT NULL DEFAULT 'expense',
 	parent_id  INTEGER,
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	fixed_cost INTEGER NOT NULL DEFAULT 0
+	fixed_cost INTEGER NOT NULL DEFAULT 0,
+	default_member_id INTEGER
 );
 CREATE TABLE payment_methods (
 	id              INTEGER PRIMARY KEY,
@@ -225,15 +226,15 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				return []interface{}{id, name}, e
 			}),
 		copy("categories",
-			`SELECT id, name, kind, parent_id, sort_order, fixed_cost FROM categories`,
-			`INSERT INTO categories(id, name, kind, parent_id, sort_order, fixed_cost) VALUES(?,?,?,?,?,?)`,
+			`SELECT id, name, kind, parent_id, sort_order, fixed_cost, default_member_id FROM categories`,
+			`INSERT INTO categories(id, name, kind, parent_id, sort_order, fixed_cost, default_member_id) VALUES(?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
 				var id int64
 				var name, kind string
-				var parent sql.NullInt64
+				var parent, defMember sql.NullInt64
 				var order, fixed int
-				e := r.Scan(&id, &name, &kind, &parent, &order, &fixed)
-				return []interface{}{id, name, kind, nullable(parent), order, fixed}, e
+				e := r.Scan(&id, &name, &kind, &parent, &order, &fixed, &defMember)
+				return []interface{}{id, name, kind, nullable(parent), order, fixed, nullable(defMember)}, e
 			}),
 		copy("payment_methods",
 			`SELECT id, name, type, issuer, billing_day, cycle_start_day, statement_start_day, perf_target, color, cashback_bp, cashback_bonus_bp, cashback_bonus_days, annual_fee, annual_fee_global, benefit_url, benefit_note, closed_at FROM payment_methods`,
