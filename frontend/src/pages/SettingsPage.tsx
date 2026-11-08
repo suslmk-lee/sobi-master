@@ -26,6 +26,7 @@ import {
   SetPaymentMethodClosed,
 } from "../../wailsjs/go/main/App";
 import CloseCardModal from "../CloseCardModal";
+import CategoryEditModal from "../CategoryEditModal";
 import { Archive, CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
 import { main, store } from "../../wailsjs/go/models";
@@ -377,6 +378,8 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
   // 새 주 카테고리
   const [mainName, setMainName] = useState("");
   const [mainKind, setMainKind] = useState("expense");
+  // 수정 팝업에서 고치는 중인 카테고리
+  const [editing, setEditing] = useState<store.Category | null>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
     setErr("");
@@ -498,6 +501,17 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
   return (
     <div className="surface space-y-5 p-5">
       {confirmUI}
+      {editing && (
+        <CategoryEditModal
+          cat={editing}
+          subCount={refs.categories.filter((c) => c.parentId === editing.id).length}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      )}
       <SectionHead
         title="카테고리 (주/부)"
         desc="주 아래에 부를 두면 통계·예산이 주 기준으로 합산됩니다(부 단위 상세는 통계 탭에서 토글). 거래는 주·부 어디에나 분류할 수 있습니다."
@@ -535,6 +549,12 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                         setSubName("");
                       }}
                     ><Plus className="h-3.5 w-3.5" />부</button>
+                    <button
+                      className="btn-icon"
+                      title="수정"
+                      aria-label={`${main.name} 수정`}
+                      onClick={() => setEditing(main)}
+                    ><Pencil className="h-4 w-4" /></button>
                     <button
                       className="btn-icon hover:!text-rose-300"
                       title="삭제"
@@ -588,6 +608,12 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                           ))}
                         <option value="0">주 카테고리로 올리기</option>
                       </select>
+                      <button
+                        className="btn-icon"
+                        title="수정"
+                        aria-label={`${s.name} 수정`}
+                        onClick={() => setEditing(s)}
+                      ><Pencil className="h-4 w-4" /></button>
                       <button
                         className="btn-icon hover:!text-rose-300"
                         title="삭제"

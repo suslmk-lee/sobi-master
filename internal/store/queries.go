@@ -268,6 +268,37 @@ func (s *Store) SetCategoryParent(id, parentID int64) error {
 	return err
 }
 
+// RenameCategory 는 카테고리 이름을 바꾼다. 거래·규칙·예산·정기결제는 category_id 로 이어져 있어
+// 연결이 끊기지 않는다. 이름은 같은 자리(같은 주 아래, 또는 주끼리) 안에서만 겹치지 않으면 된다.
+func (s *Store) RenameCategory(id int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("카테고리 이름을 입력하세요")
+	}
+	var parent sql.NullInt64
+	if err := s.queryRow(`SELECT parent_id FROM categories WHERE id=?`, id).Scan(&parent); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		return err
+	}
+	// 유일 인덱스(categories_parent_name)에 걸리기 전에 알아듣기 쉬운 말로 막는다
+	var dup int
+	if err := s.queryRow(`SELECT COUNT(*) FROM categories WHERE COALESCE(parent_id, 0) = ? AND name = ? AND id <> ?`,
+		parent.Int64, name, id).Scan(&dup); err != nil {
+		return err
+	}
+	if dup > 0 {
+		where := "주 카테고리 중에"
+		if parent.Valid {
+			where = "같은 주 아래에"
+		}
+		return fmt.Errorf("%s 이미 '%s' 카테고리가 있습니다", where, name)
+	}
+	_, err := s.exec(`UPDATE categories SET name=? WHERE id=?`, name, id)
+	return err
+}
+
 func (s *Store) DeleteCategory(id int64) error {
 	_, err := s.exec(`DELETE FROM categories WHERE id=?`, id)
 	return err

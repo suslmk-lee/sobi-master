@@ -313,6 +313,16 @@ func (a *App) SetCategoryParent(id, parentID int64) error {
 	return err
 }
 
+// RenameCategory 는 카테고리 이름을 바꾼다(설정 > 카테고리의 수정 팝업).
+func (a *App) RenameCategory(id int64, name string) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.RenameCategory(id, name)
+	logIf("RenameCategory", err)
+	return err
+}
+
 func (a *App) DeleteCategory(id int64) error {
 	if err := a.ensure(); err != nil {
 		return err
