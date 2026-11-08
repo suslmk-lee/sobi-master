@@ -264,7 +264,9 @@ type billCtx struct {
 	recent map[int64]recentSpend // 카드 id → 최근 지출
 }
 
-// recentSpend 는 예상 지출의 근거: 최근 Days 일(오늘 포함) 동안의 지출 합계.
+// recentSpend 는 예상 지출의 근거: 최근 Days 일(오늘 포함) 동안 청구로 넘어간(선결제하지 않은) 지출 합계.
+// 선결제 캐시백 카드처럼 쓰자마자 갚는 카드는 앞으로의 사용분도 대부분 선결제될 것이므로,
+// 남은 날 예상은 '선결제하지 않은 사용 속도'로 잡아야 실제 청구액에 가깝다.
 type recentSpend struct {
 	Sum  int64
 	Days int
@@ -291,7 +293,7 @@ WHERE payment_method_id=? AND direction='expense' AND date <= ?`,
 	from := c.today.AddDate(0, 0, -(v.Days - 1))
 	if err := c.s.queryRow(`
 SELECT COALESCE(SUM(amount),0) FROM transactions
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
+WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND paid_at = ''`,
 		cardID, fmtDay(from), fmtDay(c.today)).Scan(&v.Sum); err != nil {
 		return recentSpend{}, err
 	}

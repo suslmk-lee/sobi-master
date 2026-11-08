@@ -76,7 +76,7 @@ const estPart = (b: store.CardBill) => Math.max(0, b.projected - b.due);
 
 // 카드 청구 상세 팝업 위에 붙이는 금액 구성 설명. 목록에는 기록된 거래만 나오므로
 // 출금 예상액과 목록 합계가 왜 다른지(남은 기간 예상분·선결제) 여기서 풀어 준다.
-function BillBreakdown({ bill }: { bill: store.CardBill }) {
+function BillBreakdown({ bill, prepaidCount }: { bill: store.CardBill; prepaidCount: number }) {
   const est = estPart(bill);
   const daily = bill.remainDays > 0 ? Math.round(est / bill.remainDays) : 0;
   return (
@@ -86,7 +86,7 @@ function BillBreakdown({ bill }: { bill: store.CardBill }) {
         <strong className="num font-medium text-rose-300">{won(bill.projected)}</strong>
         {est > 0 && (
           <>
-            {" = 지금까지 이용 "}
+            {` = 지금까지 이용${bill.prepaid > 0 ? "(선결제 제외)" : ""} `}
             <span className="num text-zinc-200">{won(bill.due)}</span>
             {` + 남은 ${bill.remainDays}일 예상 `}
             <span className="num text-amber-300">{won(est)}</span>
@@ -95,8 +95,8 @@ function BillBreakdown({ bill }: { bill: store.CardBill }) {
       </p>
       {est > 0 && (
         <p className="text-zinc-500">
-          예상분은 이 카드의 최근 {bill.avgDays}일 일평균(약 <span className="num">{won(daily)}</span>)을 남은
-          날짜만큼 더한 값입니다. 아래 목록에는 실제로 기록된 거래만 나옵니다.
+          예상분은 이 카드의 최근 {bill.avgDays}일 일평균(약 <span className="num">{won(daily)}</span>, 선결제분 제외)을
+          남은 날짜만큼 더한 값입니다. 아래 목록에는 실제로 기록된 거래만 나옵니다.
         </p>
       )}
       {!bill.closed && est === 0 && (
@@ -104,7 +104,8 @@ function BillBreakdown({ bill }: { bill: store.CardBill }) {
       )}
       {bill.prepaid > 0 && (
         <p className="text-zinc-500">
-          이미 갚은 <span className="num">{won(bill.prepaid)}</span>은 출금액에서 뺐습니다.
+          선결제한 {prepaidCount > 0 ? `${prepaidCount}건 ` : ""}
+          <span className="num">{won(bill.prepaid)}</span>은 이미 갚아서 출금액과 아래 목록에서 뺐습니다.
         </p>
       )}
     </div>
@@ -263,7 +264,7 @@ function TransferCard({
               <p className="label-mono">권장 이체액</p>
               <p className="num text-3xl font-light tracking-tight text-white">{won(t.suggested)}</p>
               <p className="num text-xs leading-relaxed text-zinc-400">
-                지금까지 이용 {won(t.confirmed)}
+                지금까지 이용{t.bills.some((b) => b.prepaid > 0) ? "(선결제 제외)" : ""} {won(t.confirmed)}
                 {t.estimated > 0 && (
                   <>
                     {" "}
@@ -738,9 +739,12 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
     load();
   }, [load]);
 
+  // 결제 내역: 이용기간의 거래 중 선결제하지 않은(청구될) 것만. 선결제분은 출금액에서 빠지므로
+  // 목록에서도 빼야 목록 합계와 청구액이 맞는다(빠진 건수·금액은 팝업 위 설명에 적는다).
+  const [drillPrepaid, setDrillPrepaid] = useState(0);
   const loadDrill = useCallback(async (b: store.CardBill) => {
     try {
-      setDrillTx(
+      const all =
         (await ListTransactions(
           new store.TxFilter({
             from: b.periodStart,
@@ -749,10 +753,12 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
             paymentMethodId: b.cardId,
             sort: "amount_desc",
           })
-        )) ?? []
-      );
+        )) ?? [];
+      setDrillTx(all.filter((t) => !t.paidAt));
+      setDrillPrepaid(all.filter((t) => t.paidAt).length);
     } catch {
       setDrillTx([]);
+      setDrillPrepaid(0);
     }
   }, []);
 
@@ -1178,7 +1184,7 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
         <TxDrillModal
           title={drill.cardName}
           ym={drill.periodEnd.slice(0, 7)}
-          heading={`${drill.cardName} 이용 내역 · ${drill.periodStart} ~ ${drill.periodEnd}`}
+          heading={`${drill.cardName} 결제 내역 · ${drill.periodStart} ~ ${drill.periodEnd}`}
           summary={
             // 팝업에서 거래를 고치면 계획을 다시 불러오므로, 같은 카드·출금일의 최신 청구서로 설명한다
             <BillBreakdown
@@ -1187,6 +1193,7 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
                   (b) => b.cardId === drill.cardId && b.dueDate === drill.dueDate
                 ) ?? drill
               }
+              prepaidCount={drillPrepaid}
             />
           }
           months={[]}
