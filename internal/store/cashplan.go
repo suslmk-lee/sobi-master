@@ -29,6 +29,9 @@ const (
 	billCloseGapDays = 10
 	// spendAvgDays: 열린 이용기간의 남은 지출을 짐작할 때 보는 최근 일수.
 	spendAvgDays = 90
+	// minSpendAvgDays: 쓰기 시작한 지 얼마 안 된 카드라도 일평균을 낼 때 이보다 짧게 나누지 않는다.
+	// 며칠치 기록에 큰 결제 한 건이 끼면 남은 기간 전체로 부풀려지기 때문이다.
+	minSpendAvgDays = 30
 	// minHorizonDays: 타임라인이 최소한 보여 줄 일수.
 	minHorizonDays = 40
 	// maxBalanceLookbackMonths: 오래된 잔액 기록에서 출발해도 청구서를 계산할 최대 과거 개월 수(쿼리 폭주 방지).
@@ -217,6 +220,24 @@ func projectedBill(due, recentSum int64, avgDays, remainingDays int) int64 {
 	return due + recentSum*int64(remainingDays)/int64(avgDays)
 }
 
+// spendWindowDays 는 일평균 지출을 낼 때 나눌 일수.
+// 기본은 최근 spendAvgDays 일. 카드를 처음 쓴 날(first)이 그보다 최근이면 첫 사용일부터 오늘까지로
+// 줄인다 — 열흘 쓴 새 카드를 90일로 나누면 예상치가 1/9 로 작아진다. 다만 minSpendAvgDays 보다는
+// 줄이지 않는다. first 가 영(사용 기록 없음)이면 기본값.
+func spendWindowDays(today, first time.Time) int {
+	if first.IsZero() {
+		return spendAvgDays
+	}
+	days := int(today.Sub(first).Hours()/24) + 1 // 첫 사용일과 오늘을 모두 포함
+	switch {
+	case days > spendAvgDays:
+		return spendAvgDays
+	case days < minSpendAvgDays:
+		return minSpendAvgDays
+	}
+	return days
+}
+
 // salaryDate 는 (y, m) 달의 월급 입금일: 월급일(말일 보정)이 휴일이면 직전 영업일.
 func salaryDate(cal *holiday.Calendar, y int, m time.Month, day int) time.Time {
 	return cal.PrevBusinessDay(clampDay(y, m, day))
@@ -239,21 +260,39 @@ type billCtx struct {
 	s      *Store
 	cal    *holiday.Calendar
 	today  time.Time
-	recent map[int64]int64 // 카드 id → 최근 90일 지출 합계
+	recent map[int64]recentSpend // 카드 id → 최근 지출
 }
 
-func (c *billCtx) recentSum(cardID int64) (int64, error) {
+// recentSpend 는 예상 지출의 근거: 최근 Days 일(오늘 포함) 동안의 지출 합계.
+type recentSpend struct {
+	Sum  int64
+	Days int
+}
+
+func (c *billCtx) recentSpend(cardID int64) (recentSpend, error) {
 	if v, ok := c.recent[cardID]; ok {
 		return v, nil
 	}
-	from := c.today.AddDate(0, 0, -(spendAvgDays - 1))
-	var v int64
-	err := c.s.queryRow(`
+	var first sql.NullString
+	if err := c.s.queryRow(`
+SELECT MIN(date) FROM transactions
+WHERE payment_method_id=? AND direction='expense' AND date <= ?`,
+		cardID, fmtDay(c.today)).Scan(&first); err != nil {
+		return recentSpend{}, err
+	}
+	var firstDay time.Time
+	if first.Valid {
+		if d, err := time.Parse(dateLayout, first.String); err == nil {
+			firstDay = d
+		}
+	}
+	v := recentSpend{Days: spendWindowDays(c.today, firstDay)}
+	from := c.today.AddDate(0, 0, -(v.Days - 1))
+	if err := c.s.queryRow(`
 SELECT COALESCE(SUM(amount),0) FROM transactions
 WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
-		cardID, fmtDay(from), fmtDay(c.today)).Scan(&v)
-	if err != nil {
-		return 0, err
+		cardID, fmtDay(from), fmtDay(c.today)).Scan(&v.Sum); err != nil {
+		return recentSpend{}, err
 	}
 	c.recent[cardID] = v
 	return v, nil
@@ -282,12 +321,15 @@ WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
 	b.Projected = b.Due
 	// 해지된 카드는 앞으로 쓰지 않으므로 예상 지출을 더하지 않는다(해지 전 이용분만 청구).
 	if !b.Closed && !pm.IsClosed(fmtDay(c.today)) {
-		sum, err := c.recentSum(pm.ID)
+		r, err := c.recentSpend(pm.ID)
 		if err != nil {
 			return b, err
 		}
 		remaining := int(end.Sub(c.today).Hours() / 24) // 내일부터 이용기간 끝까지
-		b.Projected = projectedBill(b.Due, sum, spendAvgDays, remaining)
+		b.Projected = projectedBill(b.Due, r.Sum, r.Days, remaining)
+		if b.Projected > b.Due {
+			b.AvgDays, b.RemainDays = r.Days, remaining
+		}
 	}
 	return b, nil
 }
@@ -425,7 +467,7 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, 
 	plan.NextSalary = fmtDay(nextSalary)
 
 	// 청구서: 잔액 기준일 이전 달부터 오늘+3개월 뒤까지
-	bc := &billCtx{s: s, cal: cal, today: today, recent: map[int64]int64{}}
+	bc := &billCtx{s: s, cal: cal, today: today, recent: map[int64]recentSpend{}}
 	fromMonth := monthStart(today).AddDate(0, -1, 0)
 	if bal != nil {
 		if d, err := time.Parse(dateLayout, bal.AsOf); err == nil {

@@ -133,3 +133,32 @@ func TestProjectedBill(t *testing.T) {
 		t.Errorf("got %d", got)
 	}
 }
+
+func TestSpendWindowDays(t *testing.T) {
+	today := date("2026-11-08")
+	cases := []struct {
+		first string // "" 이면 사용 기록 없음
+		want  int
+	}{
+		{"", spendAvgDays},              // 기록 없음 → 기본 90일
+		{"2026-01-01", spendAvgDays},    // 오래 쓴 카드 → 최근 90일
+		{"2026-08-11", spendAvgDays},    // 딱 90일째(8/11~11/8)
+		{"2026-08-12", 89},              // 89일
+		{"2026-09-18", 52},              // 9/18~11/8
+		{"2026-10-30", minSpendAvgDays}, // 열흘 쓴 새 카드 → 30일보다 짧게 나누지 않음
+		{"2026-11-08", minSpendAvgDays}, // 오늘 처음 씀
+	}
+	for _, c := range cases {
+		var first time.Time
+		if c.first != "" {
+			first = date(c.first)
+		}
+		if got := spendWindowDays(today, first); got != c.want {
+			t.Errorf("first=%q: got %d want %d", c.first, got, c.want)
+		}
+	}
+	// 새 카드(30일 하한): 10일 동안 883,700 → 883,700/30 × 남은 11일 = 324,023 (90일로 나누면 108,007)
+	if got := projectedBill(883700, 883700, spendWindowDays(today, date("2026-10-30")), 11); got != 883700+324023 {
+		t.Errorf("새 카드 예상: got %d", got)
+	}
+}
