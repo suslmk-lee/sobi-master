@@ -13,6 +13,7 @@ import CloseCardModal from "../CloseCardModal";
 import EditModal from "../EditModal";
 import TxDrillModal from "../TxDrillModal";
 import IconTile from "../components/ui/IconTile";
+import Portal from "../components/ui/Portal";
 import { store } from "../../wailsjs/go/models";
 import RingGauge from "../components/ui/RingGauge";
 import { formatAmount, isClosed, parseAmount, Refs, today, won } from "../lib";
@@ -334,7 +335,18 @@ function CardForm({
 export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void; refs: Refs }) {
   const [statuses, setStatuses] = useState<store.CardStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  // 위쪽 폼은 새 카드 등록 전용. 기존 카드 수정은 팝업(editCard)으로 연다 —
+  // 위쪽 폼에 채우면 아래쪽 카드에서 눌렀을 때 화면에 아무 변화가 없어 보였다.
   const [editing, setEditing] = useState<FormState>({ ...EMPTY });
+  const [editCard, setEditCard] = useState<FormState | null>(null);
+  useEffect(() => {
+    if (!editCard) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEditCard(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editCard]);
   // 선택은 id 로만 들고 있다가 목록에서 찾는다 — 카드 정보를 고쳐도 화면이 같이 갱신되도록
   const [selectedId, setSelectedId] = useState(0);
   const [confirm, confirmUI] = useConfirm();
@@ -364,7 +376,7 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
   };
 
   const edit = (st: store.CardStatus) =>
-    setEditing({
+    setEditCard({
       id: st.card.id,
       issuer: st.card.issuer,
       name: st.card.name,
@@ -445,6 +457,30 @@ export default function CardsPage({ reloadRefs, refs }: { reloadRefs: () => void
         }}
         onCancel={() => setEditing({ ...EMPTY })}
       />
+
+      {/* 카드 수정 팝업 (Esc · 바깥 클릭 · 취소로 닫기) */}
+      {editCard && (
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setEditCard(null);
+            }}
+          >
+            <div role="dialog" aria-modal="true" aria-label={`${editCard.name} 수정`} className="w-full max-w-3xl">
+              <CardForm
+                initial={editCard}
+                onSaved={() => {
+                  setEditCard(null);
+                  load();
+                  reloadRefs();
+                }}
+                onCancel={() => setEditCard(null)}
+              />
+            </div>
+          </div>
+        </Portal>
+      )}
 
       {loading && statuses.length === 0 && <CardsSkeleton />}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
