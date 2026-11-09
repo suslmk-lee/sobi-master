@@ -44,6 +44,26 @@ wails dev      # development mode (hot reload)
 wails build    # production build → build/bin/sobi.app (.exe when built on Windows)
 ```
 
+## macOS distribution (DMG)
+
+```sh
+scripts/build-dmg.sh          # universal (Apple Silicon + Intel) → build/bin/sobi-<version>-macOS-universal.dmg
+scripts/build-dmg.sh arm64    # Apple Silicon only (faster build, half the DMG size)
+```
+
+- Bump the version via `info.productVersion` in `wails.json`.
+- The DMG contains `sobi.app`, an Applications shortcut and a first-run guide (Korean).
+  Recipients drag the app into Applications and fill in `config.json` as described.
+- By default the app is ad-hoc signed, so Gatekeeper warns on first launch on another Mac:
+  System Settings → Privacy & Security → **Open Anyway** (or
+  `xattr -dr com.apple.quarantine /Applications/sobi.app`).
+- With an Apple Developer ID certificate the script signs and notarizes so no warning appears:
+
+  ```sh
+  xcrun notarytool store-credentials sobi-notary   # once (Apple ID, app-specific password, team ID)
+  SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
+  ```
+
 ## Configuration (config.json) — required
 
 The app needs a Supabase connection string. On first launch an empty template file is

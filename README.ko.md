@@ -36,6 +36,26 @@ wails dev      # 개발 모드 (핫 리로드)
 wails build    # 배포 빌드 → build/bin/sobi.app (Windows 에서 빌드하면 .exe)
 ```
 
+## macOS 배포 (DMG)
+
+```sh
+scripts/build-dmg.sh          # 유니버설(Apple Silicon + Intel) → build/bin/sobi-<버전>-macOS-universal.dmg
+scripts/build-dmg.sh arm64    # Apple Silicon 전용 (빌드가 빠르고 DMG 가 절반 크기)
+```
+
+- 버전은 `wails.json` 의 `info.productVersion` 을 올려서 바꾼다.
+- DMG 를 열면 `sobi.app`, Applications 바로가기, `처음 실행 안내.txt` 가 있다.
+  받는 사람은 앱을 Applications 로 끌어 놓고, 안내대로 `config.json` 에 연결 문자열을 넣으면 된다.
+- 기본은 ad-hoc 서명이라 받는 맥에서 처음 열 때 Gatekeeper 경고가 뜬다.
+  시스템 설정 → 개인정보 보호 및 보안 → **그래도 열기** 를 한 번 누르면 된다
+  (안 되면 `xattr -dr com.apple.quarantine /Applications/sobi.app`).
+- Apple Developer ID 인증서가 있으면 경고 없이 열리도록 정식 서명·공증까지 할 수 있다.
+
+  ```sh
+  xcrun notarytool store-credentials sobi-notary   # 처음 한 번 (Apple ID·앱 암호·팀 ID 입력)
+  SIGN_IDENTITY="Developer ID Application: 이름 (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
+  ```
+
 ## 설정 파일 (config.json) — 필수
 
 앱이 Supabase 에 접속하려면 설정 파일이 있어야 한다. 파일이 없으면
