@@ -34,6 +34,8 @@ type App struct {
 	backupDone chan struct{}
 	// autoPostDone 은 정기결제 자동 등록 루프를 멈추는 신호.
 	autoPostDone chan struct{}
+	// update 는 마지막 업데이트 확인 결과와 내려받은 파일 (updater.go).
+	update updateState
 }
 
 // backupInterval 는 앱 실행 중 자동 로컬 백업 주기.

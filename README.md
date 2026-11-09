@@ -64,6 +64,23 @@ scripts/build-dmg.sh arm64    # Apple Silicon only (faster build, half the DMG s
   SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
   ```
 
+## Releasing a new version (in-app update notice)
+
+The header shows the current version (`v1.0.0`). When a higher version is published on GitHub Releases,
+a **새 버전 받기** (get new version) button appears; it shows the release notes of every newer version
+and downloads the DMG into ~/Downloads. Clicking the version label checks immediately; otherwise the app
+checks shortly after launch and every 6 hours. Files downloaded by the app carry no quarantine flag,
+so Gatekeeper does not warn again.
+
+```sh
+scripts/release.sh 1.1.0          # bump wails.json → build DMG → draft notes (build/bin/release-notes-v1.1.0.md)
+git commit -am "release: v1.1.0" && git tag v1.1.0 && git push origin HEAD v1.1.0
+```
+
+Then on GitHub **Releases → Draft a new release**: pick tag `v1.1.0`, paste and edit the notes, attach the
+DMG and publish. Tags must be `v<version>`; notes are Markdown (`##` headings, `-` lists). Drafts and
+pre-releases are ignored by the app.
+
 ## Configuration (config.json) — required
 
 The app needs a Supabase connection string. On first launch an empty template file is

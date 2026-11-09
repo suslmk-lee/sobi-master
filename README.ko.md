@@ -56,6 +56,24 @@ scripts/build-dmg.sh arm64    # Apple Silicon 전용 (빌드가 빠르고 DMG �
   SIGN_IDENTITY="Developer ID Application: 이름 (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
   ```
 
+## 새 버전 배포와 앱 안 업데이트 알림
+
+앱 헤더에 지금 버전(`v1.0.0`)이 보이고, GitHub Releases 에 더 높은 버전이 올라오면 **새 버전 받기** 버튼이 나타난다.
+누르면 지금 버전 이후의 변경 사항(릴리스 설명)을 버전별로 보여 주고, **내려받기** 로 DMG 를 다운로드 폴더에 받는다.
+받은 뒤 **설치 파일 열기** → sobi.app 을 Applications 로 끌어 '대치' → 앱 재시작. 앱이 직접 받은 파일이라 Gatekeeper 경고가 다시 뜨지 않는다.
+버전 표시를 누르면 바로 확인하고, 평소에는 앱이 켜진 뒤와 6시간마다 조용히 확인한다.
+
+새 버전을 낼 때:
+
+```sh
+scripts/release.sh 1.1.0          # wails.json 버전 → DMG 빌드 → 변경 사항 초안(build/bin/release-notes-v1.1.0.md)
+git commit -am "release: v1.1.0" && git tag v1.1.0 && git push origin HEAD v1.1.0
+```
+
+그다음 GitHub 의 **Releases → Draft a new release** 에서 태그 `v1.1.0` 을 고르고, 초안을 다듬어 설명에 붙이고,
+DMG 를 첨부해 게시한다. 태그는 반드시 `v<버전>`, 설명은 마크다운(제목 `##`, 목록 `-`)을 쓴다.
+초안(draft)·사전 배포(pre-release)로 올린 릴리스는 앱이 무시한다.
+
 ## 설정 파일 (config.json) — 필수
 
 앱이 Supabase 에 접속하려면 설정 파일이 있어야 한다. 파일이 없으면

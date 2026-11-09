@@ -30,6 +30,7 @@ import SettingsPage from "./pages/SettingsPage";
 import { useBackendBusy } from "./platform/busy";
 import "./styles/loading.css";
 import Brand from "./components/ui/Brand";
+import UpdateControl from "./components/UpdateControl";
 import IconTile from "./components/ui/IconTile";
 import AppearanceSettings from "./components/settings/AppearanceSettings";
 
@@ -103,6 +104,8 @@ export default function App() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <Brand />
             <div className="flex items-center gap-2">
+              {/* 지금 버전 · 새 버전이 있으면 '새 버전 받기' */}
+              <UpdateControl />
               {/* 설정은 탭이 아니라 헤더의 작은 기어 아이콘으로 들어간다 (열려 있으면 민트로 표시) */}
               <button
                 type="button"
