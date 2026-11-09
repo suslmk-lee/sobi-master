@@ -44,6 +44,43 @@ wails dev      # development mode (hot reload)
 wails build    # production build → build/bin/sobi.app (.exe when built on Windows)
 ```
 
+## macOS distribution (DMG)
+
+```sh
+scripts/build-dmg.sh          # universal (Apple Silicon + Intel) → build/bin/sobi-<version>-macOS-universal.dmg
+scripts/build-dmg.sh arm64    # Apple Silicon only (faster build, half the DMG size)
+```
+
+- Bump the version via `info.productVersion` in `wails.json`.
+- The DMG contains `sobi.app`, an Applications shortcut and a first-run guide (Korean).
+  Recipients drag the app into Applications and fill in `config.json` as described.
+- By default the app is ad-hoc signed, so Gatekeeper warns on first launch on another Mac:
+  System Settings → Privacy & Security → **Open Anyway** (or
+  `xattr -dr com.apple.quarantine /Applications/sobi.app`).
+- With an Apple Developer ID certificate the script signs and notarizes so no warning appears:
+
+  ```sh
+  xcrun notarytool store-credentials sobi-notary   # once (Apple ID, app-specific password, team ID)
+  SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
+  ```
+
+## Releasing a new version (in-app update notice)
+
+The header shows the current version (`v1.0.0`). When a higher version is published on GitHub Releases,
+a **새 버전 받기** (get new version) button appears; it shows the release notes of every newer version
+and downloads the DMG into ~/Downloads. Clicking the version label checks immediately; otherwise the app
+checks shortly after launch and every 6 hours. Files downloaded by the app carry no quarantine flag,
+so Gatekeeper does not warn again.
+
+```sh
+scripts/release.sh 1.1.0          # bump wails.json → build DMG → draft notes (build/bin/release-notes-v1.1.0.md)
+git commit -am "release: v1.1.0" && git tag v1.1.0 && git push origin HEAD v1.1.0
+```
+
+Then on GitHub **Releases → Draft a new release**: pick tag `v1.1.0`, paste and edit the notes, attach the
+DMG and publish. Tags must be `v<version>`; notes are Markdown (`##` headings, `-` lists). Drafts and
+pre-releases are ignored by the app.
+
 ## Configuration (config.json) — required
 
 The app needs a Supabase connection string. On first launch an empty template file is

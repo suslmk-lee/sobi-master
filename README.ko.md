@@ -36,6 +36,44 @@ wails dev      # 개발 모드 (핫 리로드)
 wails build    # 배포 빌드 → build/bin/sobi.app (Windows 에서 빌드하면 .exe)
 ```
 
+## macOS 배포 (DMG)
+
+```sh
+scripts/build-dmg.sh          # 유니버설(Apple Silicon + Intel) → build/bin/sobi-<버전>-macOS-universal.dmg
+scripts/build-dmg.sh arm64    # Apple Silicon 전용 (빌드가 빠르고 DMG 가 절반 크기)
+```
+
+- 버전은 `wails.json` 의 `info.productVersion` 을 올려서 바꾼다.
+- DMG 를 열면 `sobi.app`, Applications 바로가기, `처음 실행 안내.txt` 가 있다.
+  받는 사람은 앱을 Applications 로 끌어 놓고, 안내대로 `config.json` 에 연결 문자열을 넣으면 된다.
+- 기본은 ad-hoc 서명이라 받는 맥에서 처음 열 때 Gatekeeper 경고가 뜬다.
+  시스템 설정 → 개인정보 보호 및 보안 → **그래도 열기** 를 한 번 누르면 된다
+  (안 되면 `xattr -dr com.apple.quarantine /Applications/sobi.app`).
+- Apple Developer ID 인증서가 있으면 경고 없이 열리도록 정식 서명·공증까지 할 수 있다.
+
+  ```sh
+  xcrun notarytool store-credentials sobi-notary   # 처음 한 번 (Apple ID·앱 암호·팀 ID 입력)
+  SIGN_IDENTITY="Developer ID Application: 이름 (TEAMID)" NOTARY_PROFILE=sobi-notary scripts/build-dmg.sh
+  ```
+
+## 새 버전 배포와 앱 안 업데이트 알림
+
+앱 헤더에 지금 버전(`v1.0.0`)이 보이고, GitHub Releases 에 더 높은 버전이 올라오면 **새 버전 받기** 버튼이 나타난다.
+누르면 지금 버전 이후의 변경 사항(릴리스 설명)을 버전별로 보여 주고, **내려받기** 로 DMG 를 다운로드 폴더에 받는다.
+받은 뒤 **설치 파일 열기** → sobi.app 을 Applications 로 끌어 '대치' → 앱 재시작. 앱이 직접 받은 파일이라 Gatekeeper 경고가 다시 뜨지 않는다.
+버전 표시를 누르면 바로 확인하고, 평소에는 앱이 켜진 뒤와 6시간마다 조용히 확인한다.
+
+새 버전을 낼 때:
+
+```sh
+scripts/release.sh 1.1.0          # wails.json 버전 → DMG 빌드 → 변경 사항 초안(build/bin/release-notes-v1.1.0.md)
+git commit -am "release: v1.1.0" && git tag v1.1.0 && git push origin HEAD v1.1.0
+```
+
+그다음 GitHub 의 **Releases → Draft a new release** 에서 태그 `v1.1.0` 을 고르고, 초안을 다듬어 설명에 붙이고,
+DMG 를 첨부해 게시한다. 태그는 반드시 `v<버전>`, 설명은 마크다운(제목 `##`, 목록 `-`)을 쓴다.
+초안(draft)·사전 배포(pre-release)로 올린 릴리스는 앱이 무시한다.
+
 ## 설정 파일 (config.json) — 필수
 
 앱이 Supabase 에 접속하려면 설정 파일이 있어야 한다. 파일이 없으면
