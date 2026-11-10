@@ -363,6 +363,7 @@ func (a *App) GetSubscriptionMonth(year, month int) (SubMonth, error) {
 	if err != nil {
 		return SubMonth{}, err
 	}
+	subs = regularSubs(subs) // 회비는 아래 회비 장부(ListDues)에서 따로 본다
 
 	cal, err := a.st.Calendar()
 	if err != nil {

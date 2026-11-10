@@ -105,7 +105,11 @@ CREATE TABLE subscriptions (
 	day_rule          TEXT NOT NULL DEFAULT 'day',
 	week_nth          INTEGER NOT NULL DEFAULT 1,
 	weekday           INTEGER NOT NULL DEFAULT 5,
-	holiday_rule      TEXT NOT NULL DEFAULT 'next'
+	holiday_rule      TEXT NOT NULL DEFAULT 'next',
+	kind              TEXT NOT NULL DEFAULT '',
+	paid_through      TEXT NOT NULL DEFAULT '',
+	paid_through_at   TEXT NOT NULL DEFAULT '',
+	paid_through_tx   INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE subscription_posts (
 	subscription_id INTEGER NOT NULL,
@@ -152,6 +156,12 @@ CREATE TABLE prepaid_charges (
 	transaction_id INTEGER PRIMARY KEY,
 	pass_id        INTEGER NOT NULL,
 	credit         INTEGER NOT NULL
+);
+CREATE TABLE dues_links (
+	transaction_id  INTEGER PRIMARY KEY,
+	subscription_id INTEGER NOT NULL,
+	state           TEXT NOT NULL,
+	created_at      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE prepaid_uses (
 	id         INTEGER PRIMARY KEY,
@@ -281,24 +291,27 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 			`SELECT id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
 			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since,
-			        day_rule, week_nth, weekday, holiday_rule FROM subscriptions`,
+			        day_rule, week_nth, weekday, holiday_rule,
+			        kind, paid_through, paid_through_at, paid_through_tx FROM subscriptions`,
 			`INSERT INTO subscriptions(id, name, merchant, amount, cycle, billing_day, billing_month,
 			        start_ym, end_ym, next_amount, next_amount_ym,
 			        category_id, member_id, payment_method_id, memo, active, auto_post, auto_since,
-			        day_rule, week_nth, weekday, holiday_rule)
-			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			        day_rule, week_nth, weekday, holiday_rule,
+			        kind, paid_through, paid_through_at, paid_through_tx)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			func(r *sql.Rows) ([]interface{}, error) {
-				var id, amount, next int64
+				var id, amount, next, paidTx int64
 				var day, bmonth, active, autoPost, weekNth, weekday int
 				var name, merchant, cycle, startYM, endYM, nextYM, memo, autoSince, dayRule, holidayRule string
+				var kind, paidThrough, paidAt string
 				var cid, mid, pid sql.NullInt64
 				e := r.Scan(&id, &name, &merchant, &amount, &cycle, &day, &bmonth,
 					&startYM, &endYM, &next, &nextYM, &cid, &mid, &pid, &memo, &active, &autoPost, &autoSince,
-					&dayRule, &weekNth, &weekday, &holidayRule)
+					&dayRule, &weekNth, &weekday, &holidayRule, &kind, &paidThrough, &paidAt, &paidTx)
 				return []interface{}{id, name, merchant, amount, cycle, day, bmonth,
 					startYM, endYM, next, nextYM,
 					nullable(cid), nullable(mid), nullable(pid), memo, active, autoPost, autoSince,
-					dayRule, weekNth, weekday, holidayRule}, e
+					dayRule, weekNth, weekday, holidayRule, kind, paidThrough, paidAt, paidTx}, e
 			}),
 		// 자동 등록 기록이 빠지면 복원 후 같은 달 거래가 다시 만들어진다
 		copy("subscription_posts",
@@ -374,6 +387,16 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var createdAt sql.NullString
 				e := r.Scan(&id, &date, &amount, &direction, &merchant, &memo, &mid, &cid, &pid, &source, &auto, &excl, &paidAt, &createdAt)
 				return []interface{}{id, date, amount, direction, merchant, memo, nullable(mid), nullable(cid), nullable(pid), source, auto, excl, paidAt, nullable2(createdAt)}, e
+			}),
+		// 회비 연결이 빠지면 납부 기록·"회비 아님"이 사라져 장부가 달라진다
+		copy("dues_links",
+			`SELECT transaction_id, subscription_id, state, created_at FROM dues_links`,
+			`INSERT INTO dues_links(transaction_id, subscription_id, state, created_at) VALUES(?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var tid, sid int64
+				var state, at string
+				e := r.Scan(&tid, &sid, &state, &at)
+				return []interface{}{tid, sid, state, at}, e
 			}),
 		// 충전 연결은 거래·선불권 뒤에 복사한다
 		copy("prepaid_charges",

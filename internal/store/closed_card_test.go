@@ -135,7 +135,7 @@ func TestClosedCardDB(t *testing.T) {
 	}
 
 	// 자금 계획: 해지 카드의 0원 청구서는 빠지고, 값이 있는 청구서는 남는다
-	plan, err := st.BuildCashPlan(date("2026-10-31"), nil)
+	plan, err := st.BuildCashPlan(date("2026-10-31"), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

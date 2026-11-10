@@ -29,6 +29,8 @@ type App struct {
 	// lastDeletedLinks 는 삭제된 거래 중 선불권 충전이었던 것의 연결(원래 거래 ID 기준).
 	// 삭제 취소는 새 ID 로 거래를 다시 만들기 때문에, 이 표로 새 거래에 연결을 되살린다.
 	lastDeletedLinks map[int64]store.PrepaidLink
+	// lastDeletedDues 는 삭제된 거래 중 회비 납부로 넣었거나 회비 아님으로 뺐던 것의 연결.
+	lastDeletedDues map[int64]store.DuesLink
 	// backupMu 는 로컬 백업을 한 번에 하나만 수행하도록 직렬화한다.
 	backupMu   sync.Mutex
 	backupDone chan struct{}
@@ -381,7 +383,11 @@ func (a *App) ListTransactions(filter store.TxFilter) ([]store.Transaction, erro
 	if err := a.ensure(); err != nil {
 		return nil, err
 	}
-	return a.st.ListTransactions(filter)
+	txs, err := a.st.ListTransactions(filter)
+	if err == nil {
+		a.annotateDues(txs)
+	}
+	return txs, err
 }
 
 // GetMerchantSuggestions 는 수동 등록 내용 칸 자동완성용: query 를 포함하는 과거 가맹점과
@@ -471,9 +477,12 @@ func (a *App) DeleteTransaction(id int64) error {
 	if t, err := a.st.GetTransaction(id); err == nil {
 		links, lerr := a.st.PrepaidLinksFor([]int64{id})
 		logIf("DeleteTransaction(선불권 연결 백업)", lerr)
+		dues, derr := a.st.DuesLinksFor([]int64{id})
+		logIf("DeleteTransaction(회비 연결 백업)", derr)
 		a.mu.Lock()
 		a.lastDeleted = []store.Transaction{t}
 		a.lastDeletedLinks = links
+		a.lastDeletedDues = dues
 		a.mu.Unlock()
 	}
 	return a.st.DeleteTransaction(id)
@@ -492,11 +501,16 @@ func (a *App) BatchDelete(ids []int64) error {
 	if err != nil {
 		return err
 	}
+	dues, err := a.st.DuesLinksFor(ids)
+	if err != nil {
+		return err
+	}
 	if err := a.st.DeleteTransactions(ids); err != nil {
 		return err
 	}
 	a.mu.Lock()
 	a.lastDeletedLinks = links
+	a.lastDeletedDues = dues
 	a.lastDeleted = backup
 	a.mu.Unlock()
 	return nil
@@ -510,8 +524,10 @@ func (a *App) UndoDelete() (int, error) {
 	a.mu.Lock()
 	backup := a.lastDeleted
 	links := a.lastDeletedLinks
+	dues := a.lastDeletedDues
 	a.lastDeleted = nil
 	a.lastDeletedLinks = nil
+	a.lastDeletedDues = nil
 	a.mu.Unlock()
 	n := 0
 	for _, t := range backup {
@@ -523,6 +539,9 @@ func (a *App) UndoDelete() (int, error) {
 		}
 		if l, ok := links[oldID]; ok {
 			logIf("UndoDelete(선불권 연결 복원)", a.st.RestorePrepaidLink(newID, l))
+		}
+		if l, ok := dues[oldID]; ok {
+			logIf("UndoDelete(회비 연결 복원)", a.st.RestoreDuesLink(newID, l))
 		}
 		n++
 	}

@@ -59,6 +59,15 @@ type Subscription struct {
 	AutoPost  bool   `json:"autoPost"`
 	AutoSince string `json:"autoSince"`
 
+	// Kind 가 KindDues("dues")면 회비다 — 달마다 대조하지 않고 장부로 본다(dues.go).
+	Kind string `json:"kind"`
+	// PaidThrough 는 회비를 이 달분("YYYY-MM")까지 냈다고 사용자가 밝힌 값.
+	// PaidThroughAt(날짜)·PaidThroughTx(그때의 마지막 거래 id)는 그렇게 밝힌 시점으로, 저장 시 서버가
+	// 정한다. 그 뒤에 생긴 납부 거래만 장부에 더한다.
+	PaidThrough   string `json:"paidThrough"`
+	PaidThroughAt string `json:"paidThroughAt"`
+	PaidThroughTx int64  `json:"paidThroughTx"`
+
 	// 조회 편의용 조인 결과
 	CategoryName      string `json:"categoryName"`
 	MemberName        string `json:"memberName"`
@@ -78,7 +87,8 @@ func (s Subscription) AmountAt(ym string) int64 {
 // 꺼져 있거나, 시작 전이거나, 종료 월을 지났으면 아니다.
 // 연 결제는 결제 월에만 빠진다.
 func (s Subscription) DueIn(ym string) bool {
-	if !s.Active {
+	// 회비는 달마다 대조·자동 등록하지 않고 장부(BuildDuesStatus)로 본다.
+	if !s.Active || s.Kind == KindDues {
 		return false
 	}
 	if len(ym) < 7 {
@@ -122,6 +132,7 @@ SELECT s.id, s.name, s.merchant, s.amount, s.cycle, s.billing_day, s.billing_mon
        s.day_rule, s.week_nth, s.weekday, s.holiday_rule,
        s.start_ym, s.end_ym, s.next_amount, s.next_amount_ym,
        s.category_id, s.member_id, s.payment_method_id, s.memo, s.active, s.auto_post, s.auto_since,
+       s.kind, s.paid_through, s.paid_through_at, s.paid_through_tx,
        CASE WHEN c.id IS NULL THEN ''
             WHEN cp.name IS NULL THEN c.name
             ELSE cp.name || ' > ' || c.name END,
@@ -141,6 +152,7 @@ func scanSub(rows *sql.Rows) (Subscription, error) {
 		&s.DayRule, &s.WeekNth, &s.Weekday, &s.HolidayRule,
 		&s.StartYM, &s.EndYM, &s.NextAmount, &s.NextAmountYM,
 		&cid, &mid, &pid, &s.Memo, &active, &autoPost, &s.AutoSince,
+		&s.Kind, &s.PaidThrough, &s.PaidThroughAt, &s.PaidThroughTx,
 		&s.CategoryName, &s.MemberName, &s.PaymentMethodName)
 	if err != nil {
 		return s, err
@@ -199,6 +211,10 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 		sub.NextAmountYM, sub.NextAmount = "", 0
 	}
 
+	if err := s.normalizeDues(&sub); err != nil {
+		return sub, err
+	}
+
 	active := 0
 	if sub.Active {
 		active = 1
@@ -212,6 +228,7 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 		sub.StartYM, sub.EndYM, sub.NextAmount, sub.NextAmountYM,
 		nullableID(sub.CategoryID), nullableID(sub.MemberID), nullableID(sub.PaymentMethodID),
 		sub.Memo, active, boolToInt(sub.AutoPost), sub.AutoSince,
+		sub.Kind, sub.PaidThrough, sub.PaidThroughAt, sub.PaidThroughTx,
 	}
 	if sub.ID == 0 {
 		var id int64
@@ -219,8 +236,9 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 INSERT INTO subscriptions(name, merchant, amount, cycle, billing_day, billing_month,
 	day_rule, week_nth, weekday, holiday_rule,
 	start_ym, end_ym, next_amount, next_amount_ym,
-	category_id, member_id, payment_method_id, memo, active, auto_post, auto_since)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
+	category_id, member_id, payment_method_id, memo, active, auto_post, auto_since,
+	kind, paid_through, paid_through_at, paid_through_tx)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&id)
 		if err != nil {
 			return sub, err
 		}
@@ -231,7 +249,8 @@ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, args...).Scan(&
 UPDATE subscriptions SET name=?, merchant=?, amount=?, cycle=?, billing_day=?, billing_month=?,
 	day_rule=?, week_nth=?, weekday=?, holiday_rule=?,
 	start_ym=?, end_ym=?, next_amount=?, next_amount_ym=?,
-	category_id=?, member_id=?, payment_method_id=?, memo=?, active=?, auto_post=?, auto_since=?
+	category_id=?, member_id=?, payment_method_id=?, memo=?, active=?, auto_post=?, auto_since=?,
+	kind=?, paid_through=?, paid_through_at=?, paid_through_tx=?
 WHERE id=?`, append(args, sub.ID)...)
 	return sub, err
 }

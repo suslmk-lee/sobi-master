@@ -16,7 +16,11 @@ func (a *App) GetCashPlan() (store.CashPlan, error) {
 	if err := a.ensure(); err != nil {
 		return store.CashPlan{}, err
 	}
-	plan, err := a.st.BuildCashPlan(time.Now(), a.newSubChargeMatcher())
+	now := time.Now()
+	// 회비는 장부로 본다: 밀린 돈과 다음 납부일 몫을 출금으로 넣는다. 못 읽어도 계획은 보여 준다.
+	dues, derr := a.duesBook(now)
+	logIf("GetCashPlan(회비)", derr)
+	plan, err := a.st.BuildCashPlan(now, a.newSubChargeMatcher(), dues)
 	logIf("GetCashPlan", err)
 	return plan, err
 }

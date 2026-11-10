@@ -40,7 +40,7 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
-import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, Trash2, Undo2, Wand2, X } from "lucide-react";
+import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, Trash2, Undo2, Users, Wand2, X } from "lucide-react";
 import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
 
@@ -887,6 +887,15 @@ export default function Transactions({
                           선불 충전 · {t.prepaidName}
                         </span>
                       )}
+                      {t.duesName && (
+                        <span
+                          className="badge bg-amber-500/10 text-amber-300"
+                          title={`회비 "${t.duesName}"의 납부로 장부에 들어간 거래 (정기결제 > 회비 > 내역에서 뺄 수 있음)`}
+                        >
+                          <Users className="h-3 w-3" />
+                          회비 · {t.duesName}
+                        </span>
+                      )}
                       {t.excludePerf && (
                         <span className="badge bg-amber-500/10 text-amber-300" title="카드 실적 계산에서 제외됨">
                           실적제외
@@ -917,7 +926,7 @@ export default function Transactions({
                     <div className="flex items-center justify-end gap-1">
                       {/* 지출만 정기결제가 될 수 있다 */}
                       {/* 이미 정기결제에 연결된 거래는 다시 등록할 필요가 없어 버튼을 숨긴다 */}
-                      {t.direction === "expense" && !t.subscriptionName && t.source !== "subscription" && (
+                      {t.direction === "expense" && !t.subscriptionName && !t.duesName && t.source !== "subscription" && (
                         <button
                           className="btn-icon"
                           onClick={() => setSubTxId(t.id)}

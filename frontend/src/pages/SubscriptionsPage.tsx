@@ -27,6 +27,7 @@ import { useConfirm } from "../ConfirmModal";
 import { AlertCircle, CalendarClock, CalendarOff, Check, Pencil, Plus, PlusCircle, Power, RefreshCw, Repeat, Trash2, TrendingUp } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
 import RecurringSuggestions, { candidateAmount } from "../RecurringSuggestions";
+import DuesSection from "../DuesSection";
 import { useThemeColors } from "../appearance/AppearanceContext";
 
 const BLANK = {
@@ -648,6 +649,8 @@ export default function SubscriptionsPage({
           </ul>
         )}
       </div>
+
+      <DuesSection refs={refs} />
 
       {off.length > 0 && (
         <div className="surface p-5">

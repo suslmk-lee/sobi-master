@@ -47,7 +47,7 @@ func TestBuildCashPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := st.BuildCashPlan(date("2026-10-31"), nil)
+	plan, err := st.BuildCashPlan(date("2026-10-31"), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestBuildCashPlan(t *testing.T) {
 	if _, err := st.db.Exec(`TRUNCATE cash_balances`); err != nil {
 		t.Fatal(err)
 	}
-	plan, err = st.BuildCashPlan(date("2026-10-31"), nil)
+	plan, err = st.BuildCashPlan(date("2026-10-31"), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
