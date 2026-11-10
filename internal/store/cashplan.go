@@ -412,8 +412,9 @@ WHERE t.direction='income' AND t.date >= ? AND t.date <= ? AND t.amount * 2 >= ?
 // from~to(YYYY-MM-DD, 양끝 포함) 사이에 이미 입력된 결제가 있으면 true. nil 이면 기록(subscription_posts)만 본다.
 type SubMatchFunc func(sub Subscription, ym, from, to string) bool
 
-// BuildCashPlan 은 today 기준 자금 계획을 만든다.
-func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, error) {
+// BuildCashPlan 은 today 기준 자금 계획을 만든다. duesBook 은 회비 장부(앱 계층이 납부 거래를 골라
+// 계산한 것) — 다음 납부일마다 낼 돈(밀린 돈 포함)을 출금으로 넣는다. nil 이면 회비는 빠진다.
+func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []DuesStatus) (CashPlan, error) {
 	today = dayOf(today)
 	plan := CashPlan{
 		Today:          fmtDay(today),
@@ -581,6 +582,7 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc) (CashPlan, 
 		return plan, err
 	}
 	events = append(events, subEvents...)
+	events = append(events, duesEvents(duesBook, pms, cal, today, horizon)...)
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
 			return events[i].Date < events[j].Date

@@ -34,6 +34,7 @@ import {
   Settings2,
   Trash2,
   TrendingDown,
+  Users,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -65,6 +66,7 @@ const KIND: Record<string, { icon: LucideIcon; color: string; label: string }> =
   card: { icon: CreditCard, color: cv("rose-400"), label: "카드 결제" },
   salary: { icon: Banknote, color: cv("emerald-400"), label: "월급" },
   subscription: { icon: Repeat, color: cv("sky-400"), label: "정기결제" },
+  dues: { icon: Users, color: cv("amber-400"), label: "회비" },
 };
 const kindOf = (k: string) => KIND[k] ?? KIND.subscription;
 

@@ -131,6 +131,8 @@ type Transaction struct {
 	SubscriptionName string `json:"subscriptionName"`
 	// PrepaidName: 이 거래가 선불권 충전으로 연결돼 있으면 그 선불권 이름(아니면 "").
 	PrepaidName string `json:"prepaidName"`
+	// DuesName: 회비 납부로 장부에 들어간 거래면 그 회비 이름(아니면 ""). 앱 계층이 채운다.
+	DuesName string `json:"duesName"`
 }
 
 // Rule 은 반복 거래 핑거프린트: 가맹점명 + 금액 구간이 일치하면
