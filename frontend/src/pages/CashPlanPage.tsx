@@ -15,6 +15,7 @@ import {
   DeleteCashBalance,
   GetCashPlan,
   ListCashBalances,
+  ListRecurringCandidates,
   ListTransactions,
   SaveCashSettings,
 } from "../../wailsjs/go/main/App";
@@ -698,8 +699,10 @@ function BillTable({
   );
 }
 
-export default function CashPlanPage({ refs }: { refs: Refs }) {
+export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; goSubscriptions?: () => void }) {
   const [plan, setPlan] = useState<store.CashPlan | null>(null);
+  // 정기결제로 등록되지 않은 반복 계좌 출금 — 계획 계산에 빠져 있으니 알린다
+  const [missing, setMissing] = useState<store.RecurringCandidate[]>([]);
   const [balances, setBalances] = useState<store.CashBalance[]>([]);
   const [err, setErr] = useState("");
   const [confirm, confirmUI] = useConfirm();
@@ -732,6 +735,11 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
       setBalances((await ListCashBalances()) ?? []);
     } catch {
       setBalances([]);
+    }
+    try {
+      setMissing(((await ListRecurringCandidates()) ?? []).filter((c) => c.account));
+    } catch {
+      setMissing([]);
     }
   }, []);
 
@@ -1006,6 +1014,29 @@ export default function CashPlanPage({ refs }: { refs: Refs }) {
           <p className="num text-xs text-zinc-500">{plan.lowestDate ? `${shortDate(plan.lowestDate)} 기준` : ""}</p>
         </div>
       </div>
+
+      {/* 등록 안 된 반복 계좌 출금: 자금 계획이 앞으로 빠질 돈으로 모른다 */}
+      {missing.length > 0 && (
+        <div className="surface-inset flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+          <div className="min-w-0 flex-1 space-y-1 text-xs leading-relaxed">
+            <p className="text-sm text-amber-300">
+              정기결제로 등록되지 않은 반복 계좌 출금 {missing.length}건이 계산에 빠져 있습니다
+            </p>
+            <p className="num text-zinc-400">
+              {missing
+                .slice(0, 3)
+                .map((c) => `${c.merchant} ${c.fixed ? won(c.amount) : `약 ${won(c.amount)}`} (매월 ${c.day}일)`)
+                .join(" · ")}
+              {missing.length > 3 && ` 외 ${missing.length - 3}건`}
+            </p>
+          </div>
+          {goSubscriptions && (
+            <button type="button" className="btn-ghost shrink-0 !px-3 !py-1.5 !text-xs" onClick={goSubscriptions}>
+              정기결제에서 등록
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 카드값 통장: 월급날 옮길 금액 */}
       <TransferCard plan={plan} issuerOf={issuerOfCard} />

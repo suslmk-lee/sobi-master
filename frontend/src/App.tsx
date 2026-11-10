@@ -210,7 +210,7 @@ export default function App() {
             }}
           />
         )}
-        {tab === "cashplan" && <CashPlanPage refs={refs} />}
+        {tab === "cashplan" && <CashPlanPage refs={refs} goSubscriptions={() => setTab("subscriptions")} />}
         {tab === "transactions" && (
           <Transactions
             refs={refs}

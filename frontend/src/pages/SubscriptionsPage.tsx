@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   DeleteSubscription,
   GetSubscriptionMonth,
@@ -26,6 +26,7 @@ import { Sk } from "../Skeleton";
 import { useConfirm } from "../ConfirmModal";
 import { AlertCircle, CalendarClock, CalendarOff, Check, Pencil, Plus, PlusCircle, Power, RefreshCw, Repeat, Trash2, TrendingUp } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
+import RecurringSuggestions, { candidateAmount } from "../RecurringSuggestions";
 import { useThemeColors } from "../appearance/AppearanceContext";
 
 const BLANK = {
@@ -105,6 +106,10 @@ export default function SubscriptionsPage({
   const [data, setData] = useState<main.SubMonth | null>(null);
   const [f, setF] = useState<Form>({ ...BLANK });
   const [editing, setEditing] = useState(false);
+  // 기록에서 찾은 정기 출금 후보 — 저장하면 다시 읽어 등록된 후보를 지운다
+  const [candKey, setCandKey] = useState(0);
+  const [fromCand, setFromCand] = useState(""); // 후보로 채운 폼이면 안내 한 줄
+  const formRef = useRef<HTMLDivElement>(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [postMsg, setPostMsg] = useState("");
@@ -131,6 +136,33 @@ export default function SubscriptionsPage({
   const reset = () => {
     setF({ ...BLANK });
     setEditing(false);
+    setFromCand("");
+  };
+
+  // 후보 [등록]: 아래 등록 폼을 후보 값으로 채운다(금액이 매번 같으면 자동 등록까지 켠다)
+  const registerCandidate = (c: store.RecurringCandidate) => {
+    setF({
+      ...BLANK,
+      name: c.merchant,
+      merchant: c.merchant,
+      amount: formatAmount(String(c.amount)),
+      cycle: "monthly",
+      billingDay: String(c.day),
+      dayRule: "day",
+      holidayRule: c.holidayRule || "next",
+      categoryId: c.categoryId ? String(c.categoryId) : "",
+      memberId: c.memberId ? String(c.memberId) : "",
+      paymentMethodId: c.paymentMethodId ? String(c.paymentMethodId) : "",
+      memo: c.fixed ? "" : `최근 ${candidateAmount(c)} (매달 조금씩 다름)`,
+      autoPost: c.fixed,
+    });
+    setEditing(false);
+    setFromCand(
+      c.fixed
+        ? "기록에서 찾은 값으로 채웠습니다. 금액이 매번 같아 자동 등록을 켜 두었습니다. 확인하고 [등록]을 누르세요."
+        : "기록에서 찾은 값으로 채웠습니다. 금액이 매달 조금씩 달라 최근 금액을 넣고 자동 등록은 꺼 두었습니다. 확인하고 [등록]을 누르세요."
+    );
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const edit = (s: store.Subscription) => {
@@ -190,6 +222,7 @@ export default function SubscriptionsPage({
       );
       reset();
       load();
+      setCandKey((k) => k + 1);
     } catch (e: any) {
       setErr(String(e));
     }
@@ -347,11 +380,14 @@ export default function SubscriptionsPage({
         </div>
       )}
 
-      <div className="surface p-5">
+      <RecurringSuggestions reloadKey={candKey} onRegister={registerCandidate} />
+
+      <div className="surface scroll-mt-24 p-5" ref={formRef}>
         <div className="mb-4 flex items-center gap-3">
           <IconTile icon={editing ? Pencil : PlusCircle} tone="mint" size="sm" />
           <h3 className="section-title">{editing ? "정기결제 수정" : "정기결제 등록"}</h3>
         </div>
+        {fromCand && <p className="mb-3 text-xs leading-relaxed text-mint-300">{fromCand}</p>}
         <form onSubmit={submit} className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
