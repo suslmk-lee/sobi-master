@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react";
 import { DeleteCustomHoliday, GetHolidays, SaveCustomHoliday } from "../wailsjs/go/main/App";
 import { holiday, main } from "../wailsjs/go/models";
+import IconTile from "./components/ui/IconTile";
 
 // 공휴일 설정. 정기결제 자동 등록이 결제일을 다음 업무일로 미룰 때 이 달력을 쓴다.
 // 내장 표에는 음력 공휴일·대체공휴일·선거일까지 들어 있지만, 임시공휴일은 그때그때
@@ -65,9 +66,7 @@ export default function HolidaySection() {
     <div className="surface p-5 sm:p-6">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="icon-tile icon-tile-amber !h-8 !w-8 !rounded-lg">
-            <CalendarDays className="h-4 w-4" strokeWidth={1.75} />
-          </span>
+          <IconTile icon={CalendarDays} tone="amber" size="sm" />
           <h3 className="section-title">공휴일</h3>
         </div>
         <div className="glass-pill flex items-center gap-1 p-1">

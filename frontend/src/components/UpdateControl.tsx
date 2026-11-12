@@ -11,6 +11,7 @@ import {
 import { main } from "../../wailsjs/go/models";
 import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
 import Portal from "./ui/Portal";
+import IconTile from "./ui/IconTile";
 
 // 헤더의 버전 표시와 새 버전 알림.
 // - 평소: 지금 버전(v1.0.0). 누르면 바로 업데이트를 확인한다.
@@ -197,9 +198,7 @@ function UpdateModal({ info, manual, onClose }: { info: main.UpdateInfo; manual:
           className="surface flex max-h-[88vh] w-full max-w-xl flex-col gap-4 p-5 sm:p-6"
         >
           <div className="flex items-start gap-3">
-            <span className="icon-tile icon-tile-mint !h-9 !w-9 shrink-0 !rounded-xl" aria-hidden="true">
-              <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            </span>
+            <IconTile icon={Sparkles} tone="mint" size="md" />
             <div className="min-w-0 flex-1">
               <h3 className="section-title">새 버전 v{info.latest}</h3>
               <p className="num mt-1 text-sm text-zinc-400">
