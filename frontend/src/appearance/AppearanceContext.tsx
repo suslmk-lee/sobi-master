@@ -257,6 +257,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   // '시스템' 테마일 때 따라갈 macOS 밝게/어둡게 설정 — 앱이 켜진 채로 바뀌어도 바로 따라간다
   const [osDark, setOsDark] = useState(prefersDark);
   const theme = useMemo(() => getTheme(settings.themeId, osDark), [settings.themeId, osDark]);
+  const followSystem = settings.themeId === SYSTEM_THEME_ID;
 
   useEffect(() => {
     if (settings.themeId !== SYSTEM_THEME_ID || !window.matchMedia) return;
@@ -272,6 +273,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, [settings, osDark]);
 
   // 데스크톱 창 제목 표시줄을 앱 윗부분과 같은 색으로 맞춘다.
+  // '시스템' 테마면 macOS 창 모양을 macOS 설정에 맡긴다(정해 버리면 웹뷰가 macOS 설정 변화를 못 알아챈다).
   // 앱 윗부분은 배경(ink-950) 위에 위쪽 은은한 빛(white 6%)과 반투명 헤더(--header-bg)가 겹쳐 있으므로
   // 그 합성색을 계산해 보낸다. 시작 직후엔 창이 아직 보이지 않아 실패할 수 있어 몇 번 다시 시도하고,
   // 창이 다시 활성화될 때도 한 번 더 맞춘다.
@@ -285,7 +287,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       const white = toHex(triplet('--c-white'), theme.fg);
       const text = toHex(triplet('--c-zinc-300'), theme.fg);
       const top = mix(base, white, AMBIENT_TOP * (1 - headerAlpha()));
-      return desktop.setTitleBarColors(top, text, theme.mode === 'dark'); // §10.0 브리지 — 웹이면 아무것도 안 함
+      return desktop.setTitleBarColors(top, text, theme.mode === 'dark', followSystem); // §10.0 브리지 — 웹이면 아무것도 안 함
     };
     let cancelled = false;
     const timers: number[] = [];
@@ -308,7 +310,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener('focus', onFocus);
     };
-  }, [theme, settings.cardStyle]);
+  }, [theme, followSystem, settings.cardStyle]);
 
   const update = useCallback((patch: Partial<AppearanceSettings>) => setSettings((prev) => ({ ...prev, ...patch })), []);
   const reset = useCallback(() => setSettings(DEFAULT_APPEARANCE), []);

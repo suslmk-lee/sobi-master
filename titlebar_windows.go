@@ -84,7 +84,8 @@ func setDwmAttr(hwnd uintptr, attr uint32, value uint32) error {
 }
 
 // SetTitleBarColors 는 제목 표시줄 배경·글자·테두리 색과 어두운 모드 여부를 설정한다 (프론트엔드가 테마 변경 시 호출).
-func (a *App) SetTitleBarColors(background, text string, dark bool) error {
+// followSystem('시스템' 테마)은 macOS 용 — Windows 에서는 dark 가 이미 시스템 설정을 반영한 값이라 쓰지 않는다.
+func (a *App) SetTitleBarColors(background, text string, dark, followSystem bool) error {
 	hwnd := mainWindow()
 	if hwnd == 0 {
 		return fmt.Errorf("main window not found")
