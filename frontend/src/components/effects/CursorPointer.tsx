@@ -24,7 +24,7 @@ function readRgb(name: string, fallback: string): string {
 }
 
 export default function CursorPointer() {
-  const { settings } = useAppearance();
+  const { settings, theme } = useAppearance();
   const style = settings.cursorPointer.style;
   const rootRef = useRef<HTMLDivElement>(null);
   const active = style !== 'native';
@@ -162,7 +162,7 @@ export default function CursorPointer() {
       document.documentElement.removeAttribute('data-cursor');
       styleEl.remove();
     };
-  }, [active, style, settings.themeId]);
+  }, [active, style, theme.id]);
 
   if (!active) return null;
 

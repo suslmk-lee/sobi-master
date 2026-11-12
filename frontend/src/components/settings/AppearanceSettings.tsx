@@ -13,7 +13,7 @@ import {
 } from '../../appearance/AppearanceContext';
 import Switch from '../ui/Switch';
 import CursorPresetGallery from './CursorPresetGallery';
-import { THEMES, mix, type AppTheme } from '../../appearance/themes';
+import { THEMES, getTheme, mix, SYSTEM_DARK_ID, SYSTEM_LIGHT_ID, SYSTEM_THEME_ID, type AppTheme } from '../../appearance/themes';
 import Portal from '../ui/Portal';
 import Slider from '../ui/Slider';
 import { SettingsGroup, SettingRow } from '../ui/SettingsGroup';
@@ -50,14 +50,52 @@ function ThemePreview({ theme }: { theme: AppTheme }) {
       style={{ width: 64, height: 40, background: theme.bg, boxShadow: `inset 0 0 0 1px ${mix(theme.bg, theme.fg, 0.15)}` }}
     >
       <div className="flex items-center gap-[3px] px-1.5" style={{ height: 11, background: bar }}>
-        <span className="rounded-full" style={{ width: 4, height: 4, background: theme.accent }} />
-        <span className="rounded-full" style={{ width: 4, height: 4, background: dim }} />
-        <span className="rounded-full" style={{ width: 4, height: 4, background: dim }} />
+        {(theme.trio ?? [theme.accent, dim, dim]).map((c, i) => (
+          <span key={i} className="rounded-full" style={{ width: 4, height: 4, background: c }} />
+        ))}
       </div>
       <div className="px-1.5 pt-1.5">
         <div className="rounded-full" style={{ height: 3, width: '75%', background: theme.fg, opacity: 0.9 }} />
         <div className="mt-[3px] rounded-full" style={{ height: 3, width: '55%', background: theme.fg, opacity: 0.45 }} />
         <div className="mt-1.5 rounded-full" style={{ height: 4, width: '30%', background: theme.accent }} />
+      </div>
+    </div>
+  );
+}
+
+// '시스템' 미리보기: 왼쪽 절반은 어둡게, 오른쪽 절반은 밝게 쓸 테마
+function SystemPreview() {
+  return (
+    <div className="relative shrink-0" style={{ width: 64, height: 40 }}>
+      <div className="absolute inset-0" style={{ clipPath: 'inset(0 50% 0 0)' }}>
+        <ThemePreview theme={getTheme(SYSTEM_DARK_ID)} />
+      </div>
+      <div className="absolute inset-0" style={{ clipPath: 'inset(0 0 0 50%)' }}>
+        <ThemePreview theme={getTheme(SYSTEM_LIGHT_ID)} />
+      </div>
+    </div>
+  );
+}
+
+function SystemThemeButton() {
+  const { settings, update } = useAppearance();
+  const on = settings.themeId === SYSTEM_THEME_ID;
+  return (
+    <div>
+      <div className="label-mono mb-2">자동</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => update({ themeId: SYSTEM_THEME_ID })}
+          aria-pressed={on}
+          className={`flex items-center gap-3 rounded-xl p-2 text-left transition-colors ${on ? selectedCls : idleCls}`}
+        >
+          <SystemPreview />
+          <span className="min-w-0">
+            <span className="block text-sm text-white truncate">시스템</span>
+            <span className="block text-xs text-zinc-400 truncate">macOS 밝게·어둡게를 따라감</span>
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -92,6 +130,7 @@ function ThemeGroup({ title, themes }: { title: string; themes: AppTheme[] }) {
 function ThemeSection() {
   return (
     <SettingsGroup icon={Palette} title="앱 테마">
+      <SystemThemeButton />
       <ThemeGroup title="다크" themes={THEMES.filter((t) => t.mode === 'dark')} />
       <ThemeGroup title="라이트" themes={THEMES.filter((t) => t.mode === 'light')} />
     </SettingsGroup>

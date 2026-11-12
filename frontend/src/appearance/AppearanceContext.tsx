@@ -1,6 +1,6 @@
 // frontend/src/appearance/AppearanceContext.tsx
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState, CSSProperties } from 'react';
-import { buildThemeVars, getTheme, hexToRgb, mix, rgbToHex, DEFAULT_THEME_ID, AppTheme } from './themes';
+import { buildThemeVars, getTheme, hexToRgb, mix, prefersDark, rgbToHex, DEFAULT_THEME_ID, SYSTEM_THEME_ID, AppTheme } from './themes';
 import { desktop } from '../platform/desktop';
 // 데스크톱 셸이 아니면 제목 표시줄 브리지(setTitleBarColors)와 아래 useEffect 를 삭제
 import {
@@ -209,8 +209,8 @@ function loadSettings(): AppearanceSettings {
 }
 
 // 설정 → <html> 에 적용할 CSS 변수/속성
-export function computeRootStyle(s: AppearanceSettings) {
-  const theme = getTheme(s.themeId);
+export function computeRootStyle(s: AppearanceSettings, dark: boolean = prefersDark()) {
+  const theme = getTheme(s.themeId, dark);
   const vars: Record<string, string> = { ...buildThemeVars(theme) };
   const sans = SANS_FONTS.find((f) => f.id === s.sansFont) ?? SANS_FONTS[0];
   const mono = MONO_FONTS.find((f) => f.id === s.monoFont) ?? MONO_FONTS[0];
@@ -226,9 +226,9 @@ export function computeRootStyle(s: AppearanceSettings) {
   return { vars, attrs: { 'data-card': s.cardStyle, 'data-theme-mode': theme.mode, 'data-theme': theme.id } };
 }
 
-function applyToRoot(s: AppearanceSettings) {
+function applyToRoot(s: AppearanceSettings, dark: boolean = prefersDark()) {
   const root = document.documentElement;
-  const { vars, attrs } = computeRootStyle(s);
+  const { vars, attrs } = computeRootStyle(s, dark);
   Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
   Object.entries(attrs).forEach(([k, v]) => root.setAttribute(k, v));
   try {
@@ -254,17 +254,28 @@ const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppearanceSettings>(loadSettings);
+  // '시스템' 테마일 때 따라갈 macOS 밝게/어둡게 설정 — 앱이 켜진 채로 바뀌어도 바로 따라간다
+  const [osDark, setOsDark] = useState(prefersDark);
+  const theme = useMemo(() => getTheme(settings.themeId, osDark), [settings.themeId, osDark]);
 
   useEffect(() => {
-    applyToRoot(settings);
-  }, [settings]);
+    if (settings.themeId !== SYSTEM_THEME_ID || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const on = () => setOsDark(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [settings.themeId]);
+
+  useEffect(() => {
+    applyToRoot(settings, osDark);
+  }, [settings, osDark]);
 
   // 데스크톱 창 제목 표시줄을 앱 윗부분과 같은 색으로 맞춘다.
   // 앱 윗부분은 배경(ink-950) 위에 위쪽 은은한 빛(white 6%)과 반투명 헤더(--header-bg)가 겹쳐 있으므로
   // 그 합성색을 계산해 보낸다. 시작 직후엔 창이 아직 보이지 않아 실패할 수 있어 몇 번 다시 시도하고,
   // 창이 다시 활성화될 때도 한 번 더 맞춘다.
   useEffect(() => {
-    const theme = getTheme(settings.themeId);
     const send = () => {
       const css = getComputedStyle(document.documentElement);
       const triplet = (name: string) => css.getPropertyValue(name).trim().split(/\s+/).map(Number);
@@ -297,14 +308,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener('focus', onFocus);
     };
-  }, [settings.themeId, settings.cardStyle]);
+  }, [theme, settings.cardStyle]);
 
   const update = useCallback((patch: Partial<AppearanceSettings>) => setSettings((prev) => ({ ...prev, ...patch })), []);
   const reset = useCallback(() => setSettings(DEFAULT_APPEARANCE), []);
 
   const value = useMemo(
-    () => ({ settings, theme: getTheme(settings.themeId), update, reset }),
-    [settings, update, reset],
+    () => ({ settings, theme, update, reset }),
+    [settings, theme, update, reset],
   );
   return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>;
 }
@@ -350,9 +361,9 @@ const hexOf = (vars: Record<string, string>, name: string) =>
 
 // Recharts 처럼 CSS 클래스를 못 쓰는 곳(SVG 속성, 인라인 스타일)에서 현재 테마 색을 쓰기 위한 훅
 export function useThemeColors(): ThemeColors {
-  const { settings, theme } = useAppearance();
+  const { theme } = useAppearance();
   return useMemo(() => {
-    const v = buildThemeVars(getTheme(settings.themeId));
+    const v = buildThemeVars(theme);
     const c = (n: string) => hexOf(v, n);
     const surface = c('surface');
     const border = theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
@@ -375,5 +386,5 @@ export function useThemeColors(): ThemeColors {
         itemStyle: { color: c('zinc-100') },
       },
     };
-  }, [settings.themeId, theme.mode]);
+  }, [theme]);
 }
