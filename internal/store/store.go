@@ -264,7 +264,7 @@ INSERT INTO app_settings(key, value) VALUES ('seed.fixed_cost', '1') ON CONFLICT
 -- 부는 자기 값이 없으면 주의 값을 따른다. 귀속자를 지우면 기본값도 비운다.
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS default_member_id BIGINT REFERENCES members(id) ON DELETE SET NULL;
 `
-	_, err := s.db.Exec(schema + prepaidSchema + duesSchema)
+	_, err := s.db.Exec(schema + prepaidSchema + duesSchema + fxSchema)
 	return err
 }
 

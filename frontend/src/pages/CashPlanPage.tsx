@@ -28,6 +28,7 @@ import {
   ChevronRight,
   CreditCard,
   Flag,
+  Globe,
   Landmark,
   PiggyBank,
   Repeat,
@@ -67,6 +68,7 @@ const KIND: Record<string, { icon: LucideIcon; color: string; label: string }> =
   salary: { icon: Banknote, color: cv("emerald-400"), label: "월급" },
   subscription: { icon: Repeat, color: cv("sky-400"), label: "정기결제" },
   dues: { icon: Users, color: cv("amber-400"), label: "회비" },
+  fx: { icon: Globe, color: cv("mint-400"), label: "외화 모으기" },
 };
 const kindOf = (k: string) => KIND[k] ?? KIND.subscription;
 
@@ -938,6 +940,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
                   {signed(plan.balanceAdjust)}
                 </span>{" "}
                 반영
+                {plan.fxAdjust !== 0 && <> (외화 {signed(plan.fxAdjust)} 포함)</>}
               </p>
             </>
           ) : (
