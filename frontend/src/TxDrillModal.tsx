@@ -4,6 +4,7 @@ import { store } from "../wailsjs/go/models";
 import { won } from "./lib";
 import { MiniTrend } from "./charts";
 import Portal from "./components/ui/Portal";
+import IconTile from "./components/ui/IconTile";
 
 // 표의 칸 하나를 열어 보는 모달.
 // 위에는 그 항목의 월별 추이, 아래에는 고른 달의 거래 목록. 목록에서 바로 고칠 수 있다.
@@ -134,9 +135,7 @@ export default function TxDrillModal({
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="icon-tile icon-tile-mint !h-8 !w-8 !rounded-lg">
-                <BarChart3 className="h-4 w-4" strokeWidth={1.75} />
-              </span>
+              <IconTile icon={BarChart3} tone="mint" size="sm" />
               <div className="min-w-0">
                 <h3 className="section-title">
                   {heading ?? (

@@ -6,6 +6,7 @@ import { formatAmount, parseAmount, won } from "./lib";
 import Portal from "./components/ui/Portal";
 import ScheduleFields, { SCHEDULE_DEFAULTS, scheduleFromSub } from "./ScheduleFields";
 import { describeSchedule, holidayHint } from "./subSchedule";
+import IconTile from "./components/ui/IconTile";
 
 // 거래 한 건을 정기결제로 등록하는 모달.
 // 초안(이름·금액·결제일·다음 달 시작)은 백엔드가 그 거래로 채워 주고, 여기서는 확인·조정만 한다.
@@ -121,9 +122,7 @@ export default function SubscribeModal({
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="icon-tile icon-tile-sky !h-8 !w-8 !rounded-lg">
-                <Repeat className="h-4 w-4" strokeWidth={1.75} />
-              </span>
+              <IconTile icon={Repeat} tone="sky" size="sm" />
               <h3 className="section-title">정기결제로 등록</h3>
             </div>
             <button

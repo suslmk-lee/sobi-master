@@ -12,6 +12,7 @@ import {
   selectableMethods,
 } from "./lib";
 import Portal from "./components/ui/Portal";
+import IconTile from "./components/ui/IconTile";
 
 // 거래 한 건 수정 모달. 거래내역 탭과 통계의 월별 상세 드릴다운에서 같이 쓴다.
 // 저장은 ClassifyTransaction 을 거치므로, 카테고리를 직접 고르면 규칙 학습까지 이어진다.
@@ -89,9 +90,7 @@ export default function EditModal({
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="icon-tile icon-tile-mint !h-8 !w-8 !rounded-lg">
-                <Pencil className="h-4 w-4" strokeWidth={1.75} />
-              </span>
+              <IconTile icon={Pencil} tone="mint" size="sm" />
               <h3 className="section-title">거래 수정</h3>
             </div>
             <button

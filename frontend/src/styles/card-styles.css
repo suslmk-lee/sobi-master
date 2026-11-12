@@ -18,7 +18,6 @@
  *            --btn-primary-fg/-bg/-hover-bg/-border/-shadow/-active-transform/-active-shadow
  *            --btn-ghost-border/-bg/-shadow/-hover-border/-hover-bg
  *            --btn-icon-border/-bg/-shadow
- *   아이콘   --tile-radius --tile-border-w --tile-border --tile-base --tile-glow --tile-shadow
  *   칩       --chip-radius --chip-border-w --chip-border --chip-bg --chip-shadow
  *   입력     --input-radius --input-border-w --input-border --input-bg --input-shadow
  *            --input-focus-border --input-focus-shadow
@@ -85,13 +84,6 @@
   --btn-icon-border: rgb(var(--c-white) / 0.08);
   --btn-icon-bg: rgb(var(--c-white) / 0.03);
   --btn-icon-shadow: none;
-
-  --tile-radius: 0.75rem;
-  --tile-border-w: 1px;
-  --tile-border: rgb(var(--c-white) / 0.1);
-  --tile-base: linear-gradient(180deg, rgb(var(--c-ink-600)) 0%, rgb(var(--c-ink-800)) 100%);
-  --tile-glow: 1;
-  --tile-shadow: inset 0 1px 0 rgb(var(--c-white) / 0.1), 0 6px 16px -8px rgb(var(--c-shadow) / calc(0.9 * var(--shadow-k)));
 
   --chip-radius: 0.5rem;
   --chip-border-w: 1px;
@@ -187,13 +179,6 @@
   --btn-icon-bg: transparent;
   --btn-icon-shadow: none;
 
-  --tile-radius: 8px;
-  --tile-border-w: 1px;
-  --tile-border: rgb(var(--c-white) / 0.18);
-  --tile-base: transparent;
-  --tile-glow: 0;
-  --tile-shadow: none;
-
   --chip-radius: 6px;
   --chip-border-w: 1px;
   --chip-border: rgb(var(--c-white) / 0.14);
@@ -275,13 +260,6 @@
   --btn-icon-border: transparent;
   --btn-icon-bg: rgb(var(--c-ink-700));
   --btn-icon-shadow: none;
-
-  --tile-radius: 14px;
-  --tile-border-w: 0px;
-  --tile-border: transparent;
-  --tile-base: rgb(var(--c-ink-600));
-  --tile-glow: 0.6;
-  --tile-shadow: none;
 
   --chip-radius: 9999px;
   --chip-border-w: 0px;
@@ -366,13 +344,6 @@
   --btn-icon-border: transparent;
   --btn-icon-bg: rgb(var(--c-ink-950));
   --btn-icon-shadow: 3px 3px 7px var(--neu-sh), -3px -3px 7px var(--neu-hl);
-
-  --tile-radius: 14px;
-  --tile-border-w: 0px;
-  --tile-border: transparent;
-  --tile-base: rgb(var(--c-ink-950));
-  --tile-glow: 0.5;
-  --tile-shadow: 5px 5px 11px var(--neu-sh), -4px -4px 9px var(--neu-hl);
 
   --chip-radius: 9999px;
   --chip-border-w: 0px;
@@ -468,13 +439,6 @@
   --btn-icon-bg: rgb(var(--c-ink-800));
   --btn-icon-shadow: 0 2px 0 -1px rgb(var(--c-ink-600));
 
-  --tile-radius: 10px;
-  --tile-border-w: 1px;
-  --tile-border: rgb(var(--c-white) / 0.08);
-  --tile-base: rgb(var(--c-ink-700));
-  --tile-glow: 0.8;
-  --tile-shadow: 0 3px 0 -1px rgb(var(--c-ink-500));
-
   --chip-radius: 6px;
   --chip-border-w: 1px;
   --chip-border: rgb(var(--c-white) / 0.07);
@@ -557,13 +521,6 @@
   --btn-icon-border: rgb(var(--c-white) / 0.1);
   --btn-icon-bg: transparent;
   --btn-icon-shadow: none;
-
-  --tile-radius: 12px;
-  --tile-border-w: 1px;
-  --tile-border: rgb(var(--c-mint-400) / 0.35);
-  --tile-base: rgb(var(--c-ink-900));
-  --tile-glow: 0.5;
-  --tile-shadow: none;
 
   --chip-radius: 9999px;
   --chip-border-w: 1px;
@@ -653,13 +610,6 @@
   --btn-icon-bg: rgb(var(--c-white) / 0.07);
   --btn-icon-shadow: none;
 
-  --tile-radius: 14px;
-  --tile-border-w: 0px;
-  --tile-border: transparent;
-  --tile-base: rgb(var(--c-white) / 0.08);
-  --tile-glow: 1.2;
-  --tile-shadow: none;
-
   --chip-radius: 9999px;
   --chip-border-w: 0px;
   --chip-border: transparent;
@@ -745,13 +695,6 @@
   --btn-icon-border: rgb(var(--c-white) / 0.6);
   --btn-icon-bg: transparent;
   --btn-icon-shadow: none;
-
-  --tile-radius: 2px;
-  --tile-border-w: 2px;
-  --tile-border: var(--brutal-line);
-  --tile-base: rgb(var(--c-ink-800));
-  --tile-glow: 0;
-  --tile-shadow: 3px 3px 0 var(--brutal-line);
 
   --chip-radius: 2px;
   --chip-border-w: 2px;

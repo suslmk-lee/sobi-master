@@ -3,6 +3,7 @@ import { Pencil, X } from "lucide-react";
 import { RenameCategory, SetCategoryDefaultMember, SetCategoryFixed } from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import Portal from "./components/ui/Portal";
+import IconTile from "./components/ui/IconTile";
 
 const KIND_LABEL: Record<string, string> = { income: "수입", expense: "지출", transfer: "이체" };
 
@@ -82,9 +83,7 @@ export default function CategoryEditModal({
           className="surface w-full max-w-md space-y-4 p-5 sm:p-6"
         >
           <div className="flex items-start gap-3">
-            <span className="icon-tile icon-tile-mint !h-9 !w-9 shrink-0 !rounded-xl" aria-hidden="true">
-              <Pencil className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            </span>
+            <IconTile icon={Pencil} tone="mint" size="md" />
             <div className="min-w-0 flex-1">
               <h3 className="section-title">카테고리 수정</h3>
               <p className="mt-1.5 break-words text-sm text-zinc-400">{where}</p>

@@ -125,31 +125,6 @@ body {
     box-shadow: var(--pill-active-shadow);
   }
 
-  /* 아이콘 타일 */
-  .icon-tile {
-    @apply inline-flex items-center justify-center w-10 h-10 shrink-0 text-zinc-200;
-    border-radius: var(--tile-radius);
-    border: var(--tile-border-w) solid var(--tile-border);
-    background:
-      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-orange-400) / calc(0.28 * var(--tile-glow))), transparent 60%),
-      var(--tile-base);
-    box-shadow: var(--tile-shadow);
-  }
-  .icon-tile-mint {
-    background:
-      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-mint-400) / calc(0.3 * var(--tile-glow))), transparent 60%),
-      var(--tile-base);
-  }
-  .icon-tile-amber {
-    background:
-      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-amber-400) / calc(0.32 * var(--tile-glow))), transparent 60%),
-      var(--tile-base);
-  }
-  .icon-tile-sky {
-    background:
-      radial-gradient(120% 80% at 50% 120%, rgb(var(--c-sky-300) / calc(0.28 * var(--tile-glow))), transparent 60%),
-      var(--tile-base);
-  }
 
   /* 고정폭 칩 */
   .chip {
