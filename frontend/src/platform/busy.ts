@@ -12,7 +12,14 @@ const emit = () => listeners.forEach((l) => l(pending));
 type AppBindings = Record<string, unknown> & { __busyTracked?: boolean };
 
 // 뒤에서 조용히 도는 호출(업데이트 확인·내려받기)은 화면 로딩 표시에 넣지 않는다
-const UNTRACKED = new Set(["GetAppVersion", "CheckForUpdate", "DownloadUpdate", "OpenDownloadedUpdate"]);
+const UNTRACKED = new Set([
+  "GetAppVersion",
+  "CheckForUpdate",
+  "DownloadUpdate",
+  "OpenDownloadedUpdate",
+  "InstallUpdate",
+  "TakeUpdateNotice",
+]);
 
 function wrap(app: AppBindings) {
   if (app.__busyTracked) return;

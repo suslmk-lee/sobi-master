@@ -4,7 +4,8 @@ package main
 //
 // 새 버전은 GitHub Releases(공개 저장소)에 v1.2.3 태그로 올린다. 릴리스 설명이 '변경 사항',
 // 첨부한 DMG 가 내려받을 파일이다(scripts/release.sh 참고). 앱은 공개 API 로 릴리스 목록을 읽어
-// 지금 버전보다 새 것이 있으면 알리고, 사용자가 원하면 다운로드 폴더로 받아 연다.
+// 지금 버전보다 새 것이 있으면 알리고, 사용자가 원하면 받아서 설치하고 다시 시작한다(selfupdate.go).
+// 자동 설치를 못 하는 경우에는 다운로드 폴더로 받아 설치 파일을 연다.
 // 앱이 직접 받은 파일에는 macOS 격리 표시(quarantine)가 붙지 않아 Gatekeeper 경고가 다시 뜨지 않는다.
 
 import (
@@ -65,6 +66,9 @@ type UpdateInfo struct {
 	AssetName string        `json:"assetName"` // 이 컴퓨터용 설치 파일 (없으면 "")
 	AssetSize int64         `json:"assetSize"`
 	PageURL   string        `json:"pageUrl"` // 최신 릴리스 페이지 (설치 파일이 없을 때 안내용)
+	// AutoInstall 은 앱이 받은 설치 파일로 직접 설치하고 다시 시작할 수 있는지 (selfupdate.go).
+	// 못 하면(macOS 가 아님, 쓸 수 없는 폴더에서 실행 중 등) 설치 파일을 열어 직접 옮기게 안내한다.
+	AutoInstall bool `json:"autoInstall"`
 }
 
 type updateState struct {
@@ -72,6 +76,7 @@ type updateState struct {
 	info     UpdateInfo
 	assetURL string // DownloadUpdate 가 받을 주소 — 확인 결과로만 정해지게 프론트에 맡기지 않는다
 	path     string // 마지막으로 받은 파일
+	notice   UpdateNotice
 }
 
 type ghAsset struct {
@@ -249,26 +254,31 @@ func (a *App) CheckForUpdate() (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("릴리스 정보를 읽지 못했습니다: %w", err)
 	}
 	info, assetURL := buildUpdateInfo(appVersion, rels, goruntime.GOOS, goruntime.GOARCH)
+	if assetURL != "" && strings.HasSuffix(strings.ToLower(info.AssetName), ".dmg") {
+		_, err := installTarget()
+		info.AutoInstall = err == nil
+	}
 	a.update.mu.Lock()
 	a.update.info, a.update.assetURL = info, assetURL
 	a.update.mu.Unlock()
 	return info, nil
 }
 
-// DownloadUpdate 는 마지막 확인에서 찾은 설치 파일을 다운로드 폴더로 받는다.
+// DownloadUpdate 는 마지막 확인에서 찾은 설치 파일을 받는다. 앱이 직접 설치할 수 있으면 캐시 폴더로
+// (설치하고 나면 지운다), 아니면 사용자가 열 수 있게 다운로드 폴더로 받는다.
 // 받는 동안 "update:progress" 이벤트(받은 바이트, 전체 바이트)를 보낸다. 받은 파일 경로를 돌려준다.
 func (a *App) DownloadUpdate() (string, error) {
 	a.update.mu.Lock()
-	url, name := a.update.assetURL, a.update.info.AssetName
+	url, name, auto := a.update.assetURL, a.update.info.AssetName, a.update.info.AutoInstall
 	a.update.mu.Unlock()
 	if url == "" || name == "" {
 		return "", fmt.Errorf("받을 설치 파일이 없습니다. 업데이트 확인을 다시 해 주세요")
 	}
-	home, err := os.UserHomeDir()
+	dir, err := downloadDir(auto)
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(home, "Downloads", filepath.Base(name))
+	dest := filepath.Join(dir, filepath.Base(name))
 	var last time.Time
 	err = downloadTo(context.Background(), updateClient, url, dest, func(done, total int64) {
 		if a.ctx == nil {
@@ -287,6 +297,17 @@ func (a *App) DownloadUpdate() (string, error) {
 	a.update.path = dest
 	a.update.mu.Unlock()
 	return dest, nil
+}
+
+func downloadDir(auto bool) (string, error) {
+	if auto {
+		return updateCacheDir()
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Downloads"), nil
 }
 
 // OpenDownloadedUpdate 는 내려받은 설치 파일을 연다(macOS 는 DMG 가 마운트되며 Finder 창이 열린다).
