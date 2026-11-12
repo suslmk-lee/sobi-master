@@ -19,6 +19,7 @@ const UNTRACKED = new Set([
   "OpenDownloadedUpdate",
   "InstallUpdate",
   "TakeUpdateNotice",
+  "GetAlerts",
 ]);
 
 function wrap(app: AppBindings) {

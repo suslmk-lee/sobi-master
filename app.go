@@ -1060,7 +1060,6 @@ type DashboardData struct {
 	Top            []store.NamedAmount   `json:"top"`
 	Cards          []store.CardStatus    `json:"cards"`
 	PaymentMethods []store.PaymentMethod `json:"paymentMethods"`
-	Alerts         []Alert               `json:"alerts"`
 	Budgets        []store.BudgetStatus  `json:"budgets"`
 }
 
@@ -1097,9 +1096,6 @@ func (a *App) GetDashboard(year, month int) (DashboardData, error) {
 		return d, err
 	}
 	if d.Budgets, err = a.st.BudgetStatuses(year, month); err != nil {
-		return d, err
-	}
-	if d.Alerts, err = a.GetAlerts(); err != nil {
 		return d, err
 	}
 	return d, nil
@@ -1207,58 +1203,6 @@ func (a *App) GetRecurringStatus(year, month int) ([]RecurringItem, error) {
 		}
 	}
 	return append(unseen, seen...), nil
-}
-
-// ---- 알림 ----
-
-// Alert 은 대시보드 상단에 띄울 경고/안내 한 건.
-type Alert struct {
-	Kind   string `json:"kind"`  // budget|card|unclassified
-	Level  string `json:"level"` // danger|warn|info
-	Title  string `json:"title"`
-	Detail string `json:"detail"`
-}
-
-// GetAlerts 는 현재 월 기준 예산 초과/임박, 카드 실적 미달 주의, 미분류 누적 알림을 모은다.
-func (a *App) GetAlerts() ([]Alert, error) {
-	if err := a.ensure(); err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	y, m := now.Year(), int(now.Month())
-	out := []Alert{}
-
-	if bs, err := a.st.BudgetStatuses(y, m); err == nil {
-		for _, b := range bs {
-			switch {
-			case b.Over:
-				out = append(out, Alert{Kind: "budget", Level: "danger",
-					Title:  b.Category + " 예산 초과",
-					Detail: fmt.Sprintf("%s / %s (%d%%)", won(b.Spent), won(b.Amount), b.Pct)})
-			case b.Pct >= 80:
-				out = append(out, Alert{Kind: "budget", Level: "warn",
-					Title:  b.Category + " 예산 임박",
-					Detail: fmt.Sprintf("%s / %s (%d%%)", won(b.Spent), won(b.Amount), b.Pct)})
-			}
-		}
-	}
-
-	if paces, err := a.st.CardPaces(now); err == nil {
-		for _, p := range paces {
-			if !p.Achieved && p.Days > 0 && p.Elapsed*100/p.Days >= 60 {
-				out = append(out, Alert{Kind: "card", Level: "warn",
-					Title:  p.Card.Name + " 실적 미달 주의",
-					Detail: fmt.Sprintf("%d/%d일차 · %s 더 써야 달성", p.Elapsed, p.Days, won(p.Target-p.Spent))})
-			}
-		}
-	}
-
-	if sum, err := a.st.MonthlySummary(y, m); err == nil && sum.UnclassifiedCount > 0 {
-		out = append(out, Alert{Kind: "unclassified", Level: "info",
-			Title:  fmt.Sprintf("미분류 거래 %d건", sum.UnclassifiedCount),
-			Detail: "규칙으로 일괄 분류하거나 거래내역에서 직접 분류하세요"})
-	}
-	return out, nil
 }
 
 // ---- CSV 내보내기 ----

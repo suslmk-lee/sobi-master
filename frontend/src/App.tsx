@@ -33,6 +33,7 @@ import { useBackendBusy } from "./platform/busy";
 import "./styles/loading.css";
 import Brand from "./components/ui/Brand";
 import UpdateControl from "./components/UpdateControl";
+import AlertBell from "./components/AlertBell";
 import IconTile from "./components/ui/IconTile";
 import AppearanceSettings from "./components/settings/AppearanceSettings";
 
@@ -91,6 +92,26 @@ export default function App() {
     loadRefs();
   }, [loadRefs]);
 
+  // 알림을 누르면 갈 화면 (이번 달 알림이라 달도 이번 달로)
+  const goAlert = (kind: string) => {
+    switch (kind) {
+      case "card":
+        setTab("cards");
+        break;
+      case "dues":
+        setTab("subscriptions");
+        break;
+      case "unclassified":
+        setMonth(thisMonth());
+        setUnclassifiedOnly(true);
+        setTab("transactions");
+        break;
+      default: // budget: 대시보드에 예산 사용률이 있다
+        setMonth(thisMonth());
+        setTab("dashboard");
+    }
+  };
+
   return (
     <div className="relative min-h-screen app-bg text-zinc-100">
       {/* 상단 은은한 광원 */}
@@ -110,6 +131,8 @@ export default function App() {
             <div className="flex items-center gap-2">
               {/* 지금 버전 · 새 버전이 있으면 '새 버전 받기' */}
               <UpdateControl />
+              {/* 알림: 예산 · 카드 실적 · 회비 · 미분류 — 누르면 관련 화면으로 */}
+              <AlertBell refreshKey={tab} onGo={goAlert} />
               {/* 설정은 탭이 아니라 헤더의 작은 기어 아이콘으로 들어간다 (열려 있으면 민트로 표시) */}
               <button
                 type="button"
@@ -208,10 +231,6 @@ export default function App() {
             month={month}
             setMonth={setMonth}
             goCashPlan={() => setTab("cashplan")}
-            goUnclassified={() => {
-              setUnclassifiedOnly(true);
-              setTab("transactions");
-            }}
           />
         )}
         {tab === "cashplan" && <CashPlanPage refs={refs} goSubscriptions={() => setTab("subscriptions")} />}

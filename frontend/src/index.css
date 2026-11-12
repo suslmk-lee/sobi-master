@@ -258,26 +258,16 @@ body {
     @apply w-px self-stretch bg-white/[0.07];
   }
 
-  /* 그레인 질감 + 사선 광원 히어로 */
+  /* 대표 카드(대시보드 수지 · 자금 계획 다음 카드 결제): 다른 카드(.surface)와 같은 틀 · 바탕에
+     효과 설정의 대표 카드 광원 · 입체감과 테마의 세 색 빛(천지인)만 더 깐다. 이름은 예전 그레인 질감에서 왔다 */
   .hero-grain {
     @apply relative overflow-hidden;
-    border-radius: var(--hero-radius);
-    border: var(--hero-border-w) solid var(--hero-border);
-    /* 맨 위부터: 효과 설정의 광원 · 테마의 세 색 빛(천지인) · 카드 스타일 바탕 */
-    background: var(--fx-glow-hero, none), var(--theme-hero-glow, none), var(--hero-bg);
-    box-shadow: var(--fx-depth-hero, 0 0 #0000), var(--hero-shadow);
-  }
-  .hero-grain::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: var(--hero-grain-opacity);
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  .hero-grain > * {
-    position: relative;
+    border-radius: var(--card-radius);
+    border: var(--card-border-w) solid var(--card-border);
+    background: var(--fx-glow-hero, none), var(--theme-hero-glow, none), var(--card-bg);
+    box-shadow: var(--fx-depth-hero, 0 0 #0000), var(--card-shadow);
+    -webkit-backdrop-filter: var(--card-blur);
+    backdrop-filter: var(--card-blur);
   }
 
   /* 탭 카드 */

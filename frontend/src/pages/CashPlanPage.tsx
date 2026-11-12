@@ -971,7 +971,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
 
       {/* 요약 타일 */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="surface-inset flex flex-col gap-2 p-4">
+        <div className="surface flex flex-col gap-2 p-4">
           <p className="label-mono">다음 월급</p>
           <p className="num text-xl font-light tracking-tight text-emerald-300">
             {plan.nextSalary ? shortDate(plan.nextSalary) : "-"}
@@ -983,7 +983,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
             {won(plan.salaryUsed)} · {plan.salaryBasis}
           </p>
         </div>
-        <div className="surface-inset flex flex-col gap-2 p-4">
+        <div className="surface flex flex-col gap-2 p-4">
           <p className="label-mono">월급 전까지 써도 되는 돈</p>
           <p
             className={`num text-xl font-light tracking-tight ${
@@ -996,7 +996,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
             하루 {won(plan.dailyAllowance)} · {plan.daysToSalary}일
           </p>
         </div>
-        <div className="surface-inset flex flex-col gap-2 p-4">
+        <div className="surface flex flex-col gap-2 p-4">
           <p className="label-mono">그다음 결제</p>
           <p className="num text-xl font-light tracking-tight text-white">
             {plan.followingDue ? shortDate(plan.followingDue) : "-"}
@@ -1011,7 +1011,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
             <span className="text-amber-300">{won(plan.followingProjected)}</span>
           </p>
         </div>
-        <div className="surface-inset flex flex-col gap-2 p-4">
+        <div className="surface flex flex-col gap-2 p-4">
           <p className="label-mono">기간 중 최저 잔액</p>
           <p className={`num text-xl font-light tracking-tight ${hasBalance ? lowTone : "text-white"}`}>
             {hasBalance ? won(plan.lowestBalance) : "-"}
@@ -1022,7 +1022,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
 
       {/* 등록 안 된 반복 계좌 출금: 자금 계획이 앞으로 빠질 돈으로 모른다 */}
       {missing.length > 0 && (
-        <div className="surface-inset flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <div className="surface flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
           <div className="min-w-0 flex-1 space-y-1 text-xs leading-relaxed">
             <p className="text-sm text-amber-300">
               정기결제로 등록되지 않은 반복 계좌 출금 {missing.length}건이 계산에 빠져 있습니다
