@@ -288,7 +288,8 @@ body {
     @apply relative overflow-hidden;
     border-radius: var(--hero-radius);
     border: var(--hero-border-w) solid var(--hero-border);
-    background: var(--fx-glow-hero, none), var(--hero-bg);
+    /* 맨 위부터: 효과 설정의 광원 · 테마의 세 색 빛(천지인) · 카드 스타일 바탕 */
+    background: var(--fx-glow-hero, none), var(--theme-hero-glow, none), var(--hero-bg);
     box-shadow: var(--fx-depth-hero, 0 0 #0000), var(--hero-shadow);
   }
   .hero-grain::before {

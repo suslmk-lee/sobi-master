@@ -16,7 +16,10 @@ export interface AppTheme {
   surface?: string; // 카드 바탕 (기본: bg 에서 fg 쪽으로 살짝)
   // 상태 색 덮어쓰기 — 강조색이 주황·노랑 계열이면 경고(amber)와 겹치지 않게 바꾼다
   status?: Partial<Record<'amber' | 'rose' | 'emerald' | 'sky' | 'orange', string>>;
-  // 미리보기 위쪽 점 세 개의 색 (없으면 강조색 + 흐린 점 둘) — 천지인처럼 세 색이 정체인 테마용
+  // 라이트 테마에서도 status 로 정한 색을 글자색 쪽으로 섞지 않고 그대로 쓴다 — 로고 원색이 정체인 테마용
+  // (기본은 라이트에서 상태 색을 어둡게 섞어 읽히게 하는데, 원색이 갈색·올리브로 탁해진다)
+  statusExact?: boolean;
+  // 세 색이 정체인 테마(천지인): 설정 미리보기 점 세 개, 그리고 대표 카드(.hero-grain)에 까는 세 색 빛
   trio?: [string, string, string];
 }
 
@@ -42,7 +45,7 @@ export const THEMES: AppTheme[] = [
   { id: 'rose-pine', name: 'Rosé Pine', mode: 'dark', bg: '#191724', fg: '#e0def4', accent: '#ebbcba' },
   { id: 'solarized-dark', name: 'Solarized Dark', mode: 'dark', bg: '#002b36', fg: '#eee8d5', accent: '#2aa198' },
   { id: 'light', name: '라이트 (민트)', mode: 'light', bg: '#f4f5f7', fg: '#111113', accent: '#0f9f6e', surface: '#ffffff' },
-  { id: 'quantum-light', name: '퀀텀 · 천지인 (밝게)', mode: 'light', bg: '#f3f5f8', fg: '#1b1f26', accent: '#4572ba', surface: '#ffffff', status: { rose: QUANTUM_TRIO[0], emerald: QUANTUM_TRIO[1] }, trio: QUANTUM_TRIO },
+  { id: 'quantum-light', name: '퀀텀 · 천지인 (밝게)', mode: 'light', bg: '#f3f5f8', fg: '#1b1f26', accent: '#4572ba', surface: '#ffffff', status: { rose: QUANTUM_TRIO[0], emerald: QUANTUM_TRIO[1] }, statusExact: true, trio: QUANTUM_TRIO },
   { id: 'light-orange', name: '라이트 (주황)', mode: 'light', bg: '#f6f6f4', fg: '#1f2023', accent: '#d0663a', surface: '#ffffff', status: { amber: '#a5b4fc', orange: '#f472b6' } },
   { id: 'solarized-light', name: 'Solarized Light', mode: 'light', bg: '#fdf6e3', fg: '#073642', accent: '#268bd2', surface: '#fffbef' },
   { id: 'catppuccin-latte', name: 'Catppuccin Latte', mode: 'light', bg: '#eff1f5', fg: '#4c4f69', accent: '#8839ef', surface: '#ffffff' },
@@ -137,9 +140,23 @@ export function buildThemeVars(theme: AppTheme): Record<string, string> {
   Object.entries(scale(accent, fg, bg)).forEach(([k, v]) => set(`mint-${k}`, v));
   (Object.keys(STATUS_BASE) as (keyof typeof STATUS_BASE)[]).forEach((name) => {
     const raw = theme.status?.[name] ?? STATUS_BASE[name];
-    const base = theme.mode === 'light' ? mix(raw, fg, 0.38) : raw;
+    const exact = theme.statusExact && theme.status?.[name] !== undefined;
+    const base = theme.mode === 'light' && !exact ? mix(raw, fg, 0.38) : raw;
     Object.entries(scale(base, fg, bg)).forEach(([k, v]) => set(`${name}-${k}`, v));
   });
+
+  // 세 색 빛: 대표 카드 왼쪽 위에 빨강 · 초록 · 파랑 빛이 겹쳐 번진다 (퀀텀메이트 대시보드 머리 빛과 같은 결)
+  if (theme.trio) {
+    theme.trio.forEach((c, i) => set(`tri-${i + 1}`, c));
+    const a = theme.mode === 'dark' ? [0.24, 0.2, 0.3] : [0.22, 0.26, 0.24];
+    vars['--theme-hero-glow'] = [
+      `radial-gradient(38% 95% at 2% 0%, rgb(var(--c-tri-1) / ${a[0]}), transparent 72%)`,
+      `radial-gradient(34% 90% at 20% 8%, rgb(var(--c-tri-2) / ${a[1]}), transparent 72%)`,
+      `radial-gradient(40% 100% at 38% 0%, rgb(var(--c-tri-3) / ${a[2]}), transparent 72%)`,
+    ].join(', ');
+  } else {
+    vars['--theme-hero-glow'] = 'none';
+  }
 
   vars['--shadow-k'] = theme.mode === 'dark' ? '1' : '0.18';
   vars['color-scheme'] = theme.mode;

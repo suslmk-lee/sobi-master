@@ -118,6 +118,15 @@
   --hero-grain-opacity: 0.22;
 }
 
+/* 라이트 테마의 글래스 대표 카드: 위 빛은 --c-white(라이트에서는 어두운 글자색)로 그려 회색 얼룩이 된다 → 흰 빛으로 */
+[data-theme-mode='light'][data-card='glass'],
+[data-theme-mode='light'] [data-card='glass'] {
+  --hero-bg:
+    radial-gradient(60% 120% at 8% 0%, rgb(var(--c-paper) / 0.95) 0%, rgb(var(--c-paper) / 0.45) 35%, transparent 65%),
+    linear-gradient(115deg, rgb(var(--c-paper) / 0.8) 0%, rgb(var(--c-paper) / 0.3) 28%, transparent 46%),
+    rgb(var(--c-ink-950));
+}
+
 /* ---------------------------------------------------------------- minimal */
 [data-card='minimal'] {
   --app-bg: rgb(var(--c-ink-950));
