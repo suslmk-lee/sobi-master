@@ -163,6 +163,44 @@ CREATE TABLE dues_links (
 	state           TEXT NOT NULL,
 	created_at      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE fx_rates (
+	date     TEXT NOT NULL,
+	currency TEXT NOT NULL,
+	rate     REAL NOT NULL,
+	source   TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (date, currency)
+);
+CREATE TABLE fx_plans (
+	id            INTEGER PRIMARY KEY,
+	kind          TEXT NOT NULL,
+	currency      TEXT NOT NULL,
+	unit          TEXT NOT NULL DEFAULT 'krw',
+	amount        INTEGER NOT NULL,
+	target_rate   REAL NOT NULL DEFAULT 0,
+	repeating     INTEGER NOT NULL DEFAULT 0,
+	weekdays_only INTEGER NOT NULL DEFAULT 0,
+	start_date    TEXT NOT NULL,
+	end_date      TEXT NOT NULL DEFAULT '',
+	active        INTEGER NOT NULL DEFAULT 1,
+	last_run      TEXT NOT NULL DEFAULT '',
+	done_at       TEXT NOT NULL DEFAULT '',
+	memo          TEXT NOT NULL DEFAULT '',
+	created_at    TEXT
+);
+CREATE TABLE fx_trades (
+	id         INTEGER PRIMARY KEY,
+	date       TEXT NOT NULL,
+	currency   TEXT NOT NULL,
+	side       TEXT NOT NULL,
+	amount     INTEGER NOT NULL,
+	krw        INTEGER NOT NULL,
+	rate       REAL NOT NULL,
+	source     TEXT NOT NULL DEFAULT 'manual',
+	plan_id    INTEGER,
+	estimated  INTEGER NOT NULL DEFAULT 0,
+	memo       TEXT NOT NULL DEFAULT '',
+	created_at TEXT
+);
 CREATE TABLE prepaid_uses (
 	id         INTEGER PRIMARY KEY,
 	pass_id    INTEGER NOT NULL,
@@ -397,6 +435,41 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var state, at string
 				e := r.Scan(&tid, &sid, &state, &at)
 				return []interface{}{tid, sid, state, at}, e
+			}),
+		// 외화: 환율·계획·거래 (계획이 빠지면 매일 모으기가 복원 후 지난 날을 다시 기록한다)
+		copy("fx_rates",
+			`SELECT date, currency, rate, source FROM fx_rates`,
+			`INSERT INTO fx_rates(date, currency, rate, source) VALUES(?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var date, cur, src string
+				var rate float64
+				e := r.Scan(&date, &cur, &rate, &src)
+				return []interface{}{date, cur, rate, src}, e
+			}),
+		copy("fx_plans",
+			`SELECT id, kind, currency, unit, amount, target_rate, repeating, weekdays_only, start_date, end_date, active, last_run, done_at, memo, created_at::text FROM fx_plans`,
+			`INSERT INTO fx_plans(id, kind, currency, unit, amount, target_rate, repeating, weekdays_only, start_date, end_date, active, last_run, done_at, memo, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, amount int64
+				var target float64
+				var rep, wd, act int
+				var kind, cur, unit, start, end, last, done, memo string
+				var createdAt sql.NullString
+				e := r.Scan(&id, &kind, &cur, &unit, &amount, &target, &rep, &wd, &start, &end, &act, &last, &done, &memo, &createdAt)
+				return []interface{}{id, kind, cur, unit, amount, target, rep, wd, start, end, act, last, done, memo, nullable2(createdAt)}, e
+			}),
+		copy("fx_trades",
+			`SELECT id, date, currency, side, amount, krw, rate, source, plan_id, estimated, memo, created_at::text FROM fx_trades`,
+			`INSERT INTO fx_trades(id, date, currency, side, amount, krw, rate, source, plan_id, estimated, memo, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, amount, krw int64
+				var rate float64
+				var est int
+				var date, cur, side, src, memo string
+				var plan sql.NullInt64
+				var createdAt sql.NullString
+				e := r.Scan(&id, &date, &cur, &side, &amount, &krw, &rate, &src, &plan, &est, &memo, &createdAt)
+				return []interface{}{id, date, cur, side, amount, krw, rate, src, nullable(plan), est, memo, nullable2(createdAt)}, e
 			}),
 		// 충전 연결은 거래·선불권 뒤에 복사한다
 		copy("prepaid_charges",

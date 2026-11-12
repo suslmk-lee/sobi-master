@@ -507,6 +507,13 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		if err != nil {
 			return plan, err
 		}
+		// 외화를 산 원화도 통장에서 빠졌다(판 원화는 들어왔다)
+		fxNet, err := s.fxNetSpent(bal.AsOf, fmtDay(today))
+		if err != nil {
+			return plan, err
+		}
+		adj -= fxNet
+		plan.FxAdjust = -fxNet
 		plan.BalanceAdjust = adj
 		plan.BalanceNow = bal.Amount + adj
 	}
@@ -583,6 +590,16 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 	}
 	events = append(events, subEvents...)
 	events = append(events, duesEvents(duesBook, pms, cal, today, horizon)...)
+	// 외화 매일 모으기로 앞으로 빠질 원화
+	fxPlans, err := s.ListFxPlans()
+	if err != nil {
+		return plan, err
+	}
+	fxRates, err := s.fxRateBook()
+	if err != nil {
+		return plan, err
+	}
+	events = append(events, fxCashEvents(fxPlans, fxRates, today, horizon)...)
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
 			return events[i].Date < events[j].Date

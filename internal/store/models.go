@@ -268,6 +268,7 @@ type CashPlan struct {
 	Balance       *CashBalance `json:"balance"`       // 가장 최근 입력한 잔액 (없으면 null)
 	BalanceAdjust int64        `json:"balanceAdjust"` // 기준일 이후 오늘까지 반영한 증감 (수입 − 계좌·현금 지출 − 빠져나간 카드대금)
 	BalanceNow    int64        `json:"balanceNow"`    // 추정 현재 잔액 = Balance.Amount + BalanceAdjust
+	FxAdjust      int64        `json:"fxAdjust"`      // BalanceAdjust 중 외화를 사고판 원화(산 만큼 −, 판 만큼 +)
 
 	// 다음 카드 결제일
 	NextDue      string     `json:"nextDue"`      // 가장 가까운 카드대금 출금일 (없으면 "")

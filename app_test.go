@@ -21,7 +21,7 @@ func newTestApp(t *testing.T) *App {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	if _, err := st.DB().Exec(`TRUNCATE members, categories, payment_methods, rules, transactions RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := st.DB().Exec(`TRUNCATE members, categories, payment_methods, rules, transactions, fx_trades, fx_plans, fx_rates RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.EnsureDefaults(); err != nil {

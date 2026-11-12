@@ -4,6 +4,7 @@ import {
   BarChart3,
   Coins,
   CreditCard,
+  Globe,
   LayoutDashboard,
   Loader2,
   LucideIcon,
@@ -25,6 +26,7 @@ import CardsPage from "./pages/CardsPage";
 import CashPlanPage from "./pages/CashPlanPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CashbackPage from "./pages/CashbackPage";
+import FxPage from "./pages/FxPage";
 import StatsPage from "./pages/StatsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { useBackendBusy } from "./platform/busy";
@@ -41,6 +43,7 @@ type Tab =
   | "cards"
   | "subscriptions"
   | "cashback"
+  | "fx"
   | "stats"
   | "settings";
 
@@ -51,6 +54,7 @@ const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: "cards", label: "카드", icon: CreditCard },
   { key: "subscriptions", label: "정기결제", icon: Repeat },
   { key: "cashback", label: "캐시백", icon: Coins },
+  { key: "fx", label: "외화", icon: Globe },
   { key: "stats", label: "통계", icon: BarChart3 },
 ];
 
@@ -225,6 +229,7 @@ export default function App() {
           <SubscriptionsPage refs={refs} month={month} setMonth={setMonth} />
         )}
         {tab === "cashback" && <CashbackPage month={month} setMonth={setMonth} />}
+        {tab === "fx" && <FxPage />}
         {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}
       </main>

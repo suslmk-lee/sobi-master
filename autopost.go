@@ -312,6 +312,8 @@ func (a *App) startAutoPostLoop() {
 			if _, err := a.postDue(time.Now()); err != nil {
 				logIf("정기결제 자동 등록("+when+")", err)
 			}
+			// 외화 모으기: 환율을 (오래됐으면) 받고 매일 모으기·목표 환율 매수를 기록한다
+			logIf("외화 모으기 자동 기록("+when+")", a.runFx(false))
 		}
 		run("시작")
 		t := time.NewTicker(autoPostInterval)
