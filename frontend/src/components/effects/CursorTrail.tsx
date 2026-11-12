@@ -26,7 +26,7 @@ function readRgb(name: string, fallback: Rgb): Rgb {
 }
 
 export default function CursorTrail() {
-  const { settings } = useAppearance();
+  const { settings, theme } = useAppearance();
   const { enabled, nodes, ease, headSize, taper, gradient, style } = settings.cursorTrail;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -303,7 +303,7 @@ export default function CursorTrail() {
       window.removeEventListener('blur', hide);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [active, nodes, ease, headSize, taper, gradient, style, settings.themeId]);
+  }, [active, nodes, ease, headSize, taper, gradient, style, theme.id]);
 
   if (!active) return null;
   return (

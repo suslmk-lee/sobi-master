@@ -16,12 +16,20 @@ export interface AppTheme {
   surface?: string; // 카드 바탕 (기본: bg 에서 fg 쪽으로 살짝)
   // 상태 색 덮어쓰기 — 강조색이 주황·노랑 계열이면 경고(amber)와 겹치지 않게 바꾼다
   status?: Partial<Record<'amber' | 'rose' | 'emerald' | 'sky' | 'orange', string>>;
+  // 미리보기 위쪽 점 세 개의 색 (없으면 강조색 + 흐린 점 둘) — 천지인처럼 세 색이 정체인 테마용
+  trio?: [string, string, string];
 }
+
+// 퀀텀 · 천지인: 퀀텀 로고 세 색(빨강 · 초록 · 파랑 = 천지인). 강조색은 로고 파랑, 지출(rose)은 빨강, 수입·초록 표시(emerald)는 초록.
+// 어두운 바탕에서는 글자로 읽히게 빨강·파랑을 조금 밝힌 값을 쓴다. 로고 원색: #f24941 · #79ba37 · #4572ba
+const QUANTUM_TRIO: [string, string, string] = ['#f24941', '#79ba37', '#4572ba'];
 
 export const THEMES: AppTheme[] = [
   { id: 'default', name: '기본 (블랙 · 민트)', mode: 'dark', bg: '#060607', fg: '#ffffff', accent: '#7ddfb0' },
+  { id: 'quantum', name: '퀀텀 · 천지인', mode: 'dark', bg: '#17191d', fg: '#e7e9ec', accent: '#5b8ad6', status: { rose: '#f5605a', emerald: '#79ba37' }, trio: ['#f5605a', '#79ba37', '#5b8ad6'] },
   { id: 'graphite-blue', name: '그라파이트 · 파랑', mode: 'dark', bg: '#111113', fg: '#f4f4f5', accent: '#6aa8ff' },
   { id: 'graphite-orange', name: '그라파이트 · 주황', mode: 'dark', bg: '#111113', fg: '#f4f4f5', accent: '#f59e6b', status: { amber: '#a5b4fc', orange: '#f472b6' } },
+  { id: 'graphite-green', name: '그라파이트 · 초록', mode: 'dark', bg: '#111113', fg: '#f4f4f5', accent: '#5cbf8a' },
   { id: 'monochrome', name: '모노크롬', mode: 'dark', bg: '#0a0a0a', fg: '#fafafa', accent: '#d4d4d8' },
   { id: 'mauve', name: '모브 (회보라)', mode: 'dark', bg: '#16131b', fg: '#f3eef7', accent: '#c4a7e7' },
   { id: 'mocha', name: '모카 (갈색)', mode: 'dark', bg: '#191411', fg: '#f5ede6', accent: '#d9a46f', status: { amber: '#9fc4d9', orange: '#e48fa8' } },
@@ -34,11 +42,26 @@ export const THEMES: AppTheme[] = [
   { id: 'rose-pine', name: 'Rosé Pine', mode: 'dark', bg: '#191724', fg: '#e0def4', accent: '#ebbcba' },
   { id: 'solarized-dark', name: 'Solarized Dark', mode: 'dark', bg: '#002b36', fg: '#eee8d5', accent: '#2aa198' },
   { id: 'light', name: '라이트 (민트)', mode: 'light', bg: '#f4f5f7', fg: '#111113', accent: '#0f9f6e', surface: '#ffffff' },
+  { id: 'quantum-light', name: '퀀텀 · 천지인 (밝게)', mode: 'light', bg: '#f3f5f8', fg: '#1b1f26', accent: '#4572ba', surface: '#ffffff', status: { rose: QUANTUM_TRIO[0], emerald: QUANTUM_TRIO[1] }, trio: QUANTUM_TRIO },
+  { id: 'light-orange', name: '라이트 (주황)', mode: 'light', bg: '#f6f6f4', fg: '#1f2023', accent: '#d0663a', surface: '#ffffff', status: { amber: '#a5b4fc', orange: '#f472b6' } },
   { id: 'solarized-light', name: 'Solarized Light', mode: 'light', bg: '#fdf6e3', fg: '#073642', accent: '#268bd2', surface: '#fffbef' },
   { id: 'catppuccin-latte', name: 'Catppuccin Latte', mode: 'light', bg: '#eff1f5', fg: '#4c4f69', accent: '#8839ef', surface: '#ffffff' },
 ];
 
 export const DEFAULT_THEME_ID = 'default';
+
+// '시스템': 테마가 아니라 macOS 의 밝게/어둡게 설정을 따라 아래 두 테마 중 하나를 고르는 선택지
+export const SYSTEM_THEME_ID = 'system';
+export const SYSTEM_DARK_ID = DEFAULT_THEME_ID;
+export const SYSTEM_LIGHT_ID = 'light';
+
+export function prefersDark(): boolean {
+  try {
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+  } catch {
+    return true;
+  }
+}
 
 // 상태 색 기준값 (Tailwind 400 수준). 라이트 테마에서는 글자로 읽히도록 fg 쪽으로 어둡게 옮긴다.
 const STATUS_BASE = {
@@ -123,6 +146,8 @@ export function buildThemeVars(theme: AppTheme): Record<string, string> {
   return vars;
 }
 
-export function getTheme(id: string): AppTheme {
+// 저장된 선택(테마 ID 또는 '시스템')을 실제로 그릴 테마로. '시스템'은 지금 macOS 설정을 본다.
+export function getTheme(id: string, dark: boolean = prefersDark()): AppTheme {
+  if (id === SYSTEM_THEME_ID) id = dark ? SYSTEM_DARK_ID : SYSTEM_LIGHT_ID;
   return THEMES.find((t) => t.id === id) ?? THEMES[0];
 }
