@@ -65,6 +65,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.startBackupLoop()
 	a.startAutoPostLoop()
+	a.startUpdateHousekeeping()
 }
 
 // startBackupLoop 은 시작 직후 한 번, 이후 backupInterval 마다 로컬 백업을 수행한다.
