@@ -21,7 +21,6 @@
  *   칩       --chip-radius --chip-border-w --chip-border --chip-bg --chip-shadow
  *   입력     --input-radius --input-border-w --input-border --input-bg --input-shadow
  *            --input-focus-border --input-focus-shadow
- *   히어로   --hero-radius --hero-border-w --hero-border --hero-bg --hero-shadow --hero-grain-opacity
  */
 
 /* ---------------------------------------------------------------- glass (기본) */
@@ -99,24 +98,6 @@
   --input-focus-border: rgb(var(--c-mint-400) / 0.5);
   --input-focus-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0.15);
 
-  --hero-radius: 2rem;
-  --hero-border-w: 1px;
-  --hero-border: rgb(var(--c-white) / 0.09);
-  --hero-bg:
-    radial-gradient(60% 120% at 8% 0%, rgb(var(--c-white) / 0.22) 0%, rgb(var(--c-white) / 0.06) 35%, transparent 65%),
-    linear-gradient(115deg, rgb(var(--c-white) / 0.16) 0%, rgb(var(--c-white) / 0.07) 28%, transparent 46%),
-    rgb(var(--c-ink-950));
-  --hero-shadow: inset 0 1px 0 rgb(var(--c-white) / 0.08), 0 30px 60px -30px rgb(var(--c-shadow) / calc(0.95 * var(--shadow-k)));
-  --hero-grain-opacity: 0.22;
-}
-
-/* 라이트 테마의 글래스 대표 카드: 위 빛은 --c-white(라이트에서는 어두운 글자색)로 그려 회색 얼룩이 된다 → 흰 빛으로 */
-[data-theme-mode='light'][data-card='glass'],
-[data-theme-mode='light'] [data-card='glass'] {
-  --hero-bg:
-    radial-gradient(60% 120% at 8% 0%, rgb(var(--c-paper) / 0.95) 0%, rgb(var(--c-paper) / 0.45) 35%, transparent 65%),
-    linear-gradient(115deg, rgb(var(--c-paper) / 0.8) 0%, rgb(var(--c-paper) / 0.3) 28%, transparent 46%),
-    rgb(var(--c-ink-950));
 }
 
 /* ---------------------------------------------------------------- minimal */
@@ -192,13 +173,7 @@
   --input-shadow: none;
   --input-focus-border: rgb(var(--c-white) / 0.7);
   --input-focus-shadow: none;
-
-  --hero-radius: 14px;
-  --hero-border-w: 1px;
-  --hero-border: rgb(var(--c-white) / 0.15);
-  --hero-bg: rgb(var(--c-ink-900));
-  --hero-shadow: 0 0 #0000; /* 효과 그림자를 앞에 덧붙일 수 있게 none 대신 투명 그림자 */
-  --hero-grain-opacity: 0;
+ /* 효과 그림자를 앞에 덧붙일 수 있게 none 대신 투명 그림자 */
 }
 
 /* ---------------------------------------------------------------- flat */
@@ -274,13 +249,7 @@
   --input-shadow: none;
   --input-focus-border: transparent;
   --input-focus-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0.5);
-
-  --hero-radius: 28px;
-  --hero-border-w: 0px;
-  --hero-border: transparent;
-  --hero-bg: linear-gradient(135deg, rgb(var(--c-mint-400) / 0.18), transparent 60%), rgb(var(--c-ink-800));
-  --hero-shadow: 0 0 #0000; /* 효과 그림자를 앞에 덧붙일 수 있게 none 대신 투명 그림자 */
-  --hero-grain-opacity: 0.06;
+ /* 효과 그림자를 앞에 덧붙일 수 있게 none 대신 투명 그림자 */
 }
 
 /* ---------------------------------------------------------------- neumorph */
@@ -359,12 +328,6 @@
   --input-focus-border: transparent;
   --input-focus-shadow: inset 4px 4px 9px var(--neu-sh), inset -3px -3px 8px var(--neu-hl), 0 0 0 2px rgb(var(--c-mint-400) / 0.45);
 
-  --hero-radius: 30px;
-  --hero-border-w: 0px;
-  --hero-border: transparent;
-  --hero-bg: linear-gradient(145deg, rgb(var(--c-mint-400) / 0.1), transparent 55%), rgb(var(--c-ink-950));
-  --hero-shadow: 12px 12px 26px var(--neu-sh), -9px -9px 22px var(--neu-hl);
-  --hero-grain-opacity: 0.06;
 }
 /* 라이트 테마: 밝은 하이라이트(흰색)와 옅은 그림자 */
 [data-theme-mode='light'] [data-card='neumorph'],
@@ -453,12 +416,6 @@
   --input-focus-border: rgb(var(--c-mint-400) / 0.55);
   --input-focus-shadow: inset 0 2px 3px rgb(var(--c-shadow) / calc(0.35 * var(--shadow-k))), 0 0 0 2px rgb(var(--c-mint-400) / 0.15);
 
-  --hero-radius: 20px;
-  --hero-border-w: 1px;
-  --hero-border: rgb(var(--c-white) / 0.08);
-  --hero-bg: linear-gradient(160deg, rgb(var(--c-white) / 0.09), transparent 50%), rgb(var(--c-ink-800));
-  --hero-shadow: 0 1px 0 rgb(var(--c-white) / 0.08), 0 9px 0 -4px rgb(var(--c-ink-700)), 0 18px 0 -8px rgb(var(--c-ink-800)), 0 26px 40px -16px rgb(var(--c-shadow) / calc(0.9 * var(--shadow-k)));
-  --hero-grain-opacity: 0.12;
 }
 
 /* ---------------------------------------------------------------- glow */
@@ -536,12 +493,6 @@
   --input-focus-border: rgb(var(--c-mint-400) / 0.7);
   --input-focus-shadow: var(--glow-ring);
 
-  --hero-radius: 24px;
-  --hero-border-w: 1px;
-  --hero-border: rgb(var(--c-mint-400) / 0.3);
-  --hero-bg: radial-gradient(60% 100% at 0% 0%, rgb(var(--c-mint-400) / 0.16), transparent 65%), rgb(var(--c-ink-900));
-  --hero-shadow: 0 0 40px -14px rgb(var(--c-mint-400) / 0.3);
-  --hero-grain-opacity: 0.08;
 }
 
 /* ---------------------------------------------------------------- aurora */
@@ -624,15 +575,6 @@
   --input-focus-border: transparent;
   --input-focus-shadow: 0 0 0 2px rgb(var(--c-mint-400) / 0.5);
 
-  --hero-radius: 28px;
-  --hero-border-w: 0px;
-  --hero-border: transparent;
-  --hero-bg:
-    radial-gradient(70% 120% at 0% 0%, rgb(var(--c-mint-400) / 0.35), transparent 60%),
-    radial-gradient(60% 110% at 100% 100%, rgb(var(--c-rose-400) / 0.28), transparent 60%),
-    rgb(var(--c-ink-850) / 0.6);
-  --hero-shadow: 0 26px 52px -28px rgb(var(--c-shadow) / calc(0.8 * var(--shadow-k)));
-  --hero-grain-opacity: 0.1;
 }
 
 /* ---------------------------------------------------------------- brutal */
@@ -710,10 +652,4 @@
   --input-focus-border: var(--brutal-line);
   --input-focus-shadow: 4px 4px 0 rgb(var(--c-mint-400));
 
-  --hero-radius: 4px;
-  --hero-border-w: 2px;
-  --hero-border: var(--brutal-line);
-  --hero-bg: rgb(var(--c-ink-900));
-  --hero-shadow: 8px 8px 0 rgb(var(--c-mint-400));
-  --hero-grain-opacity: 0;
 }

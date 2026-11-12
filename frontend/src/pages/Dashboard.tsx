@@ -1,16 +1,13 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { GetCashPlan, GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
-import { main, store } from "../../wailsjs/go/models";
+import { store } from "../../wailsjs/go/models";
 import {
-  AlertTriangle,
   BarChart3,
   ChevronRight,
   CreditCard,
   GitCompare,
-  Info,
   LayoutDashboard,
   PieChart,
-  Siren,
   Target,
   TrendingUp,
   Users,
@@ -113,12 +110,10 @@ function SectionHead({
 export default function Dashboard({
   month,
   setMonth,
-  goUnclassified,
   goCashPlan,
 }: {
   month: string;
   setMonth: (m: string) => void;
-  goUnclassified: () => void;
   goCashPlan?: () => void;
 }) {
   // 자금 계획 요약 — 실패하면 카드만 숨기고 대시보드는 그대로 둔다
@@ -134,7 +129,6 @@ export default function Dashboard({
   const [daily, setDaily] = useState<store.DayPoint[]>([]);
   const [top, setTop] = useState<store.NamedAmount[]>([]);
   const [cards, setCards] = useState<store.CardStatus[]>([]);
-  const [alerts, setAlerts] = useState<main.Alert[]>([]);
   const [budgets, setBudgets] = useState<store.BudgetStatus[]>([]);
   // 결제수단 이름 → 표시 색 (지정 색 우선, 없으면 자동 색)
   const [pmColors, setPmColors] = useState<Record<string, string>>({});
@@ -155,7 +149,6 @@ export default function Dashboard({
       setDaily(dash.daily);
       setTop(dash.top);
       setCards(dash.cards);
-      setAlerts(dash.alerts);
       setBudgets(dash.budgets);
       const colors: Record<string, string> = {};
       for (const pm2 of dash.paymentMethods) {
@@ -206,44 +199,6 @@ export default function Dashboard({
         <MonthPicker value={month} onChange={setMonth} />
       </div>
 
-      {sum.unclassifiedCount > 0 && (
-        <button
-          onClick={goUnclassified}
-          className="surface flex w-full items-center gap-3 border-l-2 !border-l-amber-300/60 px-5 py-3.5 text-left"
-        >
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-300" />
-          <span className="min-w-0 flex-1 text-sm text-amber-200">
-            미분류 거래 <span className="num font-medium">{sum.unclassifiedCount}</span>건 — 지금 분류하기
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-amber-300/70" />
-        </button>
-      )}
-
-      {alerts.length > 0 && (
-        <div className="space-y-2">
-          {alerts.map((a, i) => {
-            const tone =
-              a.level === "danger"
-                ? { bar: "!border-l-rose-300/60", icon: "text-rose-300", Icon: Siren }
-                : a.level === "warn"
-                ? { bar: "!border-l-amber-300/60", icon: "text-amber-300", Icon: AlertTriangle }
-                : { bar: "!border-l-sky-300/60", icon: "text-sky-300", Icon: Info };
-            return (
-              <div
-                className={`surface flex items-start gap-3 border-l-2 px-5 py-3.5 ${tone.bar}`}
-                key={i}
-              >
-                <tone.Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.icon}`} />
-                <div className="min-w-0">
-                  <strong className="text-sm font-medium text-white">{a.title}</strong>
-                  <span className="ml-2 text-xs text-zinc-400">{a.detail}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {plan && plan.nextDue && <NextDueCard plan={plan} onClick={goCashPlan} />}
 
       {/* KPI: 수지 히어로 + 수입·지출·이체 타일 */}
@@ -267,21 +222,21 @@ export default function Dashboard({
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-2">
-          <div className="surface-inset flex flex-col gap-2 p-4">
+          <div className="surface flex flex-col gap-2 p-4">
             <p className="label-mono">수입</p>
             <p className="num text-2xl font-light tracking-tight text-emerald-300">
               <CountUp value={sum.totalIncome} format={won} />
             </p>
             <Delta cur={sum.totalIncome} prev={prev?.totalIncome ?? 0} />
           </div>
-          <div className="surface-inset flex flex-col gap-2 p-4">
+          <div className="surface flex flex-col gap-2 p-4">
             <p className="label-mono">지출</p>
             <p className="num text-2xl font-light tracking-tight text-rose-300">
               <CountUp value={sum.totalExpense} format={won} />
             </p>
             <Delta cur={sum.totalExpense} prev={prev?.totalExpense ?? 0} goodWhenDown />
           </div>
-          <div className="surface-inset flex flex-col gap-2 p-4">
+          <div className="surface flex flex-col gap-2 p-4">
             <p className="label-mono">투자/저축 이체</p>
             <p className="num text-2xl font-light tracking-tight text-sky-300">
               <CountUp value={sum.totalTransfer} format={won} />
