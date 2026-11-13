@@ -814,6 +814,8 @@ export default function FxPage() {
                 {ov.rates.map((r) => {
                   const c = curOf(r.currency)!;
                   const diff = r.prev > 0 && r.rate > 0 ? (r.rate - r.prev) * c.unit : 0;
+                  // 등락률은 표시 단위(1 · 100)와 상관없다
+                  const pct = r.prev > 0 && r.rate > 0 ? ((r.rate - r.prev) / r.prev) * 100 : 0;
                   return (
                     <tr
                       key={r.currency}
@@ -826,7 +828,16 @@ export default function FxPage() {
                       </td>
                       <td className="num py-1.5 text-right text-white">{rateText(c, r.rate)}</td>
                       <td className={`num py-1.5 text-right ${diff > 0 ? "text-rose-300" : diff < 0 ? "text-sky-300" : "text-zinc-500"}`}>
-                        {r.prev > 0 ? `${diff > 0 ? "▲" : diff < 0 ? "▼" : ""}${Math.abs(diff).toFixed(2)}` : "-"}
+                        {r.prev > 0 ? (
+                          <>
+                            {`${diff > 0 ? "▲" : diff < 0 ? "▼" : ""}${Math.abs(diff).toFixed(2)}`}
+                            <span className="ml-1.5 inline-block min-w-[3.75rem] text-xs">
+                              {`${pct > 0 ? "+" : pct < 0 ? "-" : ""}${Math.abs(pct).toFixed(2)}%`}
+                            </span>
+                          </>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                     </tr>
                   );
