@@ -261,7 +261,11 @@ func duesEvents(dues []DuesStatus, pms []PaymentMethod, cal *holiday.Calendar, t
 // 회비는 매달 내고, 거래를 자동으로 만들지 않으며, 시작 월 대신 "어디까지 냈나"로 출발한다.
 func (s *Store) normalizeDues(sub *Subscription) error {
 	if sub.Kind != KindDues {
-		sub.Kind, sub.PaidThrough, sub.PaidThroughAt, sub.PaidThroughTx = "", "", "", 0
+		sub.PaidThrough, sub.PaidThroughAt, sub.PaidThroughTx = "", "", 0
+		if sub.Kind == KindTransit {
+			return normalizeTransit(sub)
+		}
+		sub.Kind = ""
 		return nil
 	}
 	if sub.Amount <= 0 {

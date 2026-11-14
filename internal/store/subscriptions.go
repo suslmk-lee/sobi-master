@@ -87,8 +87,8 @@ func (s Subscription) AmountAt(ym string) int64 {
 // 꺼져 있거나, 시작 전이거나, 종료 월을 지났으면 아니다.
 // 연 결제는 결제 월에만 빠진다.
 func (s Subscription) DueIn(ym string) bool {
-	// 회비는 달마다 대조·자동 등록하지 않고 장부(BuildDuesStatus)로 본다.
-	if !s.Active || s.Kind == KindDues {
+	// 회비는 장부(BuildDuesStatus)로, 교통카드는 월 기록(transit.go)으로 본다 — 달마다 대조·자동 등록하지 않는다.
+	if !s.Active || s.Kind == KindDues || s.Kind == KindTransit {
 		return false
 	}
 	if len(ym) < 7 {
@@ -221,6 +221,11 @@ func (s *Store) SaveSubscription(sub Subscription) (Subscription, error) {
 	}
 	if err := s.resolveAutoSince(&sub); err != nil {
 		return sub, err
+	}
+	if sub.Kind == KindTransit {
+		if err := s.resetTransitSinceOnResume(&sub); err != nil {
+			return sub, err
+		}
 	}
 	args := []interface{}{
 		sub.Name, sub.Merchant, sub.Amount, sub.Cycle, sub.BillingDay, sub.BillingMonth,

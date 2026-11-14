@@ -314,6 +314,8 @@ func (a *App) startAutoPostLoop() {
 			}
 			// 외화 모으기: 환율을 (오래됐으면) 받고 매일 모으기·목표 환율 매수를 기록한다
 			logIf("외화 모으기 자동 기록("+when+")", a.runFx(false))
+			// 교통카드(K-패스): 출금일이 지난 달을 어림값으로 기록한다
+			logIf("교통카드 자동 기록("+when+")", a.runTransit(time.Now()))
 		}
 		run("시작")
 		t := time.NewTicker(autoPostInterval)

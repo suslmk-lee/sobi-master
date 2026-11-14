@@ -28,6 +28,7 @@ import { AlertCircle, CalendarClock, CalendarOff, Check, Pencil, Plus, PlusCircl
 import IconTile from "../components/ui/IconTile";
 import RecurringSuggestions, { candidateAmount } from "../RecurringSuggestions";
 import DuesSection from "../DuesSection";
+import TransitSection from "../TransitSection";
 import { useThemeColors } from "../appearance/AppearanceContext";
 
 const BLANK = {
@@ -97,10 +98,12 @@ function OptionalMonth({
 
 export default function SubscriptionsPage({
   refs,
+  reloadRefs,
   month,
   setMonth,
 }: {
   refs: Refs;
+  reloadRefs: () => Promise<void>;
   month: string;
   setMonth: (m: string) => void;
 }) {
@@ -651,6 +654,8 @@ export default function SubscriptionsPage({
       </div>
 
       <DuesSection refs={refs} />
+
+      <TransitSection refs={refs} reloadRefs={reloadRefs} />
 
       {off.length > 0 && (
         <div className="surface p-5">
