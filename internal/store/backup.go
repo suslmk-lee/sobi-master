@@ -174,6 +174,44 @@ CREATE TABLE transit_months (
 	updated_at      TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (subscription_id, ym)
 );
+CREATE TABLE baskets (
+	id                INTEGER PRIMARY KEY,
+	name              TEXT NOT NULL,
+	kind              TEXT NOT NULL,
+	payment_method_id INTEGER,
+	cap               INTEGER NOT NULL DEFAULT 0,
+	monthly           INTEGER NOT NULL DEFAULT 0,
+	auto_fill         INTEGER NOT NULL DEFAULT 0,
+	fill_day          INTEGER NOT NULL DEFAULT 10,
+	fill_since        TEXT NOT NULL DEFAULT '',
+	sort_order        INTEGER NOT NULL DEFAULT 0,
+	active            INTEGER NOT NULL DEFAULT 1,
+	memo              TEXT NOT NULL DEFAULT '',
+	created_at        TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE basket_items (
+	id        INTEGER PRIMARY KEY,
+	basket_id INTEGER NOT NULL,
+	name      TEXT NOT NULL,
+	month     INTEGER NOT NULL,
+	day       INTEGER NOT NULL DEFAULT 0,
+	amount    INTEGER NOT NULL
+);
+CREATE TABLE basket_entries (
+	id             INTEGER PRIMARY KEY,
+	basket_id      INTEGER NOT NULL,
+	date           TEXT NOT NULL,
+	kind           TEXT NOT NULL,
+	amount         INTEGER NOT NULL,
+	auto           INTEGER NOT NULL DEFAULT 0,
+	ym             TEXT NOT NULL DEFAULT '',
+	transaction_id INTEGER,
+	item_id        INTEGER,
+	due_ym         TEXT NOT NULL DEFAULT '',
+	moved          INTEGER NOT NULL DEFAULT 0,
+	memo           TEXT NOT NULL DEFAULT '',
+	created_at     TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE fx_rates (
 	date     TEXT NOT NULL,
 	currency TEXT NOT NULL,
@@ -458,6 +496,39 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var tid sql.NullInt64
 				e := r.Scan(&sid, &ym, &date, &fare, &refund, &est, &tid, &at)
 				return []interface{}{sid, ym, date, fare, refund, est, nullable(tid), at}, e
+			}),
+		// 목돈 바구니: 바구니 · 항목 · 장부 (장부가 빠지면 잔액을 되살릴 수 없다)
+		copy("baskets",
+			`SELECT id, name, kind, payment_method_id, cap, monthly, auto_fill, fill_day, fill_since, sort_order, active, memo, created_at FROM baskets`,
+			`INSERT INTO baskets(id, name, kind, payment_method_id, cap, monthly, auto_fill, fill_day, fill_since, sort_order, active, memo, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, cap, monthly int64
+				var auto, day, order, active int
+				var name, kind, since, memo, at string
+				var pm sql.NullInt64
+				e := r.Scan(&id, &name, &kind, &pm, &cap, &monthly, &auto, &day, &since, &order, &active, &memo, &at)
+				return []interface{}{id, name, kind, nullable(pm), cap, monthly, auto, day, since, order, active, memo, at}, e
+			}),
+		copy("basket_items",
+			`SELECT id, basket_id, name, month, day, amount FROM basket_items`,
+			`INSERT INTO basket_items(id, basket_id, name, month, day, amount) VALUES(?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, bid, amount int64
+				var month, day int
+				var name string
+				e := r.Scan(&id, &bid, &name, &month, &day, &amount)
+				return []interface{}{id, bid, name, month, day, amount}, e
+			}),
+		copy("basket_entries",
+			`SELECT id, basket_id, date, kind, amount, auto, ym, transaction_id, item_id, due_ym, moved, memo, created_at FROM basket_entries`,
+			`INSERT INTO basket_entries(id, basket_id, date, kind, amount, auto, ym, transaction_id, item_id, due_ym, moved, memo, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, bid, amount int64
+				var auto, moved int
+				var date, kind, ym, due, memo, at string
+				var tid, iid sql.NullInt64
+				e := r.Scan(&id, &bid, &date, &kind, &amount, &auto, &ym, &tid, &iid, &due, &moved, &memo, &at)
+				return []interface{}{id, bid, date, kind, amount, auto, ym, nullable(tid), nullable(iid), due, moved, memo, at}, e
 			}),
 		// 외화: 환율·계획·거래 (계획이 빠지면 매일 모으기가 복원 후 지난 날을 다시 기록한다)
 		copy("fx_rates",

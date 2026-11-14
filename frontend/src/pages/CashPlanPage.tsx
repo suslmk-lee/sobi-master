@@ -69,6 +69,7 @@ const KIND: Record<string, { icon: LucideIcon; color: string; label: string }> =
   subscription: { icon: Repeat, color: cv("sky-400"), label: "정기결제" },
   dues: { icon: Users, color: cv("amber-400"), label: "회비" },
   fx: { icon: Globe, color: cv("mint-400"), label: "외화 모으기" },
+  basket: { icon: PiggyBank, color: cv("emerald-400"), label: "바구니 채우기" },
 };
 const kindOf = (k: string) => KIND[k] ?? KIND.subscription;
 
@@ -941,6 +942,7 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
                 </span>{" "}
                 반영
                 {plan.fxAdjust !== 0 && <> (외화 {signed(plan.fxAdjust)} 포함)</>}
+                {plan.basketAdjust !== 0 && <> (바구니 {signed(plan.basketAdjust)} 포함)</>}
               </p>
             </>
           ) : (

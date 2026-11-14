@@ -514,6 +514,13 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		}
 		adj -= fxNet
 		plan.FxAdjust = -fxNet
+		// 목돈 바구니로 채운 돈은 빠졌고, 바구니에서 옮겨 온 돈은 들어왔다
+		basketNet, err := s.basketMainFlow(bal.AsOf, fmtDay(today))
+		if err != nil {
+			return plan, err
+		}
+		adj -= basketNet
+		plan.BasketAdjust = -basketNet
 		plan.BalanceAdjust = adj
 		plan.BalanceNow = bal.Amount + adj
 	}
@@ -600,6 +607,12 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		return plan, err
 	}
 	events = append(events, fxCashEvents(fxPlans, fxRates, today, horizon)...)
+	// 목돈 바구니로 앞으로 빠질 채움
+	basketBook, err := s.BasketBook(today)
+	if err != nil {
+		return plan, err
+	}
+	events = append(events, basketEvents(basketBook, cal, today, horizon)...)
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
 			return events[i].Date < events[j].Date
@@ -695,7 +708,7 @@ SELECT COALESCE(SUM(t.amount) FILTER (WHERE t.direction='income'), 0),
        COALESCE(SUM(t.amount) FILTER (WHERE t.direction IN ('expense','transfer') AND (p.id IS NULL OR p.type IN ('cash','bank'))), 0)
 FROM transactions t
 LEFT JOIN payment_methods p ON p.id = t.payment_method_id
-WHERE t.date > ? AND t.date <= ? AND `+transitTxFilter, asOf, todayStr).Scan(&income, &outflow)
+WHERE t.date > ? AND t.date <= ? AND `+transitTxFilter+` AND `+basketTxFilter, asOf, todayStr).Scan(&income, &outflow)
 	if err != nil {
 		return 0, err
 	}

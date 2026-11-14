@@ -388,6 +388,7 @@ func (a *App) ListTransactions(filter store.TxFilter) ([]store.Transaction, erro
 	if err == nil {
 		a.annotateDues(txs)
 		a.annotateTransit(txs)
+		a.annotateBaskets(txs)
 	}
 	return txs, err
 }

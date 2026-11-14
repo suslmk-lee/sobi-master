@@ -316,6 +316,8 @@ func (a *App) startAutoPostLoop() {
 			logIf("외화 모으기 자동 기록("+when+")", a.runFx(false))
 			// 교통카드(K-패스): 출금일이 지난 달을 어림값으로 기록한다
 			logIf("교통카드 자동 기록("+when+")", a.runTransit(time.Now()))
+			// 목돈 바구니: 자동이체를 켠 바구니의 채우는 날을 기록한다
+			logIf("바구니 자동 채움("+when+")", a.runBaskets(time.Now()))
 		}
 		run("시작")
 		t := time.NewTicker(autoPostInterval)

@@ -88,7 +88,7 @@ LEFT JOIN categories cp ON cp.id = c.parent_id
 LEFT JOIN members m ON m.id = t.member_id
 WHERE t.direction = 'expense' AND t.date >= ? AND t.date <= ?
   AND NOT EXISTS (SELECT 1 FROM subscription_posts sp WHERE sp.transaction_id = t.id)
-  AND `+transitTxFilter+`
+  AND `+transitTxFilter+` AND `+basketTxFilter+`
 ORDER BY t.date`, fmtDay(today.AddDate(0, 0, -recurringLookbackDays)), fmtDay(today))
 	if err != nil {
 		return nil, err

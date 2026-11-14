@@ -135,6 +135,8 @@ type Transaction struct {
 	DuesName string `json:"duesName"`
 	// TransitName: 교통카드(K-패스) 월 기록 거래면 그 교통카드 이름(아니면 ""). 앱 계층이 채운다.
 	TransitName string `json:"transitName"`
+	// BasketName: 목돈 바구니에서 낸 지출이면 그 바구니 이름(아니면 ""). 앱 계층이 채운다.
+	BasketName string `json:"basketName"`
 }
 
 // Rule 은 반복 거래 핑거프린트: 가맹점명 + 금액 구간이 일치하면
@@ -271,6 +273,7 @@ type CashPlan struct {
 	BalanceAdjust int64        `json:"balanceAdjust"` // 기준일 이후 오늘까지 반영한 증감 (수입 − 계좌·현금 지출 − 빠져나간 카드대금)
 	BalanceNow    int64        `json:"balanceNow"`    // 추정 현재 잔액 = Balance.Amount + BalanceAdjust
 	FxAdjust      int64        `json:"fxAdjust"`      // BalanceAdjust 중 외화를 사고판 원화(산 만큼 −, 판 만큼 +)
+	BasketAdjust  int64        `json:"basketAdjust"`  // BalanceAdjust 중 목돈 바구니로 오간 돈(채움 −, 바구니에서 옮겨 온 돈 +)
 
 	// 다음 카드 결제일
 	NextDue      string     `json:"nextDue"`      // 가장 가까운 카드대금 출금일 (없으면 "")

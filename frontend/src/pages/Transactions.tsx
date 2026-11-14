@@ -40,7 +40,8 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
-import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, TrainFront, Trash2, Undo2, Users, Wand2, X } from "lucide-react";
+import { CheckCircle2, Download, Pencil, PiggyBank, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, TrainFront, Trash2, Undo2, Users, Wand2, X } from "lucide-react";
+import { BasketSpendModal } from "./BasketsPage";
 import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
 
@@ -457,6 +458,8 @@ export default function Transactions({
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
   // 정기결제로 등록할 거래 id (모달이 열려 있을 때만 값이 있다)
   const [subTxId, setSubTxId] = useState<number | null>(null);
+  // 바구니에서 낸 것으로 연결할 거래 (모달이 열려 있을 때만 값이 있다)
+  const [basketTx, setBasketTx] = useState<store.Transaction | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [canUndo, setCanUndo] = useState(false);
   const [msg, setMsg] = useState("");
@@ -905,6 +908,12 @@ export default function Transactions({
                           교통카드 · {t.transitName}
                         </span>
                       )}
+                      {t.basketName && (
+                        <span className="badge bg-mint-500/10 text-mint-300" title={`바구니 "${t.basketName}"에서 낸 지출 (바구니 탭 > 기록에서 뺄 수 있음)`}>
+                          <PiggyBank className="h-3 w-3" />
+                          바구니 · {t.basketName}
+                        </span>
+                      )}
                       {t.excludePerf && (
                         <span className="badge bg-amber-500/10 text-amber-300" title="카드 실적 계산에서 제외됨">
                           실적제외
@@ -945,6 +954,17 @@ export default function Transactions({
                           <Repeat className="h-4 w-4" />
                         </button>
                       )}
+                      {/* 축의금 · 재산세처럼 목돈 바구니에서 낸 지출 */}
+                      {t.direction === "expense" && !t.basketName && !t.transitName && (
+                        <button
+                          className="btn-icon"
+                          onClick={() => setBasketTx(t)}
+                          title="바구니에서 냄 — 목돈 바구니 잔액에서 꺼낸 지출로 연결"
+                          aria-label="바구니에서 냄"
+                        >
+                          <PiggyBank className="h-4 w-4" />
+                        </button>
+                      )}
                       <button className="btn-icon" onClick={() => setEditTx(t)} title="수정" aria-label="수정">
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -978,6 +998,17 @@ export default function Transactions({
           onSaved={() => {
             setEditTx(null);
             load();
+          }}
+        />
+      )}
+
+      {basketTx && (
+        <BasketSpendModal
+          tx={basketTx}
+          onClose={() => setBasketTx(null)}
+          onSaved={() => {
+            setBasketTx(null);
+            load(); // 행에 바구니 배지가 바로 붙게
           }}
         />
       )}
