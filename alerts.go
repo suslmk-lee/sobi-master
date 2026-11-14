@@ -18,7 +18,7 @@ import (
 // Alert 은 알림 한 건.
 type Alert struct {
 	Key    string `json:"key"`
-	Kind   string `json:"kind"`  // budget | card | unclassified | dues | transit — 누르면 갈 화면을 정한다
+	Kind   string `json:"kind"`  // budget | card | unclassified | dues | transit | basket — 누르면 갈 화면을 정한다
 	Level  string `json:"level"` // danger | warn | info
 	Title  string `json:"title"`
 	Detail string `json:"detail"`
@@ -32,6 +32,7 @@ type alertInputs struct {
 	Unclassified int
 	Dues         []store.DuesStatus
 	Transit      []store.TransitStatus
+	Baskets      []store.BasketStatus
 }
 
 var alertLevelOrder = map[string]int{"danger": 0, "warn": 1, "info": 2}
@@ -116,6 +117,26 @@ func buildAlerts(in alertInputs) []Alert {
 				Detail: fmt.Sprintf("추정 요금 %s · 환급 %s — 실제 금액을 넣어 주세요", won(m.Fare), won(m.Refund))})
 		}
 	}
+	for _, st := range in.Baskets {
+		b := st.Basket
+		if !b.Active {
+			continue
+		}
+		if st.Short > 0 {
+			detail := "더 넣기로 채우거나 매달 넣는 돈을 올려 주세요"
+			if st.Recommended > b.Monthly {
+				detail = fmt.Sprintf("매달 %s → %s 로 올리면 마감을 맞춥니다", won(b.Monthly), won(st.Recommended))
+			}
+			out = append(out, Alert{Key: fmt.Sprintf("basket:%d:short:%s", b.ID, st.ShortYM), Kind: "basket", Level: "warn",
+				Title:  fmt.Sprintf("%s %s까지 %s 모자람", st.ShortName, ymLabel(st.ShortYM, false), won(st.Short)),
+				Detail: b.Name + " · " + detail})
+		}
+		if st.CapReached && b.AutoFill && b.Monthly > 0 {
+			out = append(out, Alert{Key: fmt.Sprintf("basket:%d:cap", b.ID), Kind: "basket", Level: "info",
+				Title:  b.Name + " 목표 도달",
+				Detail: fmt.Sprintf("%s 를 다 채웠습니다 — 자동이체를 멈춰도 됩니다", won(b.Cap))})
+		}
+	}
 	if in.Unclassified > 0 {
 		out = append(out, Alert{Key: "unclassified:" + in.Month, Kind: "unclassified", Level: "info",
 			Title:  fmt.Sprintf("미분류 거래 %d건", in.Unclassified),
@@ -152,6 +173,9 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	}
 	if in.Transit, err = a.st.TransitBook(now); err != nil {
 		logIf("알림(교통카드)", err)
+	}
+	if in.Baskets, err = a.st.BasketBook(now); err != nil {
+		logIf("알림(바구니)", err)
 	}
 	return buildAlerts(in), nil
 }

@@ -9,6 +9,7 @@ import {
   Loader2,
   LucideIcon,
   Palette,
+  PiggyBank,
   ReceiptText,
   Repeat,
   Settings,
@@ -27,6 +28,7 @@ import CashPlanPage from "./pages/CashPlanPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CashbackPage from "./pages/CashbackPage";
 import FxPage from "./pages/FxPage";
+import BasketsPage from "./pages/BasketsPage";
 import StatsPage from "./pages/StatsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { useBackendBusy } from "./platform/busy";
@@ -43,6 +45,7 @@ type Tab =
   | "transactions"
   | "cards"
   | "subscriptions"
+  | "baskets"
   | "cashback"
   | "fx"
   | "stats"
@@ -54,6 +57,7 @@ const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: "transactions", label: "거래내역", icon: ReceiptText },
   { key: "cards", label: "카드", icon: CreditCard },
   { key: "subscriptions", label: "정기결제", icon: Repeat },
+  { key: "baskets", label: "바구니", icon: PiggyBank },
   { key: "cashback", label: "캐시백", icon: Coins },
   { key: "fx", label: "외화", icon: Globe },
   { key: "stats", label: "통계", icon: BarChart3 },
@@ -101,6 +105,9 @@ export default function App() {
       case "dues":
       case "transit": // 교통카드 금액 확인 — 정기결제 화면 아래쪽
         setTab("subscriptions");
+        break;
+      case "basket":
+        setTab("baskets");
         break;
       case "unclassified":
         setMonth(thisMonth());
@@ -250,6 +257,7 @@ export default function App() {
         )}
         {tab === "cashback" && <CashbackPage month={month} setMonth={setMonth} />}
         {tab === "fx" && <FxPage />}
+        {tab === "baskets" && <BasketsPage refs={refs} reloadRefs={loadRefs} />}
         {tab === "stats" && <StatsPage refs={refs} month={month} setMonth={setMonth} />}
         {tab === "settings" && <SettingsPage refs={refs} reload={loadRefs} />}
       </main>
