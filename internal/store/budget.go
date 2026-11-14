@@ -119,8 +119,9 @@ WHERE b.ym = ? OR b.ym = ?`, budgetDefault, target)
 	//    주 카테고리 예산은 하위 부 지출까지 합산해 판정한다(부에 붙은 지출도 주 예산에 포함).
 	spent := map[int64]int64{}
 	srows, err := s.query(`
-SELECT t.category_id, c.parent_id, SUM(t.amount)
+SELECT t.category_id, c.parent_id, SUM(t.amount + COALESCE(be.amount, 0))
 FROM transactions t JOIN categories c ON c.id = t.category_id
+LEFT JOIN basket_entries be ON be.transaction_id = t.id AND be.kind = 'spend'
 WHERE t.date LIKE ? AND t.direction='expense'
 GROUP BY 1, 2`, target+"%")
 	if err != nil {

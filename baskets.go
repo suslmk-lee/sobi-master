@@ -51,7 +51,31 @@ func (a *App) PreviewBasket(b store.Basket, opening int64) (store.BasketStatus, 
 	} else if opening > 0 {
 		entries = []store.BasketEntry{{Kind: store.BasketOpen, Amount: opening, Date: time.Now().Format("2006-01-02")}}
 	}
-	return store.BuildBasketStatus(b, entries, time.Now(), cal), nil
+	st := store.BuildBasketStatus(b, entries, time.Now(), cal)
+	if b.Kind == store.BasketReserve && len(b.CategoryIDs) > 0 {
+		st.SuggestMonthly, st.SuggestCount, err = a.st.SuggestBasketMonthly(b.CategoryIDs, time.Now())
+	}
+	return st, err
+}
+
+// ListBasketCandidates 는 바구니에 연결할 만한 최근 큰 지출(이은 카테고리 · 정해진 지출 이름).
+func (a *App) ListBasketCandidates() ([]store.BasketCandidate, error) {
+	if err := a.ensure(); err != nil {
+		return nil, err
+	}
+	out, err := a.st.BasketCandidates(time.Now())
+	logIf("ListBasketCandidates", err)
+	return out, err
+}
+
+// DismissBasketCandidate 는 후보를 '바구니 지출 아님'으로 지운다.
+func (a *App) DismissBasketCandidate(txID int64) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.DismissBasketCandidate(txID)
+	logIf("DismissBasketCandidate", err)
+	return err
 }
 
 // SaveBasket 은 바구니를 추가하거나 고친다(opening 은 새로 만들 때만 쓴다).

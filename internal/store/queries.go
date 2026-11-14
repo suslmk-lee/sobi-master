@@ -827,6 +827,9 @@ FROM transactions WHERE date LIKE ?`, prefix).
 	if err != nil {
 		return sum, err
 	}
+	if sum.BasketExpense, err = s.basketSpentIn(prefix); err != nil {
+		return sum, err
+	}
 
 	group := func(query string) ([]NamedAmount, error) {
 		rows, err := s.query(query, prefix)

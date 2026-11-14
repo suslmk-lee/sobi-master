@@ -33,6 +33,7 @@ type alertInputs struct {
 	Dues         []store.DuesStatus
 	Transit      []store.TransitStatus
 	Baskets      []store.BasketStatus
+	Candidates   []store.BasketCandidate
 }
 
 var alertLevelOrder = map[string]int{"danger": 0, "warn": 1, "info": 2}
@@ -137,6 +138,18 @@ func buildAlerts(in alertInputs) []Alert {
 				Detail: fmt.Sprintf("%s 를 다 채웠습니다 — 자동이체를 멈춰도 됩니다", won(b.Cap))})
 		}
 	}
+	if n := len(in.Candidates); n > 0 {
+		var last int64
+		for _, c := range in.Candidates {
+			if c.TransactionID > last {
+				last = c.TransactionID
+			}
+		}
+		first := in.Candidates[0]
+		out = append(out, Alert{Key: fmt.Sprintf("basket:cand:%d", last), Kind: "basket", Level: "info",
+			Title:  fmt.Sprintf("바구니에 연결할 지출 %d건", n),
+			Detail: fmt.Sprintf("%s %s 등 — 바구니에서 냈으면 연결하세요", first.Merchant, won(first.Amount))})
+	}
 	if in.Unclassified > 0 {
 		out = append(out, Alert{Key: "unclassified:" + in.Month, Kind: "unclassified", Level: "info",
 			Title:  fmt.Sprintf("미분류 거래 %d건", in.Unclassified),
@@ -176,6 +189,9 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	}
 	if in.Baskets, err = a.st.BasketBook(now); err != nil {
 		logIf("알림(바구니)", err)
+	}
+	if in.Candidates, err = a.st.BasketCandidates(now); err != nil {
+		logIf("알림(바구니 후보)", err)
 	}
 	return buildAlerts(in), nil
 }
