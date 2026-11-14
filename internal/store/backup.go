@@ -212,6 +212,15 @@ CREATE TABLE basket_entries (
 	memo           TEXT NOT NULL DEFAULT '',
 	created_at     TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE basket_categories (
+	basket_id   INTEGER NOT NULL,
+	category_id INTEGER NOT NULL,
+	PRIMARY KEY (basket_id, category_id)
+);
+CREATE TABLE basket_dismissed (
+	transaction_id INTEGER PRIMARY KEY,
+	created_at     TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE fx_rates (
 	date     TEXT NOT NULL,
 	currency TEXT NOT NULL,
@@ -529,6 +538,23 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var tid, iid sql.NullInt64
 				e := r.Scan(&id, &bid, &date, &kind, &amount, &auto, &ym, &tid, &iid, &due, &moved, &memo, &at)
 				return []interface{}{id, bid, date, kind, amount, auto, ym, nullable(tid), nullable(iid), due, moved, memo, at}, e
+			}),
+		copy("basket_categories",
+			`SELECT basket_id, category_id FROM basket_categories`,
+			`INSERT INTO basket_categories(basket_id, category_id) VALUES(?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var b, c int64
+				e := r.Scan(&b, &c)
+				return []interface{}{b, c}, e
+			}),
+		copy("basket_dismissed",
+			`SELECT transaction_id, created_at FROM basket_dismissed`,
+			`INSERT INTO basket_dismissed(transaction_id, created_at) VALUES(?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var t int64
+				var at string
+				e := r.Scan(&t, &at)
+				return []interface{}{t, at}, e
 			}),
 		// 외화: 환율·계획·거래 (계획이 빠지면 매일 모으기가 복원 후 지난 날을 다시 기록한다)
 		copy("fx_rates",

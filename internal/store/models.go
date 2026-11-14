@@ -196,6 +196,8 @@ type MonthlySummary struct {
 	ByCategory        []NamedAmount `json:"byCategory"`
 	ByPaymentMethod   []NamedAmount `json:"byPaymentMethod"`
 	UnclassifiedCount int           `json:"unclassifiedCount"`
+	// BasketExpense 는 TotalExpense 중 목돈 바구니에서 낸 돈(평소 지출과 나눠 보이려고)
+	BasketExpense int64 `json:"basketExpense"`
 }
 
 // ---- 자금 계획 (카드대금 대비 현금 흐름) ----

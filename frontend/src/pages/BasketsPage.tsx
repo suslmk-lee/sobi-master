@@ -4,7 +4,9 @@ import {
   AddPaymentMethod,
   DeleteBasket,
   DeleteBasketEntry,
+  DismissBasketCandidate,
   GetCashPlan,
+  ListBasketCandidates,
   ListBaskets,
   PreviewBasket,
   SaveBasket,
@@ -14,7 +16,7 @@ import { ArrowDownLeft, History, Pencil, PiggyBank, Plus, Trash2, X } from "luci
 import IconTile from "../components/ui/IconTile";
 import Modal, { Field, Segmented } from "../components/ui/Modal";
 import { useConfirm } from "../ConfirmModal";
-import { formatAmount, methodLabel, parseAmount, Refs, today, won } from "../lib";
+import { categoryOptions, formatAmount, methodLabel, parseAmount, Refs, today, won } from "../lib";
 
 // ---------- 목돈 바구니 ----------
 // 갑자기 나가는 지출(경조사 · 자동차 수리 · 부모님 병원비)과 해마다 정해진 큰 지출(재산세 · 자동차세 · 자동차보험)을
@@ -31,7 +33,8 @@ const monthOf = (ym: string) => `${Number(ym.slice(5, 7))}월`;
 const signedWon = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "") + won(Math.abs(n));
 
 type ItemRow = { id: number; name: string; month: number; day: number; amount: string };
-type Draft = { name: string; kind: "scheduled" | "reserve"; items?: ItemRow[] };
+// catHint: 새 바구니에 미리 이어 둘 카테고리(이름에 이 말이 들어간 주 카테고리)
+type Draft = { name: string; kind: "scheduled" | "reserve"; items?: ItemRow[]; catHint?: string };
 
 const TEMPLATES: { label: string; desc: string; draft: () => Draft }[] = [
   {
@@ -48,8 +51,8 @@ const TEMPLATES: { label: string; desc: string; draft: () => Draft }[] = [
       ],
     }),
   },
-  { label: "생활 예비비", desc: "경조사 · 자동차 수리", draft: () => ({ name: "생활 예비비", kind: "reserve" }) },
-  { label: "부모님 병원비", desc: "크고 갑작스러운 의료비", draft: () => ({ name: "부모님 병원비", kind: "reserve" }) },
+  { label: "생활 예비비", desc: "경조사 · 자동차 수리", draft: () => ({ name: "생활 예비비", kind: "reserve", catHint: "경조사" }) },
+  { label: "부모님 병원비", desc: "크고 갑작스러운 의료비", draft: () => ({ name: "부모님 병원비", kind: "reserve", catHint: "의료" }) },
 ];
 
 const bankMethods = (refs: Refs, cur: string) =>
@@ -83,6 +86,10 @@ function BasketForm({
     items: (basket?.items ?? []).map((i) => ({ id: i.id, name: i.name, month: i.month, day: i.day, amount: formatAmount(String(i.amount)) })) as ItemRow[],
     memo: basket?.memo ?? "",
     active: basket?.active ?? true,
+    catIds: (basket?.categoryIds ??
+      refs.categories
+        .filter((c) => draft?.catHint && c.kind === "expense" && !c.parentId && c.name.includes(draft.catHint))
+        .map((c) => c.id)) as number[],
   }));
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -113,6 +120,7 @@ function BasketForm({
         fillDay: f.fillDay,
         active: f.active,
         memo: f.memo,
+        categoryIds: f.catIds,
         items:
           f.kind === "scheduled"
             ? f.items.map((i) => ({ id: i.id, basketId: basket?.id ?? 0, name: i.name.trim(), month: i.month, day: i.day, amount: parseAmount(i.amount) || 0 }))
@@ -304,6 +312,41 @@ function BasketForm({
           </div>
         )}
 
+        <div className="sm:col-span-2">
+          <span className="field-label">이 바구니에서 낼 지출의 카테고리</span>
+          <div className="flex flex-wrap gap-1.5">
+            {categoryOptions(refs.categories, "expense").map((c) => {
+              const on = f.catIds.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`chip !text-xs ${on ? "!border-mint-400/50 !text-mint-300" : ""}`}
+                  onClick={() => set({ catIds: on ? f.catIds.filter((x) => x !== c.id) : [...f.catIds, c.id] })}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="label-mono mt-1 block whitespace-normal">
+            {f.kind === "scheduled"
+              ? "정해진 지출은 항목 이름(재산세 등)으로도 찾습니다. 이 카테고리의 5만 원 이상 지출을 '연결할 지출'로 보여 드립니다"
+              : "이 카테고리의 5만 원 이상 지출을 '연결할 지출'로 보여 드리고, 지난 1년 기록으로 매달 넣을 돈을 제안합니다"}
+          </span>
+        </div>
+        {f.kind === "reserve" && preview && preview.suggestMonthly > 0 && (
+          <p className="num text-sm text-zinc-300 sm:col-span-2">
+            지난 12개월 이 카테고리의 큰 지출 {preview.suggestCount}건으로 보면 매달 <span className="font-semibold text-white">{won(preview.suggestMonthly)}</span>
+            {preview.suggestMonthly !== monthly && (
+              <button type="button" className="ml-2 text-xs text-mint-300 underline" onClick={() => set({ monthly: formatAmount(String(preview.suggestMonthly)) })}>
+                이 금액으로
+              </button>
+            )}
+          </p>
+        )}
+
         <Field label="메모" className="sm:col-span-2">
           <input className="input-field" value={f.memo} onChange={(e) => set({ memo: e.target.value })} />
         </Field>
@@ -334,10 +377,12 @@ const dueKey = (d: { itemId: number; ym: string }) => `${d.itemId}/${d.ym}`;
 
 export function BasketSpendModal({
   tx,
+  prefer,
   onClose,
   onSaved,
 }: {
   tx: store.Transaction;
+  prefer?: { basketId: number; itemId?: number };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -360,7 +405,8 @@ export function BasketSpendModal({
         const own = act.find((s) => s.basket.paymentMethodId && s.basket.paymentMethodId === tx.paymentMethodId);
         const text = `${tx.merchant} ${tx.memo}`;
         const named = act.find((s) => dueOptions(s).some((d) => text.includes(d.name.replace(/\(.*\)/, "").trim())));
-        const pick = own ?? named ?? act.find((s) => s.basket.kind === "reserve") ?? act[0];
+        const preferred = prefer ? act.find((s) => s.basket.id === prefer.basketId) : undefined;
+        const pick = preferred ?? own ?? named ?? act.find((s) => s.basket.kind === "reserve") ?? act[0];
         if (pick) setBasketId(pick.basket.id);
         if (own) setMoved(false);
       })
@@ -371,9 +417,11 @@ export function BasketSpendModal({
   useEffect(() => {
     if (!cur || cur.basket.kind !== "scheduled") return setDue("");
     const text = `${tx.merchant} ${tx.memo}`;
-    const hit = dueOptions(cur).find((d) => text.includes(d.name.replace(/\(.*\)/, "").trim()));
+    const hit =
+      (prefer?.itemId ? dueOptions(cur).find((d) => d.itemId === prefer.itemId) : undefined) ??
+      dueOptions(cur).find((d) => text.includes(d.name.replace(/\(.*\)/, "").trim()));
     setDue(hit ? dueKey(hit) : "");
-  }, [cur, tx]);
+  }, [cur, tx, prefer]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -610,12 +658,14 @@ function HistoryModal({ st, onClose, onChanged }: { st: store.BasketStatus; onCl
 
 type ModalState =
   | { t: "form"; basket: store.Basket | null; draft: Draft | null }
+  | { t: "link"; cand: store.BasketCandidate }
   | { t: "entry"; id: number; mode: EntryMode }
   | { t: "history"; id: number }
   | null;
 
 export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRefs: () => Promise<void> }) {
   const [list, setList] = useState<store.BasketStatus[]>([]);
+  const [cands, setCands] = useState<store.BasketCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
@@ -623,7 +673,9 @@ export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRe
 
   const load = useCallback(async () => {
     try {
-      setList((await ListBaskets()) ?? []);
+      const [l, c] = await Promise.all([ListBaskets(), ListBasketCandidates()]);
+      setList(l ?? []);
+      setCands(c ?? []);
       setErr("");
     } catch (e: any) {
       setErr(String(e));
@@ -636,7 +688,16 @@ export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRe
   }, [load]);
 
   const close = useCallback(() => setModal(null), []);
-  const cur = modal && modal.t !== "form" ? list.find((s) => s.basket.id === modal.id) : undefined;
+  const cur = modal && (modal.t === "entry" || modal.t === "history") ? list.find((s) => s.basket.id === modal.id) : undefined;
+
+  const dismiss = async (c: store.BasketCandidate) => {
+    try {
+      await DismissBasketCandidate(c.transactionId);
+      setCands((cs) => cs.filter((x) => x.transactionId !== c.transactionId));
+    } catch (e: any) {
+      setErr(String(e));
+    }
+  };
   const total = useMemo(() => list.filter((s) => s.basket.active).reduce((a, s) => a + s.balance, 0), [list]);
   const monthlyTotal = useMemo(() => list.filter((s) => s.basket.active).reduce((a, s) => a + s.basket.monthly, 0), [list]);
 
@@ -798,6 +859,41 @@ export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRe
         })}
       </div>
 
+      {cands.length > 0 && (
+        <div className="surface p-5">
+          <div className="mb-3 flex items-center gap-3">
+            <IconTile icon={ArrowDownLeft} tone="amber" size="sm" />
+            <div className="min-w-0">
+              <h3 className="section-title">연결할 지출</h3>
+              <p className="label-mono">바구니에 이은 카테고리 · 항목 이름으로 찾은 최근 90일의 큰 지출</p>
+            </div>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            {cands.map((c) => (
+              <div key={c.transactionId} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 text-sm">
+                <span className="num w-12 shrink-0 text-zinc-400">{shortDate(c.date)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="text-white">{c.merchant}</span>
+                  <span className="ml-2 text-xs text-zinc-500">
+                    {c.reason} → {c.basketName}
+                    {c.itemName ? ` · ${c.itemName}` : ""}
+                  </span>
+                </span>
+                <span className="num shrink-0 text-white">{won(c.amount)}</span>
+                <span className="flex shrink-0 gap-1.5">
+                  <button type="button" className="btn-primary !py-1 text-xs" onClick={() => setModal({ t: "link", cand: c })}>
+                    바구니에서 냄
+                  </button>
+                  <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => dismiss(c)} title="바구니에서 낸 돈이 아님 — 다시 보이지 않습니다">
+                    아님
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {list.length > 0 && (
         <p className="text-xs leading-relaxed text-zinc-500">
           축의금 · 재산세처럼 바구니 돈으로 낸 지출은 거래내역에서 그 거래의 <PiggyBank className="inline h-3.5 w-3.5" /> 바구니에서 냄으로 연결하세요.
@@ -810,6 +906,27 @@ export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRe
       )}
       {modal?.t === "entry" && cur && <EntryModal st={cur} mode={modal.mode} onClose={close} onSaved={load} />}
       {modal?.t === "history" && cur && <HistoryModal st={cur} onClose={close} onChanged={load} />}
+      {modal?.t === "link" && (
+        <BasketSpendModal
+          tx={
+            new store.Transaction({
+              id: modal.cand.transactionId,
+              date: modal.cand.date,
+              amount: modal.cand.amount,
+              merchant: modal.cand.merchant,
+              memo: modal.cand.memo,
+              paymentMethodId: modal.cand.paymentMethodId,
+              direction: "expense",
+            })
+          }
+          prefer={{ basketId: modal.cand.basketId, itemId: modal.cand.itemId || undefined }}
+          onClose={close}
+          onSaved={() => {
+            close();
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

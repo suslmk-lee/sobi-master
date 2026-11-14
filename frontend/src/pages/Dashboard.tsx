@@ -235,6 +235,11 @@ export default function Dashboard({
               <CountUp value={sum.totalExpense} format={won} />
             </p>
             <Delta cur={sum.totalExpense} prev={prev?.totalExpense ?? 0} goodWhenDown />
+            {sum.basketExpense > 0 && (
+              <p className="num text-xs text-zinc-500" title="목돈 바구니에 모아 둔 돈으로 낸 지출 — 월 예산 계산에서는 뺍니다">
+                바구니에서 {won(sum.basketExpense)} · 평소 {won(sum.totalExpense - sum.basketExpense)}
+              </p>
+            )}
           </div>
           <div className="surface flex flex-col gap-2 p-4">
             <p className="label-mono">투자/저축 이체</p>

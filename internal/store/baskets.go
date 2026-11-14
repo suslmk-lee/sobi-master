@@ -110,6 +110,8 @@ type Basket struct {
 	Active          bool   `json:"active"`
 	Memo            string `json:"memo"`
 	Items           []BasketItem `json:"items"` // scheduled 의 항목
+	// CategoryIDs 는 이 바구니에 이은 카테고리(연결 후보 · 적립액 제안에 쓴다, baskets_link.go)
+	CategoryIDs []int64 `json:"categoryIds"`
 	// 조회 편의용
 	PaymentMethodName string `json:"paymentMethodName"`
 }
@@ -174,6 +176,9 @@ type BasketStatus struct {
 	ShortName   string      `json:"shortName"`   // 지금 월 적립액으로 처음 모자라는 마감
 	ShortYM     string      `json:"shortYm"`
 	Short       int64       `json:"short"`
+	// 이은 카테고리의 지난 12개월 큰 지출로 제안한 월 적립액(예비비)과 그 근거 건수. 0 이면 제안 없음
+	SuggestMonthly int64 `json:"suggestMonthly"`
+	SuggestCount   int   `json:"suggestCount"`
 
 	autoDone map[string]bool // 자동 채움을 기록한 달(장부 전체 기준, 화면에는 안 보냄)
 }
@@ -344,12 +349,22 @@ ORDER BY b.active DESC, b.sort_order, b.id`)
 		b.PaymentMethodID = scanNullableID(pm)
 		b.AutoFill, b.Active = auto == 1, active == 1
 		b.Items = []BasketItem{}
+		b.CategoryIDs = []int64{}
 		byID[b.ID] = len(out)
 		out = append(out, b)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	cats, err := s.basketCategoryIDs()
+	if err != nil {
+		return nil, err
+	}
+	for id, ids := range cats {
+		if i, ok := byID[id]; ok {
+			out[i].CategoryIDs = ids
+		}
 	}
 	irows, err := s.query(`SELECT id, basket_id, name, month, day, amount FROM basket_items ORDER BY month, day, id`)
 	if err != nil {
@@ -516,6 +531,9 @@ WHERE id=?`), append(args, b.ID)...)
 		}
 	}
 	if _, err := tx.Exec(pq(q), dargs...); err != nil {
+		return b, err
+	}
+	if err := saveBasketCategories(tx, b.ID, b.CategoryIDs); err != nil {
 		return b, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -708,7 +726,13 @@ func (s *Store) BasketBook(today time.Time) ([]BasketStatus, error) {
 		by[e.BasketID] = append(by[e.BasketID], e)
 	}
 	for _, b := range baskets {
-		out = append(out, BuildBasketStatus(b, by[b.ID], today, cal))
+		st := BuildBasketStatus(b, by[b.ID], today, cal)
+		if b.Kind == BasketReserve && len(b.CategoryIDs) > 0 {
+			if st.SuggestMonthly, st.SuggestCount, err = s.SuggestBasketMonthly(b.CategoryIDs, today); err != nil {
+				return out, err
+			}
+		}
+		out = append(out, st)
 	}
 	return out, nil
 }
