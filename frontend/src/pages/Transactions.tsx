@@ -40,7 +40,7 @@ import SubscribeModal from "../SubscribeModal";
 import MonthPicker from "../MonthPicker";
 import PmChip from "../PmChip";
 import { TableSkeleton } from "../Skeleton";
-import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, Trash2, Undo2, Users, Wand2, X } from "lucide-react";
+import { CheckCircle2, Download, Pencil, Plus, PlusCircle, Receipt, Repeat, RotateCcw, Search, Ticket, TrainFront, Trash2, Undo2, Users, Wand2, X } from "lucide-react";
 import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
 
@@ -896,6 +896,15 @@ export default function Transactions({
                           회비 · {t.duesName}
                         </span>
                       )}
+                      {t.transitName && (
+                        <span
+                          className="badge bg-sky-500/10 text-sky-300"
+                          title={`교통카드 "${t.transitName}"의 한 달 실부담(요금 − 환급). 금액은 정기결제 > 교통카드에서 고치세요`}
+                        >
+                          <TrainFront className="h-3 w-3" />
+                          교통카드 · {t.transitName}
+                        </span>
+                      )}
                       {t.excludePerf && (
                         <span className="badge bg-amber-500/10 text-amber-300" title="카드 실적 계산에서 제외됨">
                           실적제외
@@ -926,7 +935,7 @@ export default function Transactions({
                     <div className="flex items-center justify-end gap-1">
                       {/* 지출만 정기결제가 될 수 있다 */}
                       {/* 이미 정기결제에 연결된 거래는 다시 등록할 필요가 없어 버튼을 숨긴다 */}
-                      {t.direction === "expense" && !t.subscriptionName && !t.duesName && t.source !== "subscription" && (
+                      {t.direction === "expense" && !t.subscriptionName && !t.duesName && !t.transitName && t.source !== "subscription" && (
                         <button
                           className="btn-icon"
                           onClick={() => setSubTxId(t.id)}

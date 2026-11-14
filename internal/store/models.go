@@ -133,6 +133,8 @@ type Transaction struct {
 	PrepaidName string `json:"prepaidName"`
 	// DuesName: 회비 납부로 장부에 들어간 거래면 그 회비 이름(아니면 ""). 앱 계층이 채운다.
 	DuesName string `json:"duesName"`
+	// TransitName: 교통카드(K-패스) 월 기록 거래면 그 교통카드 이름(아니면 ""). 앱 계층이 채운다.
+	TransitName string `json:"transitName"`
 }
 
 // Rule 은 반복 거래 핑거프린트: 가맹점명 + 금액 구간이 일치하면

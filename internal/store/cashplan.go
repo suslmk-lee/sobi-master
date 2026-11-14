@@ -278,8 +278,8 @@ func (c *billCtx) recentSpend(cardID int64) (recentSpend, error) {
 	}
 	var first sql.NullString
 	if err := c.s.queryRow(`
-SELECT MIN(date) FROM transactions
-WHERE payment_method_id=? AND direction='expense' AND date <= ?`,
+SELECT MIN(date) FROM transactions t
+WHERE payment_method_id=? AND direction='expense' AND date <= ? AND `+transitTxFilter,
 		cardID, fmtDay(c.today)).Scan(&first); err != nil {
 		return recentSpend{}, err
 	}
@@ -292,8 +292,8 @@ WHERE payment_method_id=? AND direction='expense' AND date <= ?`,
 	v := recentSpend{Days: spendWindowDays(c.today, firstDay)}
 	from := c.today.AddDate(0, 0, -(v.Days - 1))
 	if err := c.s.queryRow(`
-SELECT COALESCE(SUM(amount),0) FROM transactions
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND paid_at = ''`,
+SELECT COALESCE(SUM(amount),0) FROM transactions t
+WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND paid_at = '' AND `+transitTxFilter,
 		cardID, fmtDay(from), fmtDay(c.today)).Scan(&v.Sum); err != nil {
 		return recentSpend{}, err
 	}
@@ -314,8 +314,8 @@ func (c *billCtx) bill(pm PaymentMethod, y int, m time.Month) (CardBill, error) 
 	}
 	err := c.s.queryRow(`
 SELECT COALESCE(SUM(amount),0), COALESCE(SUM(amount) FILTER (WHERE paid_at <> ''),0), COUNT(*)
-FROM transactions
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
+FROM transactions t
+WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND `+transitTxFilter,
 		pm.ID, b.PeriodStart, b.PeriodEnd).Scan(&b.Total, &b.Prepaid, &b.TxCount)
 	if err != nil {
 		return b, err
@@ -695,7 +695,7 @@ SELECT COALESCE(SUM(t.amount) FILTER (WHERE t.direction='income'), 0),
        COALESCE(SUM(t.amount) FILTER (WHERE t.direction IN ('expense','transfer') AND (p.id IS NULL OR p.type IN ('cash','bank'))), 0)
 FROM transactions t
 LEFT JOIN payment_methods p ON p.id = t.payment_method_id
-WHERE t.date > ? AND t.date <= ?`, asOf, todayStr).Scan(&income, &outflow)
+WHERE t.date > ? AND t.date <= ? AND `+transitTxFilter, asOf, todayStr).Scan(&income, &outflow)
 	if err != nil {
 		return 0, err
 	}
@@ -703,7 +703,7 @@ WHERE t.date > ? AND t.date <= ?`, asOf, todayStr).Scan(&income, &outflow)
 SELECT COALESCE(SUM(t.amount), 0)
 FROM transactions t
 JOIN payment_methods p ON p.id = t.payment_method_id
-WHERE t.direction='expense' AND p.type='card' AND t.paid_at > ? AND t.paid_at <= ?`, asOf, todayStr).Scan(&prepaid)
+WHERE t.direction='expense' AND p.type='card' AND t.paid_at > ? AND t.paid_at <= ? AND `+transitTxFilter, asOf, todayStr).Scan(&prepaid)
 	if err != nil {
 		return 0, err
 	}

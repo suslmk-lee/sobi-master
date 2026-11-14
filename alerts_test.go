@@ -61,6 +61,19 @@ func TestBuildAlerts(t *testing.T) {
 		}
 	}
 
+	// 교통카드: 추정으로 남은 달만 '금액 확인' 안내
+	tr := buildAlerts(alertInputs{Month: "2026-11", Transit: []store.TransitStatus{{
+		Sub: store.Subscription{ID: 3, Name: "K-패스"},
+		Months: []store.TransitMonth{
+			{YM: "2026-11", Fare: 60000, Refund: 12000, Estimated: true},
+			{YM: "2026-10", Fare: 58000, Refund: 11600},
+		},
+	}}})
+	if len(tr) != 1 || tr[0].Key != "transit:3:2026-11" || tr[0].Kind != "transit" || tr[0].Title != "K-패스 11월 금액 확인" ||
+		tr[0].Detail != "추정 요금 60,000원 · 환급 12,000원 — 실제 금액을 넣어 주세요" {
+		t.Errorf("교통카드 알림: %+v", tr)
+	}
+
 	if n := len(buildAlerts(alertInputs{Month: "2026-11"})); n != 0 {
 		t.Errorf("알릴 것이 없는데 %d건", n)
 	}

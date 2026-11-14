@@ -105,11 +105,11 @@ func duesSubs(subs []store.Subscription) []store.Subscription {
 	return out
 }
 
-// regularSubs 는 회비를 뺀 정기결제.
+// regularSubs 는 회비·교통카드를 뺀 정기결제.
 func regularSubs(subs []store.Subscription) []store.Subscription {
 	out := make([]store.Subscription, 0, len(subs))
 	for _, s := range subs {
-		if s.Kind != store.KindDues {
+		if s.Kind != store.KindDues && s.Kind != store.KindTransit {
 			out = append(out, s)
 		}
 	}

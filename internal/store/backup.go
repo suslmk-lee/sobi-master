@@ -163,6 +163,17 @@ CREATE TABLE dues_links (
 	state           TEXT NOT NULL,
 	created_at      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE transit_months (
+	subscription_id INTEGER NOT NULL,
+	ym              TEXT NOT NULL,
+	date            TEXT NOT NULL DEFAULT '',
+	fare            INTEGER NOT NULL DEFAULT 0,
+	refund          INTEGER NOT NULL DEFAULT 0,
+	estimated       INTEGER NOT NULL DEFAULT 0,
+	transaction_id  INTEGER,
+	updated_at      TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (subscription_id, ym)
+);
 CREATE TABLE fx_rates (
 	date     TEXT NOT NULL,
 	currency TEXT NOT NULL,
@@ -435,6 +446,18 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var state, at string
 				e := r.Scan(&tid, &sid, &state, &at)
 				return []interface{}{tid, sid, state, at}, e
+			}),
+		// 교통카드 월 기록이 빠지면 복원 후 지난 달을 다시 '추정'으로 기록한다
+		copy("transit_months",
+			`SELECT subscription_id, ym, date, fare, refund, estimated, transaction_id, updated_at FROM transit_months`,
+			`INSERT INTO transit_months(subscription_id, ym, date, fare, refund, estimated, transaction_id, updated_at) VALUES(?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var sid, fare, refund int64
+				var est int
+				var ym, date, at string
+				var tid sql.NullInt64
+				e := r.Scan(&sid, &ym, &date, &fare, &refund, &est, &tid, &at)
+				return []interface{}{sid, ym, date, fare, refund, est, nullable(tid), at}, e
 			}),
 		// 외화: 환율·계획·거래 (계획이 빠지면 매일 모으기가 복원 후 지난 날을 다시 기록한다)
 		copy("fx_rates",

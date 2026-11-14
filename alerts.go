@@ -18,7 +18,7 @@ import (
 // Alert 은 알림 한 건.
 type Alert struct {
 	Key    string `json:"key"`
-	Kind   string `json:"kind"`  // budget | card | unclassified | dues — 누르면 갈 화면을 정한다
+	Kind   string `json:"kind"`  // budget | card | unclassified | dues | transit — 누르면 갈 화면을 정한다
 	Level  string `json:"level"` // danger | warn | info
 	Title  string `json:"title"`
 	Detail string `json:"detail"`
@@ -31,6 +31,7 @@ type alertInputs struct {
 	Paces        []store.CardPace
 	Unclassified int
 	Dues         []store.DuesStatus
+	Transit      []store.TransitStatus
 }
 
 var alertLevelOrder = map[string]int{"danger": 0, "warn": 1, "info": 2}
@@ -105,6 +106,16 @@ func buildAlerts(in alertInputs) []Alert {
 				Detail: "회비와 금액이 달라요 — 회비로 넣을지 골라 주세요"})
 		}
 	}
+	for _, st := range in.Transit {
+		for _, m := range st.Months {
+			if !m.Estimated {
+				continue
+			}
+			out = append(out, Alert{Key: fmt.Sprintf("transit:%d:%s", st.Sub.ID, m.YM), Kind: "transit", Level: "info",
+				Title:  fmt.Sprintf("%s %s 금액 확인", st.Sub.Name, ymLabel(m.YM, false)),
+				Detail: fmt.Sprintf("추정 요금 %s · 환급 %s — 실제 금액을 넣어 주세요", won(m.Fare), won(m.Refund))})
+		}
+	}
 	if in.Unclassified > 0 {
 		out = append(out, Alert{Key: "unclassified:" + in.Month, Kind: "unclassified", Level: "info",
 			Title:  fmt.Sprintf("미분류 거래 %d건", in.Unclassified),
@@ -114,7 +125,8 @@ func buildAlerts(in alertInputs) []Alert {
 	return out
 }
 
-// GetAlerts 는 이번 달 기준 알림: 예산 초과·임박, 카드 실적 미달 주의, 회비 미납·확인 필요, 미분류 거래.
+// GetAlerts 는 이번 달 기준 알림: 예산 초과·임박, 카드 실적 미달 주의, 회비 미납·확인 필요,
+// 교통카드 금액 확인(추정으로 남은 달), 미분류 거래.
 // 한 가지를 못 읽어도 나머지는 보여 준다(오류는 기록만).
 func (a *App) GetAlerts() ([]Alert, error) {
 	if err := a.ensure(); err != nil {
@@ -137,6 +149,9 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	}
 	if in.Dues, err = a.duesBook(now); err != nil {
 		logIf("알림(회비)", err)
+	}
+	if in.Transit, err = a.st.TransitBook(now); err != nil {
+		logIf("알림(교통카드)", err)
 	}
 	return buildAlerts(in), nil
 }

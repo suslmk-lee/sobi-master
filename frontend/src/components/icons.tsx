@@ -10,7 +10,7 @@ import {
   CalendarRange, Clock, Coins, Contrast, CreditCard, Flag, Gauge, GitCompare, Globe, Grid3x3, History, Layers,
   LayoutDashboard, LayoutTemplate, MinusCircle, MousePointer2, Palette, Pencil, PieChart, PiggyBank, PlusCircle,
   Receipt, ReceiptText, RefreshCw, Repeat, ScanSearch, Settings, Settings2, Sparkles, SunMedium, Target, Ticket,
-  TrendingDown, TrendingUp, Type, UserRound, Users, Wallet, type LucideIcon,
+  TrainFront, TrendingDown, TrendingUp, Type, UserRound, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 import type { ReactElement } from 'react';
 
@@ -66,6 +66,11 @@ export const IconGlobe = make(
 export const IconBars = make(
   '<path d="M3.5 20h17M7 16.5V12M12 16.5V6.5M17 16.5V9.5"/>',
   '<rect x="10.5" y="6.5" width="3" height="10" rx="1"/>',
+);
+
+export const IconTrain = make(
+  '<rect x="5.5" y="3.5" width="13" height="14" rx="3"/><path d="M5.5 11h13M9 20.5l1-3M15 20.5l-1-3"/><circle cx="9" cy="14.3" r=".9"/><circle cx="15" cy="14.3" r=".9"/>',
+  '<rect x="5.5" y="3.5" width="13" height="7.5" rx="3"/>',
 );
 
 // ---- 달력 · 시간
@@ -196,7 +201,7 @@ const DUO = new Map<LucideIcon, DuoIcon>([
   [Ticket, IconTicket], [PlusCircle, IconPlus], [MinusCircle, IconMinus], [Users, IconTeam], [UserRound, IconMe],
   [Settings, IconGear], [Settings2, IconSliders], [Palette, IconPalette], [LayoutTemplate, IconTemplate],
   [Type, IconType], [Contrast, IconContrast], [SunMedium, IconSun], [MousePointer2, IconPointer], [Box, IconBox],
-  [Pencil, IconPencil], [ScanSearch, IconScan], [RefreshCw, IconRefresh], [Sparkles, IconSpark],
+  [Pencil, IconPencil], [ScanSearch, IconScan], [RefreshCw, IconRefresh], [Sparkles, IconSpark], [TrainFront, IconTrain],
 ]);
 
 // 짝이 없는 아이콘은 lucide 선만 같은 굵기로 그린다(면 없이) — 새 화면에서 짝을 빠뜨려도 깨지지 않게
@@ -219,5 +224,5 @@ export const ALL_DUO: [string, DuoIcon][] = [
   ['더하기', IconPlus], ['빼기', IconMinus], ['사람들', IconTeam], ['한 사람', IconMe], ['설정', IconGear],
   ['조절', IconSliders], ['팔레트', IconPalette], ['배치', IconTemplate], ['글꼴', IconType], ['대비', IconContrast],
   ['밝기', IconSun], ['포인터', IconPointer], ['입체', IconBox], ['고치기', IconPencil], ['찾기', IconScan],
-  ['새로고침', IconRefresh], ['반짝', IconSpark],
+  ['새로고침', IconRefresh], ['반짝', IconSpark], ['교통카드', IconTrain],
 ];

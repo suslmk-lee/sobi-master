@@ -99,6 +99,7 @@ export default function App() {
         setTab("cards");
         break;
       case "dues":
+      case "transit": // 교통카드 금액 확인 — 정기결제 화면 아래쪽
         setTab("subscriptions");
         break;
       case "unclassified":
@@ -245,7 +246,7 @@ export default function App() {
         )}
         {tab === "cards" && <CardsPage reloadRefs={loadRefs} refs={refs} />}
         {tab === "subscriptions" && (
-          <SubscriptionsPage refs={refs} month={month} setMonth={setMonth} />
+          <SubscriptionsPage refs={refs} reloadRefs={loadRefs} month={month} setMonth={setMonth} />
         )}
         {tab === "cashback" && <CashbackPage month={month} setMonth={setMonth} />}
         {tab === "fx" && <FxPage />}
