@@ -221,6 +221,19 @@ CREATE TABLE basket_dismissed (
 	transaction_id INTEGER PRIMARY KEY,
 	created_at     TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE planned_expenses (
+	id             INTEGER PRIMARY KEY,
+	date           TEXT NOT NULL,
+	name           TEXT NOT NULL,
+	amount         INTEGER NOT NULL,
+	category_id    INTEGER,
+	member_id      INTEGER,
+	basket_id      INTEGER,
+	memo           TEXT NOT NULL DEFAULT '',
+	status         TEXT NOT NULL DEFAULT 'planned',
+	transaction_id INTEGER,
+	created_at     TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE fx_rates (
 	date     TEXT NOT NULL,
 	currency TEXT NOT NULL,
@@ -555,6 +568,16 @@ func (s *Store) BackupToSQLite(path string) (map[string]int, error) {
 				var at string
 				e := r.Scan(&t, &at)
 				return []interface{}{t, at}, e
+			}),
+		copy("planned_expenses",
+			`SELECT id, date, name, amount, category_id, member_id, basket_id, memo, status, transaction_id, created_at FROM planned_expenses`,
+			`INSERT INTO planned_expenses(id, date, name, amount, category_id, member_id, basket_id, memo, status, transaction_id, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			func(r *sql.Rows) ([]interface{}, error) {
+				var id, amount int64
+				var date, name, memo, status, at string
+				var cid, mid, bid, tid sql.NullInt64
+				e := r.Scan(&id, &date, &name, &amount, &cid, &mid, &bid, &memo, &status, &tid, &at)
+				return []interface{}{id, date, name, amount, nullable(cid), nullable(mid), nullable(bid), memo, status, nullable(tid), at}, e
 			}),
 		// 외화: 환율·계획·거래 (계획이 빠지면 매일 모으기가 복원 후 지난 날을 다시 기록한다)
 		copy("fx_rates",

@@ -179,6 +179,9 @@ type BasketStatus struct {
 	// 이은 카테고리의 지난 12개월 큰 지출로 제안한 월 적립액(예비비)과 그 근거 건수. 0 이면 제안 없음
 	SuggestMonthly int64 `json:"suggestMonthly"`
 	SuggestCount   int   `json:"suggestCount"`
+	// 이 바구니에서 낼 아직 끝나지 않은 예정 지출(planned.go)과 그 합. 잔액 − 합 이 실제로 쓸 수 있는 돈
+	Planned      []PlannedExpense `json:"planned"`
+	PlannedTotal int64            `json:"plannedTotal"`
 
 	autoDone map[string]bool // 자동 채움을 기록한 달(장부 전체 기준, 화면에는 안 보냄)
 }
@@ -215,7 +218,7 @@ func ceilDiv(a, b int64) int64 {
 func BuildBasketStatus(b Basket, entries []BasketEntry, today time.Time, cal *holiday.Calendar) BasketStatus {
 	today = dayOf(today)
 	todayStr := fmtDay(today)
-	st := BasketStatus{Basket: b, Entries: []BasketEntry{}, Dues: []BasketDue{}, autoDone: map[string]bool{}}
+	st := BasketStatus{Basket: b, Entries: []BasketEntry{}, Dues: []BasketDue{}, Planned: []PlannedExpense{}, autoDone: map[string]bool{}}
 	if st.Basket.Items == nil {
 		st.Basket.Items = []BasketItem{}
 	}
@@ -725,8 +728,17 @@ func (s *Store) BasketBook(today time.Time) ([]BasketStatus, error) {
 	for _, e := range entries {
 		by[e.BasketID] = append(by[e.BasketID], e)
 	}
+	plannedAll, err := s.ListPlannedExpenses(today, 0)
+	if err != nil {
+		return out, err
+	}
+	planned := basketPlanned(plannedAll)
 	for _, b := range baskets {
 		st := BuildBasketStatus(b, by[b.ID], today, cal)
+		for _, p := range planned[b.ID] {
+			st.Planned = append(st.Planned, p)
+			st.PlannedTotal += p.Amount
+		}
 		if b.Kind == BasketReserve && len(b.CategoryIDs) > 0 {
 			if st.SuggestMonthly, st.SuggestCount, err = s.SuggestBasketMonthly(b.CategoryIDs, today); err != nil {
 				return out, err

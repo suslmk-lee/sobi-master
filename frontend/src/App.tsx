@@ -109,6 +109,9 @@ export default function App() {
       case "basket":
         setTab("baskets");
         break;
+      case "planned": // 예정 지출 — 자금 계획 화면
+        setTab("cashplan");
+        break;
       case "unclassified":
         setMonth(thisMonth());
         setUnclassifiedOnly(true);

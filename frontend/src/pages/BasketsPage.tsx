@@ -796,6 +796,19 @@ export default function BasketsPage({ refs, reloadRefs }: { refs: Refs; reloadRe
                 )}
               </div>
 
+              {(st.planned ?? []).length > 0 && (
+                <div className="mt-3 rounded-xl bg-amber-500/[0.06] px-3 py-2 text-xs">
+                  <p className="num text-amber-300">
+                    예정 {st.planned.length}건 · {won(st.plannedTotal)} → 쓸 수 있는 돈 {won(st.balance - st.plannedTotal)}
+                  </p>
+                  {st.planned.map((p) => (
+                    <p key={p.id} className="num mt-0.5 truncate text-zinc-400">
+                      {shortDate(p.date)} {p.name} {won(p.amount)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               {b.kind === "reserve" && b.cap > 0 && (
                 <div className="mt-4">
                   <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
