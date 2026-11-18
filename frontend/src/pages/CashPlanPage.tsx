@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { Refs, formatAmount, parseAmount, today as todayStr, won } from "../lib";
 import IconTile from "../components/ui/IconTile";
+import PlannedSection from "../PlannedSection";
 import CountUp from "../components/CountUp";
 import { ChartEmpty, ChartTip, LegendDot, compact, cv, useAxisTick } from "../charts";
 import { useThemeColors } from "../appearance/AppearanceContext";
@@ -70,6 +71,7 @@ const KIND: Record<string, { icon: LucideIcon; color: string; label: string }> =
   dues: { icon: Users, color: cv("amber-400"), label: "회비" },
   fx: { icon: Globe, color: cv("mint-400"), label: "외화 모으기" },
   basket: { icon: PiggyBank, color: cv("emerald-400"), label: "바구니 채우기" },
+  planned: { icon: CalendarClock, color: cv("amber-400"), label: "예정 지출" },
 };
 const kindOf = (k: string) => KIND[k] ?? KIND.subscription;
 
@@ -1057,6 +1059,9 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
         />
         <FlowChart plan={plan} />
       </div>
+
+      {/* 예정 지출: 축의금처럼 날짜를 아는 일회성 지출 */}
+      <PlannedSection refs={refs} onChanged={load} />
 
       {/* 타임라인 */}
       <div className="surface p-5 sm:p-6">

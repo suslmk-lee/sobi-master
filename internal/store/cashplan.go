@@ -613,6 +613,12 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		return plan, err
 	}
 	events = append(events, basketEvents(basketBook, cal, today, horizon)...)
+	// 생활비 통장에서 낼 예정 지출(축의금 등). 지났는데 아직 연결 안 한 건 오늘로 당겨 남긴다
+	planned, err := s.ListPlannedExpenses(today, 0)
+	if err != nil {
+		return plan, err
+	}
+	events = append(events, plannedEvents(planned, today, horizon)...)
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
 			return events[i].Date < events[j].Date

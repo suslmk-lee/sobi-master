@@ -18,7 +18,7 @@ import (
 // Alert 은 알림 한 건.
 type Alert struct {
 	Key    string `json:"key"`
-	Kind   string `json:"kind"`  // budget | card | unclassified | dues | transit | basket — 누르면 갈 화면을 정한다
+	Kind   string `json:"kind"`  // budget | card | unclassified | dues | transit | basket | planned — 누르면 갈 화면을 정한다
 	Level  string `json:"level"` // danger | warn | info
 	Title  string `json:"title"`
 	Detail string `json:"detail"`
@@ -34,6 +34,8 @@ type alertInputs struct {
 	Transit      []store.TransitStatus
 	Baskets      []store.BasketStatus
 	Candidates   []store.BasketCandidate
+	Planned      []store.PlannedExpense
+	Today        string // "YYYY-MM-DD" — 지난 예정 지출을 가린다
 }
 
 var alertLevelOrder = map[string]int{"danger": 0, "warn": 1, "info": 2}
@@ -150,6 +152,18 @@ func buildAlerts(in alertInputs) []Alert {
 			Title:  fmt.Sprintf("바구니에 연결할 지출 %d건", n),
 			Detail: fmt.Sprintf("%s %s 등 — 바구니에서 냈으면 연결하세요", first.Merchant, won(first.Amount))})
 	}
+	for _, p := range in.Planned {
+		if p.Status != store.PlannedOpen || p.Date >= in.Today {
+			continue
+		}
+		where := "생활비 통장"
+		if p.BasketName != "" {
+			where = p.BasketName
+		}
+		out = append(out, Alert{Key: fmt.Sprintf("planned:%d", p.ID), Kind: "planned", Level: "info",
+			Title:  fmt.Sprintf("%s 냈나요?", p.Name),
+			Detail: fmt.Sprintf("%s 예정 · %s · %s — 냈으면 거래와 연결하고, 안 냈으면 '안 냄'으로", p.Date[5:], won(p.Amount), where)})
+	}
 	if in.Unclassified > 0 {
 		out = append(out, Alert{Key: "unclassified:" + in.Month, Kind: "unclassified", Level: "info",
 			Title:  fmt.Sprintf("미분류 거래 %d건", in.Unclassified),
@@ -168,7 +182,7 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	}
 	now := time.Now()
 	y, m := now.Year(), int(now.Month())
-	in := alertInputs{Month: now.Format("2006-01")}
+	in := alertInputs{Month: now.Format("2006-01"), Today: now.Format("2006-01-02")}
 	var err error
 	if in.Budgets, err = a.st.BudgetStatuses(y, m); err != nil {
 		logIf("알림(예산)", err)
@@ -192,6 +206,9 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	}
 	if in.Candidates, err = a.st.BasketCandidates(now); err != nil {
 		logIf("알림(바구니 후보)", err)
+	}
+	if in.Planned, err = a.st.ListPlannedExpenses(now, 0); err != nil {
+		logIf("알림(예정 지출)", err)
 	}
 	return buildAlerts(in), nil
 }

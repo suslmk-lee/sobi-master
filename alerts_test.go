@@ -74,6 +74,17 @@ func TestBuildAlerts(t *testing.T) {
 		t.Errorf("교통카드 알림: %+v", tr)
 	}
 
+	// 예정 지출: 예정일이 지났는데 끝내지 않은 것만 '냈나요?'
+	pl := buildAlerts(alertInputs{Month: "2026-11", Today: "2026-11-19", Planned: []store.PlannedExpense{
+		{ID: 7, Date: "2026-11-15", Name: "이○○ 돌잔치", Amount: 50000, Status: store.PlannedOpen},
+		{ID: 8, Date: "2026-12-05", Name: "김○○ 결혼식 축의금", Amount: 100000, Status: store.PlannedOpen},
+		{ID: 9, Date: "2026-11-10", Name: "끝낸 것", Amount: 1, Status: store.PlannedDone},
+	}})
+	if len(pl) != 1 || pl[0].Key != "planned:7" || pl[0].Kind != "planned" || pl[0].Title != "이○○ 돌잔치 냈나요?" ||
+		pl[0].Detail != "11-15 예정 · 50,000원 · 생활비 통장 — 냈으면 거래와 연결하고, 안 냈으면 '안 냄'으로" {
+		t.Errorf("예정 지출 알림: %+v", pl)
+	}
+
 	if n := len(buildAlerts(alertInputs{Month: "2026-11"})); n != 0 {
 		t.Errorf("알릴 것이 없는데 %d건", n)
 	}
