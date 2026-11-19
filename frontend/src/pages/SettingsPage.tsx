@@ -29,7 +29,7 @@ import CloseCardModal from "../CloseCardModal";
 import CategoryEditModal from "../CategoryEditModal";
 import { Archive, CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
-import { main, store } from "../../wailsjs/go/models";
+import { app, store } from "../../wailsjs/go/models";
 import AppearanceSettings from "../components/settings/AppearanceSettings";
 import {
   categoryOptions,
@@ -677,7 +677,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
 
 // 로컬 백업: 운영은 Supabase, 정기적으로 로컬 SQLite 파일로 스냅샷 백업된다.
 function BackupSection() {
-  const [last, setLast] = useState<main.BackupInfo | null>(null);
+  const [last, setLast] = useState<app.BackupInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 

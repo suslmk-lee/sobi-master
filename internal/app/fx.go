@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -72,7 +72,7 @@ func (a *App) fetchFxRates(ctx context.Context, force bool, now time.Time) error
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "sobi/"+appVersion)
+	req.Header.Set("User-Agent", "sobi/"+Version)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("환율을 받지 못했습니다: %w", err)

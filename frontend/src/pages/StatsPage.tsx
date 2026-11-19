@@ -36,7 +36,7 @@ import {
   GetYearSummary,
   ListTransactions,
 } from "../../wailsjs/go/main/App";
-import { main, store } from "../../wailsjs/go/models";
+import { app, store } from "../../wailsjs/go/models";
 import { categoryOptions, Refs, won } from "../lib";
 import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
@@ -154,7 +154,7 @@ export default function StatsPage({
   const [catTrend, setCatTrend] = useState<store.CategoryTrend | null>(null);
   const [cardCat, setCardCat] = useState<store.CardCategory[]>([]);
   const [paces, setPaces] = useState<store.CardPace[]>([]);
-  const [recurring, setRecurring] = useState<main.RecurringItem[]>([]);
+  const [recurring, setRecurring] = useState<app.RecurringItem[]>([]);
   const [year, setYear] = useState<store.YearSummary | null>(null);
   const [memberCat, setMemberCat] = useState<store.CardCategory[]>([]);
   const [memberTrend, setMemberTrend] = useState<store.CategoryTrend | null>(null);
