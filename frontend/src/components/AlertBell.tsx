@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Bell, ChevronRight, Info, Siren } from "lucide-react";
 import { GetAlerts } from "../../wailsjs/go/main/App";
-import { main } from "../../wailsjs/go/models";
+import { app } from "../../wailsjs/go/models";
 
 // 헤더의 종 버튼과 알림창.
 // 예산 초과·임박, 카드 실적 미달, 회비 미납·확인 필요, 미분류 거래를 모아 보여 준다(백엔드 alerts.go).
@@ -36,7 +36,7 @@ const LEVEL: Record<string, { Icon: typeof Info; cls: string }> = {
 };
 
 export default function AlertBell({ refreshKey, onGo }: { refreshKey: string; onGo: (kind: string) => void }) {
-  const [alerts, setAlerts] = useState<main.Alert[]>([]);
+  const [alerts, setAlerts] = useState<app.Alert[]>([]);
   const [seen, setSeen] = useState<Set<string>>(loadSeen);
   const [fresh, setFresh] = useState<Set<string>>(new Set()); // 이번에 열었을 때 새것이던 알림 (점 표시)
   const [open, setOpen] = useState(false);

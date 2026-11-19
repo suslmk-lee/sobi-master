@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react";
 import { DeleteCustomHoliday, GetHolidays, SaveCustomHoliday } from "../wailsjs/go/main/App";
-import { holiday, main } from "../wailsjs/go/models";
+import { app, holiday } from "../wailsjs/go/models";
 import IconTile from "./components/ui/IconTile";
 
 // 공휴일 설정. 정기결제 자동 등록이 결제일을 다음 업무일로 미룰 때 이 달력을 쓴다.
@@ -20,7 +20,7 @@ const isWeekend = (d: string) => {
 
 export default function HolidaySection() {
   const [year, setYear] = useState(new Date().getFullYear());
-  const [data, setData] = useState<main.HolidayYear | null>(null);
+  const [data, setData] = useState<app.HolidayYear | null>(null);
   const [date, setDate] = useState("");
   const [name, setName] = useState("");
   const [err, setErr] = useState("");

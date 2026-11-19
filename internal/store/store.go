@@ -24,7 +24,22 @@ func Open() (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := OpenAt(cfg.DatabaseURL)
+	legacy, lerr := LegacySQLitePath()
+	if lerr != nil {
+		legacy = ""
+	}
+	return openReady(cfg.DatabaseURL, legacy)
+}
+
+// OpenURL 은 설정 파일 없이 연결 문자열로 접속해 Open 과 같은 준비(시드·계층 정리)를 한다.
+// 로컬 SQLite 이전은 하지 않는다. (모바일 API 서버용)
+func OpenURL(dsn string) (*Store, error) {
+	return openReady(dsn, "")
+}
+
+// openReady 는 접속 → (비었으면) legacy SQLite 이전 또는 기본값 시드 → 정리 작업까지 한다.
+func openReady(dsn, legacy string) (*Store, error) {
+	s, err := OpenAt(dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +50,7 @@ func Open() (*Store, error) {
 		return nil, err
 	}
 	if empty {
-		legacy, lerr := LegacySQLitePath()
-		if lerr == nil {
+		if legacy != "" {
 			if _, statErr := os.Stat(legacy); statErr == nil {
 				if merr := s.migrateFromSQLite(legacy); merr != nil {
 					s.Close()

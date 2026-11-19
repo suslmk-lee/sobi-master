@@ -1,4 +1,10 @@
-package main
+// Package app 은 소비마스터의 업무 로직(프론트엔드가 부르는 API)을 담는다.
+// 데스크톱(Wails)과 모바일 API 서버가 같은 App 을 쓴다.
+//
+// 규칙: *App 의 공개(대문자) 메서드 = 프론트엔드 API. 데스크톱은 이 App 을 임베딩해
+// 그대로 바인딩하고, 모바일 서버는 같은 메서드를 HTTP 로 연다. 그래서 API 가 아닌
+// 수명 주기·도우미는 메서드가 아니라 패키지 함수(Start/Stop/CSV)로 둔다.
+package app
 
 import (
 	"context"
@@ -12,18 +18,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"sobi/internal/classifier"
 	"sobi/internal/store"
 )
 
-// App 은 Wails 바인딩 진입점. 프론트엔드에서 호출하는 모든 메서드가 여기 붙는다.
+// App 은 프론트엔드에서 호출하는 모든 API 메서드가 붙는 곳.
 type App struct {
 	ctx context.Context
 	mu  sync.Mutex
 	st  *store.Store
 	cl  *classifier.Classifier
+	// open 은 DB 에 접속한다. 데스크톱은 config.json, 서버는 환경 변수의 연결 문자열을 쓴다.
+	open func() (*store.Store, error)
 	// lastDeleted 는 일괄/단건 삭제 직후 복원(Undo)을 위한 백업.
 	lastDeleted []store.Transaction
 	// lastDeletedLinks 는 삭제된 거래 중 선불권 충전이었던 것의 연결(원래 거래 ID 기준).
@@ -36,9 +42,10 @@ type App struct {
 	backupDone chan struct{}
 	// autoPostDone 은 정기결제 자동 등록 루프를 멈추는 신호.
 	autoPostDone chan struct{}
-	// update 는 마지막 업데이트 확인 결과와 내려받은 파일 (updater.go).
-	update updateState
 }
+
+// Version 은 외부 요청(User-Agent)에 싣는 앱 버전. 실행 파일이 시작할 때 채운다.
+var Version = "dev"
 
 // backupInterval 는 앱 실행 중 자동 로컬 백업 주기.
 const backupInterval = 6 * time.Hour
@@ -46,26 +53,40 @@ const backupInterval = 6 * time.Hour
 // backupKeep 는 보관할 백업 파일 개수(오래된 것부터 삭제).
 const backupKeep = 7
 
-func NewApp() *App {
-	return &App{}
+// New 는 설정 파일(config.json)의 연결 문자열로 접속하는 App (데스크톱).
+func New() *App {
+	return &App{ctx: context.Background(), open: store.Open}
 }
 
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-	// 오류를 설정 디렉토리의 sobi.log 에 기록한다 (Windows: %AppData%\sobi\sobi.log)
-	if path, err := store.LogPath(); err == nil {
-		if f, ferr := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); ferr == nil {
-			log.SetOutput(f)
-		}
+// NewWithDSN 은 주어진 Postgres 연결 문자열로 접속하는 App (모바일 API 서버).
+func NewWithDSN(dsn string) *App {
+	return &App{ctx: context.Background(), open: func() (*store.Store, error) { return store.OpenURL(dsn) }}
+}
+
+// Options 는 Start 때 켤 배경 작업.
+type Options struct {
+	// Backup 은 로컬 SQLite 스냅샷 백업(시작 직후·주기·종료 시). 데스크톱 전용.
+	Backup bool
+	// AutoPost 는 정기결제 자동 등록·바구니·환율 따라잡기 루프.
+	AutoPost bool
+}
+
+// Start 는 DB 에 접속하고 배경 작업을 시작한다. 접속에 실패해도 멈추지 않는다 —
+// 화면에 오류가 표시되고 다음 API 호출에서 자동으로 다시 시도한다.
+func Start(a *App, ctx context.Context, opt Options) {
+	if ctx != nil {
+		a.ctx = ctx
 	}
 	log.Printf("앱 시작")
 	if err := a.ensure(); err != nil {
-		// 종료하지 않는다 — 화면에 오류가 표시되고 다음 호출에서 자동 재시도된다
 		log.Printf("시작 시 DB 연결 실패: %v", err)
 	}
-	a.startBackupLoop()
-	a.startAutoPostLoop()
-	a.startUpdateHousekeeping()
+	if opt.Backup {
+		a.startBackupLoop()
+	}
+	if opt.AutoPost {
+		a.startAutoPostLoop()
+	}
 }
 
 // startBackupLoop 은 시작 직후 한 번, 이후 backupInterval 마다 로컬 백업을 수행한다.
@@ -104,7 +125,11 @@ func (a *App) ensure() error {
 	if a.st != nil {
 		return nil
 	}
-	st, err := store.Open()
+	open := a.open
+	if open == nil {
+		open = store.Open
+	}
+	st, err := open()
 	if err != nil {
 		return err
 	}
@@ -113,16 +138,17 @@ func (a *App) ensure() error {
 	return nil
 }
 
-func (a *App) shutdown(ctx context.Context) {
+// Stop 은 배경 작업을 멈추고 연결을 닫는다. 백업을 켰으면 종료 전 마지막 스냅샷을 남긴다.
+func Stop(a *App) {
 	if a.autoPostDone != nil {
 		close(a.autoPostDone)
 	}
 	// 백업 루프를 멈추고, 종료 전 마지막 스냅샷을 남긴다.
 	if a.backupDone != nil {
 		close(a.backupDone)
-	}
-	if _, err := a.doBackup(); err != nil {
-		logIf("자동 백업(종료)", err)
+		if _, err := a.doBackup(); err != nil {
+			logIf("자동 백업(종료)", err)
+		}
 	}
 	// backupMu 를 잡아 진행 중 백업이 끝난 뒤 연결을 닫는다(백업 중 Close 방지).
 	a.backupMu.Lock()
@@ -137,6 +163,9 @@ func (a *App) shutdown(ctx context.Context) {
 		a.st = nil
 	}
 }
+
+// LogIf 는 err 가 있으면 로그에 남긴다 (데스크톱 전용 코드에서도 같은 형식을 쓰도록).
+func LogIf(op string, err error) { logIf(op, err) }
 
 func logIf(op string, err error) {
 	if err != nil {
@@ -1209,33 +1238,15 @@ func (a *App) GetRecurringStatus(year, month int) ([]RecurringItem, error) {
 
 // ---- CSV 내보내기 ----
 
-type ExportResult struct {
-	Path  string `json:"path"`
-	Count int    `json:"count"`
-}
-
-// ExportCSV 는 필터에 맞는 거래를 CSV(UTF-8 BOM, 엑셀 호환)로 저장한다.
-func (a *App) ExportCSV(filter store.TxFilter) (ExportResult, error) {
+// CSV 는 필터에 맞는 거래를 CSV(UTF-8 BOM, 엑셀 호환)로 만든다. 파일로 저장하는 건
+// 각 플랫폼의 몫이다(데스크톱: 저장 대화상자, 모바일 서버: 내려받기 응답).
+func CSV(a *App, filter store.TxFilter) (data []byte, count int, err error) {
 	if err := a.ensure(); err != nil {
-		return ExportResult{}, err
+		return nil, 0, err
 	}
 	txs, err := a.st.ListTransactions(filter)
 	if err != nil {
-		return ExportResult{}, err
-	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: "sobi_export.csv",
-		Title:           "CSV 내보내기",
-		Filters:         []runtime.FileFilter{{DisplayName: "CSV 파일 (*.csv)", Pattern: "*.csv"}},
-	})
-	if err != nil {
-		return ExportResult{}, err
-	}
-	if path == "" { // 사용자가 취소
-		return ExportResult{}, nil
-	}
-	if !strings.HasSuffix(strings.ToLower(path), ".csv") {
-		path += ".csv"
+		return nil, 0, err
 	}
 
 	dir := map[string]string{"income": "수입", "expense": "지출", "transfer": "이체"}
@@ -1255,11 +1266,7 @@ func (a *App) ExportCSV(filter store.TxFilter) (ExportResult, error) {
 		}
 		b.WriteByte('\n')
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		logIf("ExportCSV(쓰기)", err)
-		return ExportResult{}, err
-	}
-	return ExportResult{Path: path, Count: len(txs)}, nil
+	return []byte(b.String()), len(txs), nil
 }
 
 // csvField 는 콤마/따옴표/줄바꿈이 있으면 따옴표로 감싸고 내부 따옴표를 이스케이프한다.

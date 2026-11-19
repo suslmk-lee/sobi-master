@@ -133,8 +133,13 @@ DB 연결 실패, 등록/수정 오류 등 모든 백엔드 오류가 기록된�
 
 ## 구조
 
-- `app.go` — Wails 바인딩 (프론트 API, 연결 재시도/로깅, 대시보드 통합 엔드포인트,
-  CSV 내보내기, 알림/정기결제/예산 헬퍼)
+- `internal/app` — 업무 API (`*app.App` 의 공개 메서드 하나하나가 프론트가 부르는 API:
+  연결 재시도, 대시보드 통합 엔드포인트, CSV 만들기, 알림/정기결제/예산 헬퍼, 자동 등록).
+  데스크톱과 모바일 API 서버([sobi-master-mobile](../sobi-master-mobile))가 함께 쓴다.
+  수명 주기·도우미는 API 가 되지 않도록 패키지 함수(`app.Start`/`app.Stop`/`app.CSV`)로 둔다
+- `desktop.go` — Wails 진입점: `*app.App` 을 임베딩해 바인딩을 그대로(`window.go.main.App`) 두고,
+  데스크톱 전용(로그 파일, CSV 저장 대화상자)만 더한다. `updater.go`/`selfupdate.go`/`titlebar_*.go`
+  도 데스크톱 전용
 - `internal/store` — Supabase(Postgres) 스키마/쿼리, 집계·통계(`analytics.go`, `stats.go`),
   예산(`budget.go`), 설정/로그 경로, SQLite 마이그레이션
 - `internal/classifier` — 자동 분류 규칙 학습/매칭 (금액 허용오차 ±8%)

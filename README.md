@@ -141,8 +141,14 @@ the "reconnect" button recovers without a restart once the config is fixed.
 
 ## Project layout
 
-- `app.go` — Wails bindings (API called from the frontend, reconnect/logging, aggregate
-  dashboard endpoint, CSV export, alerts, recurring/budget helpers)
+- `internal/app` — the business API (every exported method on `*app.App` is an endpoint the
+  frontend calls: reconnect, aggregate dashboard endpoint, CSV building, alerts, recurring/budget
+  helpers, auto-posting). Shared by the desktop app and the mobile API server
+  ([sobi-master-mobile](../sobi-master-mobile)); lifecycle helpers are package functions
+  (`app.Start`/`app.Stop`/`app.CSV`) so they never become endpoints
+- `desktop.go` — Wails entry: embeds `*app.App` (so bindings stay `window.go.main.App`) and adds
+  desktop-only pieces (log file, CSV save dialog); `updater.go`/`selfupdate.go`/`titlebar_*.go`
+  are desktop-only too
 - `internal/store` — Supabase (Postgres) schema/queries; analytics & statistics (`analytics.go`,
   `stats.go`); budgets (`budget.go`); config/log paths; SQLite migration
 - `internal/classifier` — auto-classification rule learning/matching (±8% amount tolerance)

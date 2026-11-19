@@ -5,7 +5,7 @@ import {
   PostDueSubscriptions,
   SaveSubscription,
 } from "../../wailsjs/go/main/App";
-import { main, store } from "../../wailsjs/go/models";
+import { app, store } from "../../wailsjs/go/models";
 import {
   categoryOptions,
   CLOSED_HINT,
@@ -107,7 +107,7 @@ export default function SubscriptionsPage({
   month: string;
   setMonth: (m: string) => void;
 }) {
-  const [data, setData] = useState<main.SubMonth | null>(null);
+  const [data, setData] = useState<app.SubMonth | null>(null);
   const [f, setF] = useState<Form>({ ...BLANK });
   const [editing, setEditing] = useState(false);
   // 기록에서 찾은 정기 출금 후보 — 저장하면 다시 읽어 등록된 후보를 지운다
