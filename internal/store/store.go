@@ -84,6 +84,7 @@ func OpenAt(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	configurePool(db)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
@@ -96,6 +97,23 @@ func OpenAt(dsn string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// 연결 풀. Supabase 는 멀리(싱가포르) 있어 새 연결(TCP+TLS+인증)마다 수백 ms 가 든다.
+// database/sql 기본값은 쉬는 연결을 2개만 남겨, 화면이 API 를 동시에 부르거나 한 API 가 조회를
+// 동시에 돌리면 매번 새로 연결했다. 쉬는 연결을 넉넉히 남겨 다시 쓴다.
+// 동시 연결 수(MaxOpenConns)는 일부러 묶지 않는다 — 행을 읽는 도중 다른 조회를 하는 코드가 있으면
+// 상한에 걸린 고루틴들이 서로 연결을 기다리며 멈출 수 있다. (Supabase 풀러는 클라이언트 연결을 넉넉히 받는다)
+const (
+	poolMaxIdle     = 16
+	poolMaxIdleTime = 5 * time.Minute
+	poolMaxLifetime = 30 * time.Minute
+)
+
+func configurePool(db *sql.DB) {
+	db.SetMaxIdleConns(poolMaxIdle)
+	db.SetConnMaxIdleTime(poolMaxIdleTime)
+	db.SetConnMaxLifetime(poolMaxLifetime)
 }
 
 func (s *Store) Close() error { return s.db.Close() }

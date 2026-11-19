@@ -1103,33 +1103,20 @@ func (a *App) GetDashboard(year, month int) (DashboardData, error) {
 	if pm == 0 {
 		py, pm = year-1, 12
 	}
+	// 서로 상관없는 조회 8개 — 동시에 돌린다 (각자 d 의 다른 칸에만 쓴다)
 	var d DashboardData
-	var err error
-	if d.Summary, err = a.st.MonthlySummary(year, month); err != nil {
-		return d, err
-	}
-	if d.Prev, err = a.st.MonthlySummary(py, pm); err != nil {
-		return d, err
-	}
-	if d.Trend, err = a.st.MonthlyTrend(year, month, 6); err != nil {
-		return d, err
-	}
-	if d.Daily, err = a.st.DailyExpenses(year, month); err != nil {
-		return d, err
-	}
-	if d.Top, err = a.st.TopMerchants(year, month, 10); err != nil {
-		return d, err
-	}
-	if d.Cards, err = a.st.CardStatuses(time.Now()); err != nil {
-		return d, err
-	}
-	if d.PaymentMethods, err = a.st.ListPaymentMethods(); err != nil {
-		return d, err
-	}
-	if d.Budgets, err = a.st.BudgetStatuses(year, month); err != nil {
-		return d, err
-	}
-	return d, nil
+	now := time.Now()
+	err := parallel(
+		func() (err error) { d.Summary, err = a.st.MonthlySummary(year, month); return },
+		func() (err error) { d.Prev, err = a.st.MonthlySummary(py, pm); return },
+		func() (err error) { d.Trend, err = a.st.MonthlyTrend(year, month, 6); return },
+		func() (err error) { d.Daily, err = a.st.DailyExpenses(year, month); return },
+		func() (err error) { d.Top, err = a.st.TopMerchants(year, month, 10); return },
+		func() (err error) { d.Cards, err = a.st.CardStatuses(now); return },
+		func() (err error) { d.PaymentMethods, err = a.st.ListPaymentMethods(); return },
+		func() (err error) { d.Budgets, err = a.st.BudgetStatuses(year, month); return },
+	)
+	return d, err
 }
 
 // ---- 규칙 수동 편집 ----

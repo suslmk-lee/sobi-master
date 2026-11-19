@@ -183,32 +183,30 @@ func (a *App) GetAlerts() ([]Alert, error) {
 	now := time.Now()
 	y, m := now.Year(), int(now.Month())
 	in := alertInputs{Month: now.Format("2006-01"), Today: now.Format("2006-01-02")}
-	var err error
-	if in.Budgets, err = a.st.BudgetStatuses(y, m); err != nil {
-		logIf("알림(예산)", err)
-	}
-	if in.Paces, err = a.st.CardPaces(now); err != nil {
-		logIf("알림(카드 실적)", err)
-	}
-	if sum, err := a.st.MonthlySummary(y, m); err != nil {
-		logIf("알림(미분류)", err)
-	} else {
-		in.Unclassified = sum.UnclassifiedCount
-	}
-	if in.Dues, err = a.duesBook(now); err != nil {
-		logIf("알림(회비)", err)
-	}
-	if in.Transit, err = a.st.TransitBook(now); err != nil {
-		logIf("알림(교통카드)", err)
-	}
-	if in.Baskets, err = a.st.BasketBook(now); err != nil {
-		logIf("알림(바구니)", err)
-	}
-	if in.Candidates, err = a.st.BasketCandidates(now); err != nil {
-		logIf("알림(바구니 후보)", err)
-	}
-	if in.Planned, err = a.st.ListPlannedExpenses(now, 0); err != nil {
-		logIf("알림(예정 지출)", err)
-	}
+	// 서로 상관없는 조회 8개 — 동시에 돌린다 (각자 in 의 다른 칸에만 쓴다).
+	// 하나가 실패해도 나머지 알림은 보여 준다 — 실패는 로그에만 남기고 nil 을 돌려준다.
+	keep := func(op string, err error) error { logIf(op, err); return nil }
+	_ = parallel(
+		func() (err error) { in.Budgets, err = a.st.BudgetStatuses(y, m); return keep("알림(예산)", err) },
+		func() (err error) { in.Paces, err = a.st.CardPaces(now); return keep("알림(카드 실적)", err) },
+		func() error {
+			sum, err := a.st.MonthlySummary(y, m)
+			if err == nil {
+				in.Unclassified = sum.UnclassifiedCount
+			}
+			return keep("알림(미분류)", err)
+		},
+		func() (err error) { in.Dues, err = a.duesBook(now); return keep("알림(회비)", err) },
+		func() (err error) { in.Transit, err = a.st.TransitBook(now); return keep("알림(교통카드)", err) },
+		func() (err error) { in.Baskets, err = a.st.BasketBook(now); return keep("알림(바구니)", err) },
+		func() (err error) {
+			in.Candidates, err = a.st.BasketCandidates(now)
+			return keep("알림(바구니 후보)", err)
+		},
+		func() (err error) {
+			in.Planned, err = a.st.ListPlannedExpenses(now, 0)
+			return keep("알림(예정 지출)", err)
+		},
+	)
 	return buildAlerts(in), nil
 }
