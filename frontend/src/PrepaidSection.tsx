@@ -30,6 +30,7 @@ import {
   today,
   won,
 } from "./lib";
+import DateInput from "./components/ui/DateInput";
 
 const QUICK_MEMOS = ["커트", "펌", "염색", "클리닉"];
 
@@ -184,19 +185,19 @@ function PassForm({
           <span className="label-mono mt-1 block whitespace-normal">앱 쓰기 전부터 남아 있던 잔액</span>
         </Field>
         <Field label="기준일">
-          <input
-            type="date"
-            className="input-field disabled:opacity-50"
+          <DateInput
             value={f.openingDate}
+            clearable
+            placeholder="비우면 오늘"
             disabled={!(parseAmount(f.opening) > 0)}
-            onChange={(e) => set({ openingDate: e.target.value })}
+            onChange={(v) => set({ openingDate: v })}
           />
           <span className="label-mono mt-1 block whitespace-normal">
             처음 잔액을 넣을 때만 씁니다(비우면 오늘). 이 날 전의 충전·차감은 처음 잔액에 이미 들어 있는 것으로 봅니다
           </span>
         </Field>
         <Field label="유효기간 (선택)">
-          <input type="date" className="input-field" value={f.expiresAt} onChange={(e) => set({ expiresAt: e.target.value })} />
+          <DateInput value={f.expiresAt} clearable placeholder="없음" onChange={(v) => set({ expiresAt: v })} />
         </Field>
         <Field label="귀속자 (기본)">
           <select className="input-field" value={f.memberId} onChange={(e) => set({ memberId: e.target.value })}>
@@ -322,7 +323,7 @@ function UseModal({
     <Modal title={`${p.name} · ${use ? "사용 기록 수정" : "사용 기록"}`} icon={MinusCircle} tone="sky" onClose={onClose} onSubmit={submit}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="날짜">
-          <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <Field label="귀속자">
           <select className="input-field" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
@@ -464,7 +465,7 @@ function ChargeModal({
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="날짜">
-              <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateInput value={date} onChange={setDate} />
             </Field>
             <Field label="결제액">
               <input className="input-field num" inputMode="numeric" autoFocus value={amount} placeholder="0" onChange={(e) => setAmount(formatAmount(e.target.value))} />

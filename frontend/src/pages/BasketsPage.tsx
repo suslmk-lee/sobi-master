@@ -17,6 +17,7 @@ import IconTile from "../components/ui/IconTile";
 import Modal, { Field, Segmented } from "../components/ui/Modal";
 import { useConfirm } from "../ConfirmModal";
 import { categoryOptions, formatAmount, methodLabel, parseAmount, Refs, today, won } from "../lib";
+import DateInput from "../components/ui/DateInput";
 
 // ---------- 목돈 바구니 ----------
 // 갑자기 나가는 지출(경조사 · 자동차 수리 · 부모님 병원비)과 해마다 정해진 큰 지출(재산세 · 자동차세 · 자동차보험)을
@@ -571,7 +572,7 @@ function EntryModal({ st, mode: initMode, onClose, onSaved }: { st: store.Basket
           </div>
         </Field>
         <Field label="날짜">
-          <input type="date" className="input-field num" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         {mode === "spend" && st.basket.kind === "scheduled" && (
           <Field label="어느 마감 몫인가요" className="sm:col-span-2">

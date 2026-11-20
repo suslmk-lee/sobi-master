@@ -50,6 +50,7 @@ import { Sk } from "../Skeleton";
 import { useConfirm } from "../ConfirmModal";
 import TxDrillModal from "../TxDrillModal";
 import EditModal from "../EditModal";
+import DateInput from "../components/ui/DateInput";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const parse = (d: string) => new Date(d + "T00:00:00");
@@ -384,7 +385,7 @@ function BalanceForm({ onSaved, compactLayout }: { onSaved: () => void; compactL
       <div className={`grid items-end gap-3 ${compactLayout ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
         <label className="block">
           <span className="field-label">기준일</span>
-          <input type="date" className="input-field num" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className="field-label">통장 잔액 (원)</span>

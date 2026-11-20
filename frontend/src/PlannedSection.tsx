@@ -14,6 +14,7 @@ import IconTile from "./components/ui/IconTile";
 import Modal, { Field } from "./components/ui/Modal";
 import { useConfirm } from "./ConfirmModal";
 import { categoryOptions, formatAmount, parseAmount, Refs, today, won } from "./lib";
+import DateInput from "./components/ui/DateInput";
 
 // ---------- 예정 지출 ----------
 // 정기는 아니지만 날짜와 금액을 미리 아는 일회성 지출(결혼식 축의금 · 돌잔치 · 수리 예약 등).
@@ -110,7 +111,7 @@ function PlannedForm({
           <input className="input-field" placeholder="예: 김○○ 결혼식 축의금" autoFocus value={f.name} onChange={(e) => set({ name: e.target.value })} />
         </Field>
         <Field label="날짜">
-          <input type="date" className="input-field num" value={f.date} onChange={(e) => set({ date: e.target.value })} />
+          <DateInput value={f.date} onChange={(v) => set({ date: v })} />
         </Field>
         <Field label="금액">
           <input className="input-field num" inputMode="numeric" placeholder="0" value={f.amount} onChange={(e) => set({ amount: formatAmount(e.target.value) })} />
