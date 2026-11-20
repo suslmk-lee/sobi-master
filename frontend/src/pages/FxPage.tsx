@@ -26,6 +26,7 @@ import Modal, { Field, Segmented } from "../components/ui/Modal";
 import { Sk } from "../Skeleton";
 import { useConfirm } from "../ConfirmModal";
 import { formatAmount, parseAmount, today, won } from "../lib";
+import DateInput from "../components/ui/DateInput";
 
 // ---------- 외화 모으기 ----------
 // 토스뱅크 외화통장을 장부로 따라간다. 앱이 실제로 사고팔지는 않는다 — 직접 적은 사기·팔기와
@@ -214,7 +215,7 @@ function TradeModal({
           <CurrencySelect value={code} onChange={changeCode} list={curs} />
         </Field>
         <Field label={mode === "opening" ? "기준일" : "날짜"}>
-          <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <Field label={mode === "opening" ? "가진 외화" : mode === "sell" ? "판 외화" : "산 외화"}>
           <div className="flex items-center gap-2">
@@ -427,7 +428,7 @@ function PlanModal({
           </Field>
         )}
         <Field label="시작일">
-          <input type="date" className="input-field" value={start} min={plan ? undefined : today()} onChange={(e) => setStart(e.target.value)} />
+          <DateInput value={start} min={plan ? undefined : today()} onChange={setStart} />
         </Field>
         <div>
           <span className="field-label">끝나는 날</span>
@@ -437,7 +438,7 @@ function PlanModal({
               정함
             </label>
             {endOn ? (
-              <input type="date" className="input-field" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <DateInput value={end} onChange={setEnd} />
             ) : (
               <span className="text-xs text-zinc-500">끌 때까지</span>
             )}

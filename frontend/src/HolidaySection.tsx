@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "luc
 import { DeleteCustomHoliday, GetHolidays, SaveCustomHoliday } from "../wailsjs/go/main/App";
 import { app, holiday } from "../wailsjs/go/models";
 import IconTile from "./components/ui/IconTile";
+import DateInput from "./components/ui/DateInput";
 
 // 공휴일 설정. 정기결제 자동 등록이 결제일을 다음 업무일로 미룰 때 이 달력을 쓴다.
 // 내장 표에는 음력 공휴일·대체공휴일·선거일까지 들어 있지만, 임시공휴일은 그때그때
@@ -162,13 +163,7 @@ export default function HolidaySection() {
       </ul>
 
       <form className="mt-4 flex flex-wrap items-end gap-2" onSubmit={add}>
-        <input
-          type="date"
-          className="input-field num !w-auto"
-          aria-label="날짜"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <DateInput className="!w-auto min-w-[11rem]" aria-label="날짜" value={date} onChange={setDate} />
         <input
           type="text"
           className="input-field !w-auto min-w-[12rem] flex-1"

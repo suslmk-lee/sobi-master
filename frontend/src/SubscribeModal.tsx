@@ -7,6 +7,7 @@ import Portal from "./components/ui/Portal";
 import ScheduleFields, { SCHEDULE_DEFAULTS, scheduleFromSub } from "./ScheduleFields";
 import { describeSchedule, holidayHint } from "./subSchedule";
 import IconTile from "./components/ui/IconTile";
+import { MonthInput } from "./components/ui/DateInput";
 
 // 거래 한 건을 정기결제로 등록하는 모달.
 // 초안(이름·금액·결제일·다음 달 시작)은 백엔드가 그 거래로 채워 주고, 여기서는 확인·조정만 한다.
@@ -238,12 +239,7 @@ export default function SubscribeModal({
                 </label>
                 <label className="block">
                   <span className="field-label">시작 월</span>
-                  <input
-                    type="month"
-                    className="input-field num"
-                    value={f.startYm}
-                    onChange={(e) => setF({ ...f, startYm: e.target.value })}
-                  />
+                  <MonthInput value={f.startYm} onChange={(v) => setF({ ...f, startYm: v })} />
                 </label>
                 <div className="sm:col-span-3">
                   <ScheduleFields value={f} onChange={(p) => setF({ ...f, ...p })} />

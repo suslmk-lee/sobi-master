@@ -1,0 +1,147 @@
+/* 날짜·월 입력 달력(DateInput.tsx). react-day-picker 기본 모양 위에 앱 테마 색(--c-…)을 입힌다. */
+
+.sobi-cal .rdp-root {
+  --rdp-accent-color: rgb(var(--c-mint-400));
+  --rdp-accent-background-color: rgb(var(--c-mint-500) / 0.15);
+  --rdp-day-height: 46px;
+  --rdp-day-width: 46px;
+  --rdp-day_button-height: 42px;
+  --rdp-day_button-width: 42px;
+  --rdp-day_button-border-radius: 12px;
+  --rdp-day_button-border: 1.5px solid transparent;
+  --rdp-selected-border: 1.5px solid transparent;
+  --rdp-outside-opacity: 0.32;
+  --rdp-disabled-opacity: 0.25;
+  --rdp-today-color: rgb(var(--c-mint-300));
+  --rdp-nav-height: 2.75rem;
+  --rdp-nav_button-height: 2.25rem;
+  --rdp-nav_button-width: 2.25rem;
+  --rdp-weekday-opacity: 1;
+  --rdp-weekday-padding: 0.25rem 0 0.5rem;
+  font-size: 15px;
+  color: rgb(var(--c-zinc-100));
+}
+
+/* 머리: "2026년 11월" — 누르면 연·월 목록 */
+.sobi-cal .rdp-month_caption {
+  padding-left: 0.375rem;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--c-white));
+}
+.sobi-cal .rdp-dropdowns {
+  gap: 0.25rem;
+}
+.sobi-cal .rdp-dropdown_root {
+  border-radius: 8px;
+  padding: 0.125rem 0.375rem;
+}
+.sobi-cal .rdp-dropdown_root:hover {
+  background: rgb(var(--c-white) / 0.06);
+}
+.sobi-cal .rdp-dropdown_root[data-disabled="true"] {
+  opacity: 0.5;
+}
+.sobi-cal .rdp-caption_label svg,
+.sobi-cal .rdp-chevron {
+  fill: rgb(var(--c-zinc-400));
+}
+.sobi-cal select.rdp-dropdown option {
+  background: rgb(var(--c-ink-800));
+  color: rgb(var(--c-zinc-100));
+}
+.sobi-cal .rdp-button_previous,
+.sobi-cal .rdp-button_next {
+  border-radius: 10px;
+}
+.sobi-cal .rdp-button_previous:hover:not(:disabled),
+.sobi-cal .rdp-button_next:hover:not(:disabled) {
+  background: rgb(var(--c-white) / 0.06);
+}
+
+/* 요일 머리: 일 빨강, 토 파랑 */
+.sobi-cal .rdp-weekday {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(var(--c-zinc-500));
+}
+.sobi-cal .rdp-weekday:first-child {
+  color: rgb(var(--c-rose-400));
+}
+.sobi-cal .rdp-weekday:last-child {
+  color: rgb(var(--c-sky-400));
+}
+
+/* 날짜 칸 */
+.sobi-cal .rdp-day_button {
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.12s, color 0.12s;
+}
+.sobi-cal .rdp-day_button:hover:not(:disabled) {
+  background: rgb(var(--c-white) / 0.07);
+}
+.sobi-cal .rdp-day_button:focus-visible {
+  outline: 2px solid rgb(var(--c-mint-400));
+  outline-offset: 1px;
+}
+.sobi-cal .sobi-blue {
+  color: rgb(var(--c-sky-300));
+}
+/* 일요일·공휴일 — 토요일과 겹치는 공휴일도 빨강이 이기게 뒤에 둔다 */
+.sobi-cal .sobi-red {
+  color: rgb(var(--c-rose-300));
+}
+.sobi-cal .rdp-today:not(.rdp-selected) .rdp-day_button {
+  border-color: rgb(var(--c-mint-400) / 0.7);
+  color: rgb(var(--c-mint-300));
+  font-weight: 600;
+}
+/* 고른 날: 앱의 주 버튼 색 */
+.sobi-cal .rdp-selected {
+  font-size: inherit;
+  font-weight: 600;
+}
+.sobi-cal .rdp-selected .rdp-day_button {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+.sobi-cal .rdp-selected .rdp-day_button:hover {
+  background: var(--btn-primary-hover-bg);
+}
+
+/* 아래 줄: 그 달 공휴일 · [지우기] [오늘] */
+.sobi-cal-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgb(var(--c-white) / 0.06);
+  max-width: calc(46px * 7);
+}
+
+/* 월 고르기 칸 */
+.sobi-cal-month {
+  height: 2.75rem;
+  border-radius: 12px;
+  font-size: 15px;
+  color: rgb(var(--c-zinc-200));
+  border: 1.5px solid transparent;
+  transition: background-color 0.12s;
+}
+.sobi-cal-month:hover {
+  background: rgb(var(--c-white) / 0.07);
+}
+.sobi-cal-month.is-current {
+  border-color: rgb(var(--c-mint-400) / 0.7);
+  color: rgb(var(--c-mint-300));
+}
+.sobi-cal-month.is-selected {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-weight: 600;
+}
+.sobi-cal-month:focus-visible {
+  outline: 2px solid rgb(var(--c-mint-400));
+  outline-offset: 1px;
+}

@@ -25,6 +25,7 @@ import {
   today,
   won,
 } from "./lib";
+import DateInput from "./components/ui/DateInput";
 
 // ---------- 회비 ----------
 // 친목회·동호회처럼 매달 정해진 돈을 내는 회비. 정기결제처럼 달마다 대조하지 않고 장부로 본다:
@@ -406,7 +407,7 @@ function PayModal({ st, onClose, onSaved }: { st: store.DuesStatus; onClose: () 
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="낸 날">
-          <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <Field label="낸 금액">
           <input className="input-field num" inputMode="numeric" autoFocus value={amount} placeholder="0" onChange={(e) => setAmount(formatAmount(e.target.value))} />

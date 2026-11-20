@@ -44,6 +44,7 @@ import { CheckCircle2, Download, Pencil, PiggyBank, Plus, PlusCircle, Receipt, R
 import { BasketSpendModal } from "./BasketsPage";
 import Portal from "../components/ui/Portal";
 import IconTile from "../components/ui/IconTile";
+import DateInput from "../components/ui/DateInput";
 
 const EMPTY_FORM = {
   date: today(),
@@ -248,12 +249,7 @@ function ManualForm({ refs, onAdded, onClose }: { refs: Refs; onAdded: () => voi
         </button>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
-        <input
-          type="date"
-          className="input-field"
-          value={f.date}
-          onChange={(e) => setF({ ...f, date: e.target.value })}
-        />
+        <DateInput aria-label="날짜" value={f.date} onChange={(v) => setF({ ...f, date: v })} />
         <select
           className="input-field"
           value={f.direction}

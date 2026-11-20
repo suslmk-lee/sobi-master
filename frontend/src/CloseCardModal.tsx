@@ -3,6 +3,7 @@ import { Archive, X } from "lucide-react";
 import { SetPaymentMethodClosed } from "../wailsjs/go/main/App";
 import { today } from "./lib";
 import Portal from "./components/ui/Portal";
+import DateInput from "./components/ui/DateInput";
 
 // 결제수단 해지 모달 — 해지일을 받아 SetPaymentMethodClosed 로 보관 처리한다.
 // 카드 탭과 설정의 결제수단 목록에서 같이 쓴다.
@@ -78,13 +79,7 @@ export default function CloseCardModal({
           </div>
           <label className="block">
             <span className="field-label">해지일</span>
-            <input
-              type="date"
-              className="input-field"
-              value={date}
-              autoFocus
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <DateInput value={date} autoFocus onChange={setDate} />
           </label>
           {err && <p className="text-sm text-rose-300">{err}</p>}
           <div className="flex items-center justify-end gap-2">

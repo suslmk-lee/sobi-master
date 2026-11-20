@@ -13,6 +13,7 @@ import {
 } from "./lib";
 import Portal from "./components/ui/Portal";
 import IconTile from "./components/ui/IconTile";
+import DateInput from "./components/ui/DateInput";
 
 // 거래 한 건 수정 모달. 거래내역 탭과 통계의 월별 상세 드릴다운에서 같이 쓴다.
 // 저장은 ClassifyTransaction 을 거치므로, 카테고리를 직접 고르면 규칙 학습까지 이어진다.
@@ -107,12 +108,7 @@ export default function EditModal({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="block">
               <span className="field-label">날짜</span>
-              <input
-                type="date"
-                className="input-field num"
-                value={f.date}
-                onChange={(e) => setF({ ...f, date: e.target.value })}
-              />
+              <DateInput value={f.date} onChange={(v) => setF({ ...f, date: v })} />
             </label>
             <label className="block">
               <span className="field-label">구분</span>
