@@ -45,9 +45,19 @@ func TestCategoryDetailTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mom, err := st.AddMember("엄마")
+	// '엄마'는 기본 귀속자로 이미 들어 있다(EnsureDefaults) — 새로 넣으면 이름이 겹친다
+	members, err := st.ListMembers()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var mom Member
+	for _, m := range members {
+		if m.Name == "엄마" {
+			mom = m
+		}
+	}
+	if mom.ID == 0 {
+		t.Fatal("기본 귀속자 '엄마'가 없습니다")
 	}
 	card, err := st.SavePaymentMethod(PaymentMethod{Name: "A카드", Type: "card"})
 	if err != nil {
