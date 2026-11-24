@@ -42,6 +42,8 @@ type App struct {
 	backupDone chan struct{}
 	// autoPostDone 은 정기결제 자동 등록 루프를 멈추는 신호.
 	autoPostDone chan struct{}
+	// warmDone 은 연결 살려 두기 루프를 멈추는 신호.
+	warmDone chan struct{}
 }
 
 // Version 은 외부 요청(User-Agent)에 싣는 앱 버전. 실행 파일이 시작할 때 채운다.
@@ -81,12 +83,42 @@ func Start(a *App, ctx context.Context, opt Options) {
 	if err := a.ensure(); err != nil {
 		log.Printf("시작 시 DB 연결 실패: %v", err)
 	}
+	a.startWarmLoop()
 	if opt.Backup {
 		a.startBackupLoop()
 	}
 	if opt.AutoPost {
 		a.startAutoPostLoop()
 	}
+}
+
+// warmEvery 는 연결을 확인하는 간격. 쉬는 연결이 풀에서 정리(poolMaxIdleTime)되거나 중간에서
+// 끊기기 전에 확인해, 화면을 다시 열 때 새 연결(수백 ms)을 기다리지 않게 한다.
+const warmEvery = 3 * time.Minute
+
+// startWarmLoop 은 warmEvery 마다 연결 store.WarmConns 개를 확인하고, 끊긴 것은 다시 맺어 둔다.
+// 시작 직후의 연결은 store 가 접속하면서 미리 맺는다.
+func (a *App) startWarmLoop() {
+	a.warmDone = make(chan struct{})
+	done := a.warmDone
+	go func() {
+		t := time.NewTicker(warmEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				// 새로 접속하지는 않는다(접속은 화면 호출이 한다). 종료 중에 닫힌 연결을 쓰지 않게 잠금 안에서 꺼낸다.
+				a.mu.Lock()
+				st := a.st
+				a.mu.Unlock()
+				if st != nil {
+					st.Warm(a.ctx, store.WarmConns)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
 }
 
 // startBackupLoop 은 시작 직후 한 번, 이후 backupInterval 마다 로컬 백업을 수행한다.
@@ -140,6 +172,9 @@ func (a *App) ensure() error {
 
 // Stop 은 배경 작업을 멈추고 연결을 닫는다. 백업을 켰으면 종료 전 마지막 스냅샷을 남긴다.
 func Stop(a *App) {
+	if a.warmDone != nil {
+		close(a.warmDone)
+	}
 	if a.autoPostDone != nil {
 		close(a.autoPostDone)
 	}

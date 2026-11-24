@@ -257,11 +257,92 @@ func nextSalaryDate(cal *holiday.Calendar, today time.Time, day int, received bo
 
 // ---- 청구서 ----
 
+// 청구서는 카드·달마다 따로 조회하지 않는다. 필요한 기간의 카드 지출을 (카드, 날짜)별 합계로 한 번에
+// 읽어 두고(cardDaySums) 그 안에서 기간별로 더한다. 카드 4장 × 6달이면 조회 24번이 1번이 된다.
 type billCtx struct {
-	s      *Store
 	cal    *holiday.Calendar
 	today  time.Time
+	days   map[int64][]cardDay   // 카드 id → 날짜순 하루 합계
+	first  map[int64]string      // 카드 id → 오늘까지 첫 지출일
 	recent map[int64]recentSpend // 카드 id → 최근 지출
+}
+
+// cardDay 는 카드 하나의 하루 지출(교통카드 거래 제외).
+type cardDay struct {
+	Date    string
+	Total   int64
+	Prepaid int64 // 선결제한(paid_at 이 있는) 금액
+	Count   int
+}
+
+// cardDaySums 는 from~to(양끝 포함) 카드 지출을 (카드, 날짜)별로 합친다.
+func (s *Store) cardDaySums(from, to string) (map[int64][]cardDay, error) {
+	rows, err := s.query(`
+SELECT t.payment_method_id, t.date, COALESCE(SUM(t.amount),0),
+       COALESCE(SUM(t.amount) FILTER (WHERE t.paid_at <> ''),0), COUNT(*)
+FROM transactions t
+JOIN payment_methods p ON p.id = t.payment_method_id AND p.type = 'card'
+WHERE t.direction='expense' AND t.date >= ? AND t.date <= ? AND `+transitTxFilter+`
+GROUP BY t.payment_method_id, t.date
+ORDER BY t.payment_method_id, t.date`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]cardDay{}
+	for rows.Next() {
+		var id int64
+		var d cardDay
+		if err := rows.Scan(&id, &d.Date, &d.Total, &d.Prepaid, &d.Count); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], d)
+	}
+	return out, rows.Err()
+}
+
+// cardFirstUse 는 카드별로 today 까지의 첫 지출일.
+func (s *Store) cardFirstUse(today string) (map[int64]string, error) {
+	rows, err := s.query(`
+SELECT t.payment_method_id, MIN(t.date)
+FROM transactions t
+JOIN payment_methods p ON p.id = t.payment_method_id AND p.type = 'card'
+WHERE t.direction='expense' AND t.date <= ? AND `+transitTxFilter+`
+GROUP BY t.payment_method_id`, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var d string
+		if err := rows.Scan(&id, &d); err != nil {
+			return nil, err
+		}
+		out[id] = d
+	}
+	return out, rows.Err()
+}
+
+// mergeCardDays 는 겹치지 않는 두 기간의 하루 합계를 합쳐 날짜순으로 둔다.
+func mergeCardDays(a, b map[int64][]cardDay) map[int64][]cardDay {
+	for id, ds := range b {
+		a[id] = append(a[id], ds...)
+		sort.Slice(a[id], func(i, j int) bool { return a[id][i].Date < a[id][j].Date })
+	}
+	return a
+}
+
+// sumCardDays 는 from~to(양끝 포함) 하루 합계를 더한다.
+func sumCardDays(days []cardDay, from, to string) (total, prepaid int64, count int) {
+	i := sort.Search(len(days), func(i int) bool { return days[i].Date >= from })
+	for ; i < len(days) && days[i].Date <= to; i++ {
+		total += days[i].Total
+		prepaid += days[i].Prepaid
+		count += days[i].Count
+	}
+	return
 }
 
 // recentSpend 는 예상 지출의 근거: 최근 Days 일(오늘 포함) 동안 청구로 넘어간(선결제하지 않은) 지출 합계.
@@ -272,39 +353,29 @@ type recentSpend struct {
 	Days int
 }
 
-func (c *billCtx) recentSpend(cardID int64) (recentSpend, error) {
+// recentSpend 는 미리 읽어 둔 하루 합계로 계산한다(최근 창은 오늘 앞 spendAvgDays 일 안이라 늘 들어 있다).
+func (c *billCtx) recentSpend(cardID int64) recentSpend {
 	if v, ok := c.recent[cardID]; ok {
-		return v, nil
-	}
-	var first sql.NullString
-	if err := c.s.queryRow(`
-SELECT MIN(date) FROM transactions t
-WHERE payment_method_id=? AND direction='expense' AND date <= ? AND `+transitTxFilter,
-		cardID, fmtDay(c.today)).Scan(&first); err != nil {
-		return recentSpend{}, err
+		return v
 	}
 	var firstDay time.Time
-	if first.Valid {
-		if d, err := time.Parse(dateLayout, first.String); err == nil {
+	if f, ok := c.first[cardID]; ok {
+		if d, err := time.Parse(dateLayout, f); err == nil {
 			firstDay = d
 		}
 	}
 	v := recentSpend{Days: spendWindowDays(c.today, firstDay)}
 	from := c.today.AddDate(0, 0, -(v.Days - 1))
-	if err := c.s.queryRow(`
-SELECT COALESCE(SUM(amount),0) FROM transactions t
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND paid_at = '' AND `+transitTxFilter,
-		cardID, fmtDay(from), fmtDay(c.today)).Scan(&v.Sum); err != nil {
-		return recentSpend{}, err
-	}
+	total, prepaid, _ := sumCardDays(c.days[cardID], fmtDay(from), fmtDay(c.today))
+	v.Sum = total - prepaid // 선결제하지 않은(청구로 넘어간) 지출
 	c.recent[cardID] = v
-	return v, nil
+	return v
 }
 
 // bill 은 카드 pm 의 (y, m) 달 약정 결제일 청구서를 계산한다.
-func (c *billCtx) bill(pm PaymentMethod, y int, m time.Month) (CardBill, error) {
+func (c *billCtx) bill(pm PaymentMethod, y int, m time.Month) CardBill {
+	start, end := cardBillPeriod(pm, y, m)
 	nominal := nominalDue(y, m, pm.BillingDay)
-	start, end := billPeriod(nominal, StatementStartDay(pm))
 	b := CardBill{
 		CardID: pm.ID, CardName: pm.Name, Color: pm.Color,
 		NominalDue:  fmtDay(nominal),
@@ -312,29 +383,24 @@ func (c *billCtx) bill(pm PaymentMethod, y int, m time.Month) (CardBill, error) 
 		PeriodStart: fmtDay(start), PeriodEnd: fmtDay(end),
 		Closed: c.today.After(end),
 	}
-	err := c.s.queryRow(`
-SELECT COALESCE(SUM(amount),0), COALESCE(SUM(amount) FILTER (WHERE paid_at <> ''),0), COUNT(*)
-FROM transactions t
-WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ? AND `+transitTxFilter,
-		pm.ID, b.PeriodStart, b.PeriodEnd).Scan(&b.Total, &b.Prepaid, &b.TxCount)
-	if err != nil {
-		return b, err
-	}
+	b.Total, b.Prepaid, b.TxCount = sumCardDays(c.days[pm.ID], b.PeriodStart, b.PeriodEnd)
 	b.Due = b.Total - b.Prepaid
 	b.Projected = b.Due
 	// 해지된 카드는 앞으로 쓰지 않으므로 예상 지출을 더하지 않는다(해지 전 이용분만 청구).
 	if !b.Closed && !pm.IsClosed(fmtDay(c.today)) {
-		r, err := c.recentSpend(pm.ID)
-		if err != nil {
-			return b, err
-		}
+		r := c.recentSpend(pm.ID)
 		remaining := int(end.Sub(c.today).Hours() / 24) // 내일부터 이용기간 끝까지
 		b.Projected = projectedBill(b.Due, r.Sum, r.Days, remaining)
 		if b.Projected > b.Due {
 			b.AvgDays, b.RemainDays = r.Days, remaining
 		}
 	}
-	return b, nil
+	return b
+}
+
+// cardBillPeriod 는 카드 pm 의 (y, m) 달 결제일 청구서의 이용기간.
+func cardBillPeriod(pm PaymentMethod, y int, m time.Month) (start, end time.Time) {
+	return billPeriod(nominalDue(y, m, pm.BillingDay), StatementStartDay(pm))
 }
 
 // ---- 월급 ----
@@ -415,38 +481,76 @@ type SubMatchFunc func(sub Subscription, ym, from, to string) bool
 // BuildCashPlan 은 today 기준 자금 계획을 만든다. duesBook 은 회비 장부(앱 계층이 납부 거래를 골라
 // 계산한 것) — 다음 납부일마다 낼 돈(밀린 돈 포함)을 출금으로 넣는다. nil 이면 회비는 빠진다.
 func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []DuesStatus) (CashPlan, error) {
+	return s.BuildCashPlanWith(today, matched, func() []DuesStatus { return duesBook })
+}
+
+// DuesLoader 는 회비 장부를 읽는 함수. 자금 계획의 다른 조회와 동시에 부른다(못 읽으면 nil — 회비만 빠진다).
+type DuesLoader func() []DuesStatus
+
+// BuildCashPlanWith 는 BuildCashPlan 과 같되, 회비 장부를 함수로 받아 다른 조회와 동시에 읽는다.
+//
+// DB 가 멀리 있어 조회 하나마다 왕복 시간이 붙으므로 두 단계로 한꺼번에 읽는다.
+//   - 1단계: 서로 상관없는 것 전부(설정·달력·결제수단·잔액·월급 평균·카드 지출·정기결제·외화·바구니·예정 지출·회비)
+//   - 2단계: 1단계 값이 있어야 하는 것(이번 달 월급을 받았는지, 잔액 기준일 뒤 통장 흐름, 더 이른 카드 지출)
+func (s *Store) BuildCashPlanWith(today time.Time, matched SubMatchFunc, loadDues DuesLoader) (CashPlan, error) {
 	today = dayOf(today)
+	todayStr := fmtDay(today)
 	plan := CashPlan{
-		Today:          fmtDay(today),
+		Today:          todayStr,
 		NextDueBills:   []CardBill{},
 		FollowingBills: []CardBill{},
 		Events:         []CashEvent{},
 	}
 
-	settings, err := s.GetCashSettings()
+	var (
+		settings   CashSettings
+		cal        *holiday.Calendar
+		pms        []PaymentMethod
+		bal        *CashBalance
+		auto       int64
+		useCat     bool
+		cardDays   map[int64][]cardDay
+		firstUse   map[int64]string
+		subs       []Subscription
+		posts      map[int64]map[string]SubPost
+		fxPlans    []FxPlan
+		fxRates    fxRateBook
+		basketBook []BasketStatus
+		planned    []PlannedExpense
+		duesBook   []DuesStatus
+	)
+	// 카드 지출은 최근 지출 창(오늘 앞 spendAvgDays 일)과 앞으로 결제할 청구서가 들어가게 넉넉히 읽는다.
+	// 잔액 기준일이 오래돼 더 이른 청구서가 필요하면 2단계에서 모자란 앞부분만 더 읽는다.
+	daysFrom := monthStart(today).AddDate(0, -3, 0)
+	daysTo := monthStart(today).AddDate(0, 5, 0)
+	err := parallel(
+		func() (err error) { settings, err = s.GetCashSettings(); return },
+		func() (err error) { cal, err = s.Calendar(); return },
+		func() (err error) { pms, err = s.ListPaymentMethods(); return },
+		func() (err error) { bal, err = s.latestCashBalance(); return },
+		func() (err error) { auto, useCat, err = s.salaryAverage(today); return },
+		func() (err error) { cardDays, err = s.cardDaySums(fmtDay(daysFrom), fmtDay(daysTo)); return },
+		func() (err error) { firstUse, err = s.cardFirstUse(todayStr); return },
+		func() (err error) { subs, err = s.ListSubscriptions(); return },
+		func() (err error) { posts, err = s.SubscriptionPosts(); return },
+		func() (err error) { fxPlans, err = s.ListFxPlans(); return },
+		func() (err error) { fxRates, err = s.fxRateBook(); return },
+		func() (err error) { basketBook, err = s.BasketBook(today); return },
+		func() (err error) { planned, err = s.ListPlannedExpenses(today, 0); return },
+		func() error {
+			if loadDues != nil {
+				duesBook = loadDues()
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		return plan, err
 	}
 	plan.Settings = settings
-	cal, err := s.Calendar()
-	if err != nil {
-		return plan, err
-	}
-	pms, err := s.ListPaymentMethods()
-	if err != nil {
-		return plan, err
-	}
-	bal, err := s.latestCashBalance()
-	if err != nil {
-		return plan, err
-	}
 	plan.Balance = bal
 
 	// 월급
-	auto, useCat, err := s.salaryAverage(today)
-	if err != nil {
-		return plan, err
-	}
 	plan.SalaryAuto = auto
 	plan.SalaryUsed = auto
 	switch {
@@ -461,17 +565,8 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		plan.SalaryBasis = "설정값"
 	}
 	thisSalary := salaryDate(cal, today.Year(), today.Month(), settings.SalaryDay)
-	received := false
-	if !thisSalary.After(today) {
-		if received, err = s.salaryReceived(thisSalary, today, plan.SalaryUsed, useCat); err != nil {
-			return plan, err
-		}
-	}
-	nextSalary := nextSalaryDate(cal, today, settings.SalaryDay, received)
-	plan.NextSalary = fmtDay(nextSalary)
 
 	// 청구서: 잔액 기준일 이전 달부터 오늘+3개월 뒤까지
-	bc := &billCtx{s: s, cal: cal, today: today, recent: map[int64]recentSpend{}}
 	fromMonth := monthStart(today).AddDate(0, -1, 0)
 	if bal != nil {
 		if d, err := time.Parse(dateLayout, bal.AsOf); err == nil {
@@ -484,17 +579,68 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 		fromMonth = floor
 	}
 	toMonth := monthStart(today).AddDate(0, 3, 0)
-	var bills []CardBill
+	var cards []PaymentMethod
+	needFrom, needTo := daysFrom, daysTo // 청구서 이용기간 전체를 덮는 범위
 	for _, pm := range pms {
 		if pm.Type != "card" || pm.BillingDay <= 0 {
 			continue
 		}
+		cards = append(cards, pm)
+		if start, _ := cardBillPeriod(pm, fromMonth.Year(), fromMonth.Month()); start.Before(needFrom) {
+			needFrom = start
+		}
+		if _, end := cardBillPeriod(pm, toMonth.Year(), toMonth.Month()); end.After(needTo) {
+			needTo = end
+		}
+	}
+
+	// 2단계
+	var (
+		received         bool
+		flows            balanceFlows
+		fxNet, basketNet int64
+		earlier, later   map[int64][]cardDay
+	)
+	var phase2 []func() error
+	if !thisSalary.After(today) {
+		phase2 = append(phase2, func() (err error) {
+			received, err = s.salaryReceived(thisSalary, today, plan.SalaryUsed, useCat)
+			return
+		})
+	}
+	if bal != nil {
+		asOf := bal.AsOf
+		phase2 = append(phase2,
+			func() (err error) { flows, err = s.balanceFlows(asOf, today); return },
+			func() (err error) { fxNet, err = s.fxNetSpent(asOf, todayStr); return },
+			func() (err error) { basketNet, err = s.basketMainFlow(asOf, todayStr); return },
+		)
+	}
+	if needFrom.Before(daysFrom) {
+		phase2 = append(phase2, func() (err error) {
+			earlier, err = s.cardDaySums(fmtDay(needFrom), fmtDay(daysFrom.AddDate(0, 0, -1)))
+			return
+		})
+	}
+	if needTo.After(daysTo) {
+		phase2 = append(phase2, func() (err error) {
+			later, err = s.cardDaySums(fmtDay(daysTo.AddDate(0, 0, 1)), fmtDay(needTo))
+			return
+		})
+	}
+	if err := parallel(phase2...); err != nil {
+		return plan, err
+	}
+	cardDays = mergeCardDays(mergeCardDays(cardDays, earlier), later)
+	nextSalary := nextSalaryDate(cal, today, settings.SalaryDay, received)
+	plan.NextSalary = fmtDay(nextSalary)
+
+	bc := &billCtx{cal: cal, today: today, days: cardDays, first: firstUse, recent: map[int64]recentSpend{}}
+	var bills []CardBill
+	for _, pm := range cards {
 		for m := fromMonth; !m.After(toMonth); m = m.AddDate(0, 1, 0) {
-			b, err := bc.bill(pm, m.Year(), m.Month())
-			if err != nil {
-				return plan, err
-			}
-			if b.Total == 0 && pm.IsClosed(fmtDay(today)) {
+			b := bc.bill(pm, m.Year(), m.Month())
+			if b.Total == 0 && pm.IsClosed(todayStr) {
 				continue // 해지된 카드의 빈 청구서는 보여 주지 않는다
 			}
 			bills = append(bills, b)
@@ -503,22 +649,11 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 
 	// 잔액
 	if bal != nil {
-		adj, err := s.balanceAdjust(bal.AsOf, today, bills)
-		if err != nil {
-			return plan, err
-		}
+		adj := flows.adjust(bal.AsOf, today, bills)
 		// 외화를 산 원화도 통장에서 빠졌다(판 원화는 들어왔다)
-		fxNet, err := s.fxNetSpent(bal.AsOf, fmtDay(today))
-		if err != nil {
-			return plan, err
-		}
 		adj -= fxNet
 		plan.FxAdjust = -fxNet
 		// 목돈 바구니로 채운 돈은 빠졌고, 바구니에서 옮겨 온 돈은 들어왔다
-		basketNet, err := s.basketMainFlow(bal.AsOf, fmtDay(today))
-		if err != nil {
-			return plan, err
-		}
 		adj -= basketNet
 		plan.BasketAdjust = -basketNet
 		plan.BalanceAdjust = adj
@@ -526,7 +661,6 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 	}
 
 	// 다음/그다음 결제일
-	todayStr := plan.Today
 	dueSet := map[string]bool{}
 	for _, b := range bills {
 		if b.DueDate >= todayStr {
@@ -591,33 +725,13 @@ func (s *Store) BuildCashPlan(today time.Time, matched SubMatchFunc, duesBook []
 			})
 		}
 	}
-	subEvents, err := s.subscriptionEvents(pms, cal, today, horizon, matched)
-	if err != nil {
-		return plan, err
-	}
-	events = append(events, subEvents...)
+	events = append(events, subscriptionEvents(subs, posts, pms, cal, today, horizon, matched)...)
 	events = append(events, duesEvents(duesBook, pms, cal, today, horizon)...)
 	// 외화 매일 모으기로 앞으로 빠질 원화
-	fxPlans, err := s.ListFxPlans()
-	if err != nil {
-		return plan, err
-	}
-	fxRates, err := s.fxRateBook()
-	if err != nil {
-		return plan, err
-	}
 	events = append(events, fxCashEvents(fxPlans, fxRates, today, horizon)...)
 	// 목돈 바구니로 앞으로 빠질 채움
-	basketBook, err := s.BasketBook(today)
-	if err != nil {
-		return plan, err
-	}
 	events = append(events, basketEvents(basketBook, cal, today, horizon)...)
 	// 생활비 통장에서 낼 예정 지출(축의금 등). 지났는데 아직 연결 안 한 건 오늘로 당겨 남긴다
-	planned, err := s.ListPlannedExpenses(today, 0)
-	if err != nil {
-		return plan, err
-	}
 	events = append(events, plannedEvents(planned, today, horizon)...)
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].Date != events[j].Date {
@@ -707,45 +821,59 @@ func buildTransfer(bills []CardBill, from, until string) CardTransfer {
 //   - 이미 출금된 카드대금(실제 출금일이 asOf 초과, 오늘 미만)은 뺀다. 오늘 출금분은 이벤트로 본다.
 //   - 카드 지출 중 이미 갚은(paid_at 이 asOf 초과, 오늘 이하) 것은 갚은 날 통장에서 빠졌으므로 뺀다.
 func (s *Store) balanceAdjust(asOf string, today time.Time, bills []CardBill) (int64, error) {
+	f, err := s.balanceFlows(asOf, today)
+	if err != nil {
+		return 0, err
+	}
+	return f.adjust(asOf, today, bills), nil
+}
+
+// balanceFlows 는 잔액 기준일(asOf) 다음 날부터 오늘까지 통장을 거친 돈(카드대금 출금은 빼고).
+type balanceFlows struct {
+	income  int64 // 수입
+	outflow int64 // 계좌·현금(또는 결제수단 없음)으로 나간 지출·이체
+	prepaid int64 // 카드 지출 중 그 사이에 미리 갚은 것
+}
+
+func (s *Store) balanceFlows(asOf string, today time.Time) (balanceFlows, error) {
 	todayStr := fmtDay(today)
-	var income, outflow, prepaid int64
-	err := s.queryRow(`
+	var f balanceFlows
+	err := parallel(
+		func() error {
+			return s.queryRow(`
 SELECT COALESCE(SUM(t.amount) FILTER (WHERE t.direction='income'), 0),
        COALESCE(SUM(t.amount) FILTER (WHERE t.direction IN ('expense','transfer') AND (p.id IS NULL OR p.type IN ('cash','bank'))), 0)
 FROM transactions t
 LEFT JOIN payment_methods p ON p.id = t.payment_method_id
-WHERE t.date > ? AND t.date <= ? AND `+transitTxFilter+` AND `+basketTxFilter, asOf, todayStr).Scan(&income, &outflow)
-	if err != nil {
-		return 0, err
-	}
-	err = s.queryRow(`
+WHERE t.date > ? AND t.date <= ? AND `+transitTxFilter+` AND `+basketTxFilter, asOf, todayStr).Scan(&f.income, &f.outflow)
+		},
+		func() error {
+			return s.queryRow(`
 SELECT COALESCE(SUM(t.amount), 0)
 FROM transactions t
 JOIN payment_methods p ON p.id = t.payment_method_id
-WHERE t.direction='expense' AND p.type='card' AND t.paid_at > ? AND t.paid_at <= ? AND `+transitTxFilter, asOf, todayStr).Scan(&prepaid)
-	if err != nil {
-		return 0, err
-	}
+WHERE t.direction='expense' AND p.type='card' AND t.paid_at > ? AND t.paid_at <= ? AND `+transitTxFilter, asOf, todayStr).Scan(&f.prepaid)
+		},
+	)
+	return f, err
+}
+
+// adjust 는 흐름에서 그 사이 이미 출금된 카드대금(실제 출금일이 asOf 초과, 오늘 미만)까지 뺀 잔액 변화.
+func (f balanceFlows) adjust(asOf string, today time.Time, bills []CardBill) int64 {
+	todayStr := fmtDay(today)
 	var billed int64
 	for _, b := range bills {
 		if b.DueDate > asOf && b.DueDate < todayStr {
 			billed += b.Due
 		}
 	}
-	return income - outflow - billed - prepaid, nil
+	return f.income - f.outflow - billed - f.prepaid
 }
 
 // subscriptionEvents 는 카드가 아닌 결제수단(없음/현금/계좌)으로 나가는 정기결제의 예정 출금.
 // 카드 정기결제는 카드 청구서에 들어가므로 따로 보여 주지 않는다.
-func (s *Store) subscriptionEvents(pms []PaymentMethod, cal *holiday.Calendar, today, horizon time.Time, matched SubMatchFunc) ([]CashEvent, error) {
-	subs, err := s.ListSubscriptions()
-	if err != nil {
-		return nil, err
-	}
-	posts, err := s.SubscriptionPosts()
-	if err != nil {
-		return nil, err
-	}
+func subscriptionEvents(subs []Subscription, posts map[int64]map[string]SubPost, pms []PaymentMethod,
+	cal *holiday.Calendar, today, horizon time.Time, matched SubMatchFunc) []CashEvent {
 	pmType := map[int64]string{}
 	for _, p := range pms {
 		pmType[p.ID] = p.Type
@@ -795,5 +923,5 @@ func (s *Store) subscriptionEvents(pms []PaymentMethod, cal *holiday.Calendar, t
 			})
 		}
 	}
-	return out, nil
+	return out
 }

@@ -817,20 +817,6 @@ func (s *Store) MonthlySummary(year, month int) (MonthlySummary, error) {
 	sum := MonthlySummary{Year: year, Month: month}
 	prefix := fmt.Sprintf("%04d-%02d", year, month) + "%"
 
-	err := s.queryRow(`
-SELECT
-	COALESCE(SUM(CASE WHEN direction='income'   THEN amount END), 0),
-	COALESCE(SUM(CASE WHEN direction='expense'  THEN amount END), 0),
-	COALESCE(SUM(CASE WHEN direction='transfer' THEN amount END), 0)
-FROM transactions WHERE date LIKE ?`, prefix).
-		Scan(&sum.TotalIncome, &sum.TotalExpense, &sum.TotalTransfer)
-	if err != nil {
-		return sum, err
-	}
-	if sum.BasketExpense, err = s.basketSpentIn(prefix); err != nil {
-		return sum, err
-	}
-
 	group := func(query string) ([]NamedAmount, error) {
 		rows, err := s.query(query, prefix)
 		if err != nil {
@@ -848,35 +834,52 @@ FROM transactions WHERE date LIKE ?`, prefix).
 		return out, rows.Err()
 	}
 
-	if sum.ByMember, err = group(`
+	// 서로 상관없는 집계 6개 — 동시에 돌린다(각자 sum 의 다른 칸에만 쓴다)
+	err := parallel(
+		func() error {
+			return s.queryRow(`
+SELECT
+	COALESCE(SUM(CASE WHEN direction='income'   THEN amount END), 0),
+	COALESCE(SUM(CASE WHEN direction='expense'  THEN amount END), 0),
+	COALESCE(SUM(CASE WHEN direction='transfer' THEN amount END), 0)
+FROM transactions WHERE date LIKE ?`, prefix).
+				Scan(&sum.TotalIncome, &sum.TotalExpense, &sum.TotalTransfer)
+		},
+		func() (err error) { sum.BasketExpense, err = s.basketSpentIn(prefix); return },
+		func() (err error) {
+			sum.ByMember, err = group(`
 SELECT COALESCE(m.name, '미지정'), t.direction, SUM(t.amount)
 FROM transactions t LEFT JOIN members m ON m.id = t.member_id
 WHERE t.date LIKE ? AND t.direction='expense'
-GROUP BY m.name, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
-		return sum, err
-	}
-	// 카테고리는 주 기준으로 합산한다(부 지출은 상위 주에 포함)
-	if sum.ByCategory, err = group(`
+GROUP BY m.name, t.direction ORDER BY SUM(t.amount) DESC`)
+			return
+		},
+		// 카테고리는 주 기준으로 합산한다(부 지출은 상위 주에 포함)
+		func() (err error) {
+			sum.ByCategory, err = group(`
 SELECT COALESCE(cp.name, c.name, '미분류'), t.direction, SUM(t.amount)
 FROM transactions t
 LEFT JOIN categories c ON c.id = t.category_id
 LEFT JOIN categories cp ON cp.id = c.parent_id
 WHERE t.date LIKE ?
-GROUP BY 1, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
-		return sum, err
-	}
-	if sum.ByPaymentMethod, err = group(`
+GROUP BY 1, t.direction ORDER BY SUM(t.amount) DESC`)
+			return
+		},
+		func() (err error) {
+			sum.ByPaymentMethod, err = group(`
 SELECT COALESCE(p.name, '미지정'), t.direction, SUM(t.amount)
 FROM transactions t LEFT JOIN payment_methods p ON p.id = t.payment_method_id
 WHERE t.date LIKE ? AND t.direction='expense'
-GROUP BY p.name, t.direction ORDER BY SUM(t.amount) DESC`); err != nil {
-		return sum, err
-	}
-
-	err = s.queryRow(`
+GROUP BY p.name, t.direction ORDER BY SUM(t.amount) DESC`)
+			return
+		},
+		func() error {
+			return s.queryRow(`
 SELECT COUNT(*) FROM transactions
 WHERE date LIKE ? AND (member_id IS NULL OR category_id IS NULL)`, prefix).
-		Scan(&sum.UnclassifiedCount)
+				Scan(&sum.UnclassifiedCount)
+		},
+	)
 	return sum, err
 }
 

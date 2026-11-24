@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Refs, formatAmount, parseAmount, today as todayStr, won } from "../lib";
+import { cached, refresh } from "../screenCache";
 import IconTile from "../components/ui/IconTile";
 import PlannedSection from "../PlannedSection";
 import CountUp from "../components/CountUp";
@@ -729,26 +730,35 @@ export default function CashPlanPage({ refs, goSubscriptions }: { refs: Refs; go
   const [editTx, setEditTx] = useState<store.Transaction | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const p = await GetCashPlan();
+    const applyPlan = (p: store.CashPlan) => {
       setPlan(p);
       setSalaryDay(String(p.settings.salaryDay || 10));
       setSalaryAmount(p.settings.salaryAmount ? formatAmount(String(p.settings.salaryAmount)) : "");
       setReserve(p.settings.reserve ? formatAmount(String(p.settings.reserve)) : "");
-      setErr("");
-    } catch (e: any) {
-      setErr(String(e));
-    }
-    try {
-      setBalances((await ListCashBalances()) ?? []);
-    } catch {
-      setBalances([]);
-    }
-    try {
-      setMissing(((await ListRecurringCandidates()) ?? []).filter((c) => c.account));
-    } catch {
-      setMissing([]);
-    }
+    };
+    const applyMissing = (c: store.RecurringCandidate[]) => setMissing(c.filter((x) => x.account));
+    // 본 적이 있으면 그 내용을 먼저 보여 주고(대시보드와 같은 기억), 뒤에서 새로 받아 바꾼다
+    const hitPlan = cached<store.CashPlan>("cashplan");
+    if (hitPlan) applyPlan(hitPlan);
+    const hitBalances = cached<store.CashBalance[]>("cashbalances");
+    if (hitBalances) setBalances(hitBalances);
+    const hitMissing = cached<store.RecurringCandidate[]>("recurring");
+    if (hitMissing) applyMissing(hitMissing);
+    // 셋은 서로 상관없으니 동시에 부른다
+    await Promise.all([
+      refresh("cashplan", GetCashPlan)
+        .then((p) => {
+          applyPlan(p);
+          setErr("");
+        })
+        .catch((e: any) => setErr(String(e))),
+      refresh("cashbalances", async () => (await ListCashBalances()) ?? [])
+        .then(setBalances)
+        .catch(() => setBalances([])),
+      refresh("recurring", async () => (await ListRecurringCandidates()) ?? [])
+        .then(applyMissing)
+        .catch(() => setMissing([])),
+    ]);
   }, []);
 
   useEffect(() => {

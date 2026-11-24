@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"sobi/internal/holiday"
 	"sobi/internal/store"
 )
 
@@ -127,14 +128,6 @@ func (a *App) duesBook(today time.Time) ([]store.DuesStatus, error) {
 	if len(dues) == 0 {
 		return out, nil
 	}
-	cal, err := a.st.Calendar()
-	if err != nil {
-		return out, err
-	}
-	links, err := a.st.DuesLinks()
-	if err != nil {
-		return out, err
-	}
 	// 기준일 이후 지출 + 그보다 앞 날짜로 직접 넣은 거래
 	from := ""
 	for _, d := range dues {
@@ -142,7 +135,19 @@ func (a *App) duesBook(today time.Time) ([]store.DuesStatus, error) {
 			from = d.PaidThroughAt
 		}
 	}
-	txs, err := a.st.ListTransactions(store.TxFilter{From: from, Direction: "expense"})
+	var (
+		cal   *holiday.Calendar
+		links map[int64]store.DuesLink
+		txs   []store.Transaction
+	)
+	err = parallel(
+		func() (err error) { cal, err = a.st.Calendar(); return },
+		func() (err error) { links, err = a.st.DuesLinks(); return },
+		func() (err error) {
+			txs, err = a.st.ListTransactions(store.TxFilter{From: from, Direction: "expense"})
+			return
+		},
+	)
 	if err != nil {
 		return out, err
 	}
