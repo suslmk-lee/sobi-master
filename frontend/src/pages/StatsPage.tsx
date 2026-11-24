@@ -38,6 +38,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { app, store } from "../../wailsjs/go/models";
 import { categoryOptions, Refs, won } from "../lib";
+import { cached, refresh } from "../screenCache";
 import MonthPicker from "../MonthPicker";
 import Bars from "../Bars";
 import EditModal from "../EditModal";
@@ -194,26 +195,26 @@ export default function StatsPage({
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [y, m] = month.split("-").map(Number);
-      const [pmD, memD, catD, cmp, ct, cc, pc, rec, yr, mcat, mtr, mst, cmem, mtx] =
-        await Promise.all([
-          GetDailyByDimension(y, m, "paymentMethod"),
-          GetDailyByDimension(y, m, "member"),
-          GetDailyByDimension(y, m, catLevel === "sub" ? "categorySub" : "category"),
-          GetCumulativeCompare(y, m),
-          GetCategoryTrend(y, m, 6, catLevel),
-          GetCardCategoryBreakdown(y, m),
-          GetCardPaces(),
-          GetRecurringStatus(y, m),
-          GetYearSummary(y),
-          GetMemberCategoryBreakdown(y, m),
-          GetMemberTrend(y, m, 6),
-          GetMemberStats(y, m),
-          GetCategoryMemberBreakdown(y, m, catLevel),
-          GetCategoryMatrix(y, m, 6, catLevel),
-        ]);
+    const [y, m] = month.split("-").map(Number);
+    const fetchAll = () =>
+      Promise.all([
+        GetDailyByDimension(y, m, "paymentMethod"),
+        GetDailyByDimension(y, m, "member"),
+        GetDailyByDimension(y, m, catLevel === "sub" ? "categorySub" : "category"),
+        GetCumulativeCompare(y, m),
+        GetCategoryTrend(y, m, 6, catLevel),
+        GetCardCategoryBreakdown(y, m),
+        GetCardPaces(),
+        GetRecurringStatus(y, m),
+        GetYearSummary(y),
+        GetMemberCategoryBreakdown(y, m),
+        GetMemberTrend(y, m, 6),
+        GetMemberStats(y, m),
+        GetCategoryMemberBreakdown(y, m, catLevel),
+        GetCategoryMatrix(y, m, 6, catLevel),
+      ]);
+    type Bundle = Awaited<ReturnType<typeof fetchAll>>;
+    const apply = ([pmD, memD, catD, cmp, ct, cc, pc, rec, yr, mcat, mtr, mst, cmem, mtx]: Bundle) => {
       setDimData({ paymentMethod: pmD, member: memD, category: catD });
       setCompare(cmp);
       setCatTrend(ct);
@@ -226,6 +227,14 @@ export default function StatsPage({
       setMemberStats(mst);
       setCatMember(cmem);
       setMatrix(mtx);
+    };
+    // 이 달·기준으로 본 적이 있으면 그 내용을 먼저 보여 주고, 뒤에서 새로 받아 바꾼다
+    const key = `stats:${month}:${catLevel}`;
+    const hit = cached<Bundle>(key);
+    if (hit) apply(hit);
+    setLoading(!hit);
+    try {
+      apply(await refresh(key, fetchAll));
       setErr("");
     } catch (e: any) {
       setErr(String(e));

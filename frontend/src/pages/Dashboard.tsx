@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { GetCashPlan, GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
-import { store } from "../../wailsjs/go/models";
+import { app, store } from "../../wailsjs/go/models";
 import {
   BarChart3,
   ChevronRight,
@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { won } from "../lib";
+import { cached, refresh } from "../screenCache";
 import IconTile from "../components/ui/IconTile";
 import CountUp from "../components/CountUp";
 import MonthPicker from "../MonthPicker";
@@ -117,9 +118,10 @@ export default function Dashboard({
   goCashPlan?: () => void;
 }) {
   // 자금 계획 요약 — 실패하면 카드만 숨기고 대시보드는 그대로 둔다
-  const [plan, setPlan] = useState<store.CashPlan | null>(null);
+  // 지난번 받은 내용이 있으면 먼저 보여 주고 뒤에서 새로 받는다(자금 계획 화면과 같은 기억을 쓴다)
+  const [plan, setPlan] = useState<store.CashPlan | null>(() => cached<store.CashPlan>("cashplan") ?? null);
   useEffect(() => {
-    GetCashPlan()
+    refresh("cashplan", GetCashPlan)
       .then(setPlan)
       .catch(() => setPlan(null));
   }, []);
@@ -140,9 +142,8 @@ export default function Dashboard({
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
-    try {
-      const [y, m] = month.split("-").map(Number);
-      const dash = await GetDashboard(y, m);
+    const [y, m] = month.split("-").map(Number);
+    const apply = (dash: app.DashboardData) => {
       setSum(dash.summary);
       setPrev(dash.prev);
       setTrend(dash.trend);
@@ -155,6 +156,13 @@ export default function Dashboard({
         colors[pm2.name] = pm2.color || autoColor(pm2.name);
       }
       setPmColors(colors);
+    };
+    // 이 달을 본 적이 있으면 그 내용을 먼저 보여 주고, 뒤에서 새로 받아 바꾼다
+    const key = `dash:${month}`;
+    const hit = cached<app.DashboardData>(key);
+    if (hit) apply(hit);
+    try {
+      apply(await refresh(key, () => GetDashboard(y, m)));
       setErr("");
     } catch (e: any) {
       setErr(String(e));
@@ -168,7 +176,10 @@ export default function Dashboard({
   useEffect(() => {
     const [y, m] = month.split("-").map(Number);
     setCmpAll(false);
-    GetCategoryCompare(y, m, cmpLevel)
+    const key = `cmp:${month}:${cmpLevel}`;
+    const hit = cached<store.CategoryCompare>(key);
+    if (hit) setCmp(hit);
+    refresh(key, () => GetCategoryCompare(y, m, cmpLevel))
       .then(setCmp)
       .catch(() => setCmp(null));
   }, [month, cmpLevel]);

@@ -73,10 +73,31 @@ type recTx struct {
 // 이미 등록된 정기결제와 겹치는지는 가맹점 대조 규칙을 가진 앱 계층이 거른다.
 func (s *Store) RecurringCandidates(today time.Time) ([]RecurringCandidate, error) {
 	today = dayOf(today)
-	cal, err := s.Calendar()
+	// 달력·거래·숨긴 후보를 동시에 읽는다
+	var (
+		cal       *holiday.Calendar
+		txs       []recTx
+		dismissed map[string]bool
+	)
+	err := parallel(
+		func() (err error) { cal, err = s.Calendar(); return },
+		func() (err error) { txs, err = s.recurringTxs(today); return },
+		func() (err error) { dismissed, err = s.recurringDismissed(); return },
+	)
 	if err != nil {
 		return nil, err
 	}
+	out := []RecurringCandidate{}
+	for _, c := range detectRecurring(txs, cal, today) {
+		if !dismissed[c.Key] {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// recurringTxs 는 정기 출금 후보를 찾을 최근 지출(정기결제·교통카드·바구니로 이미 처리한 것은 뺀다).
+func (s *Store) recurringTxs(today time.Time) ([]recTx, error) {
 	rows, err := s.query(`
 SELECT t.date, t.amount, t.merchant, t.payment_method_id, COALESCE(p.name, ''), COALESCE(p.type, ''),
        t.category_id, COALESCE(cp.name || ' > ' || c.name, c.name, ''), COALESCE(c.parent_id, c.id, 0),
@@ -111,20 +132,7 @@ ORDER BY t.date`, fmtDay(today.AddDate(0, 0, -recurringLookbackDays)), fmtDay(to
 		x.PMID, x.CatID, x.MemberID = scanNullableID(pm), scanNullableID(cat), scanNullableID(mem)
 		txs = append(txs, x)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	dismissed, err := s.recurringDismissed()
-	if err != nil {
-		return nil, err
-	}
-	out := []RecurringCandidate{}
-	for _, c := range detectRecurring(txs, cal, today) {
-		if !dismissed[c.Key] {
-			out = append(out, c)
-		}
-	}
-	return out, nil
+	return txs, rows.Err()
 }
 
 // DismissRecurring 은 후보를 '무시'로 기록해 다시 제안하지 않게 한다.

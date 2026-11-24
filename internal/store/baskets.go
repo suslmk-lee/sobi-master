@@ -331,59 +331,78 @@ func BuildBasketStatus(b Basket, entries []BasketEntry, today time.Time, cal *ho
 const basketCols = `b.id, b.name, b.kind, b.payment_method_id, b.cap, b.monthly, b.auto_fill, b.fill_day, b.fill_since,
 	b.sort_order, b.active, b.memo, COALESCE(p.name, '')`
 
-// ListBaskets 는 바구니 전체(정렬 순서, 항목 포함).
+// ListBaskets 는 바구니 전체(정렬 순서, 항목 포함). 바구니·연결 카테고리·항목을 동시에 읽어 합친다.
 func (s *Store) ListBaskets() ([]Basket, error) {
-	rows, err := s.query(`SELECT ` + basketCols + ` FROM baskets b LEFT JOIN payment_methods p ON p.id = b.payment_method_id
-ORDER BY b.active DESC, b.sort_order, b.id`)
+	var (
+		out   []Basket
+		cats  map[int64][]int64
+		items []BasketItem
+	)
+	err := parallel(
+		func() (err error) { out, err = s.basketRows(); return },
+		func() (err error) { cats, err = s.basketCategoryIDs(); return },
+		func() (err error) { items, err = s.basketItemRows(); return },
+	)
 	if err != nil {
 		return nil, err
 	}
-	out := []Basket{}
 	byID := map[int64]int{}
-	for rows.Next() {
-		var b Basket
-		var pm sql.NullInt64
-		var auto, active int
-		if err := rows.Scan(&b.ID, &b.Name, &b.Kind, &pm, &b.Cap, &b.Monthly, &auto, &b.FillDay, &b.FillSince,
-			&b.SortOrder, &active, &b.Memo, &b.PaymentMethodName); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		b.PaymentMethodID = scanNullableID(pm)
-		b.AutoFill, b.Active = auto == 1, active == 1
-		b.Items = []BasketItem{}
-		b.CategoryIDs = []int64{}
-		byID[b.ID] = len(out)
-		out = append(out, b)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	cats, err := s.basketCategoryIDs()
-	if err != nil {
-		return nil, err
+	for i, b := range out {
+		byID[b.ID] = i
 	}
 	for id, ids := range cats {
 		if i, ok := byID[id]; ok {
 			out[i].CategoryIDs = ids
 		}
 	}
-	irows, err := s.query(`SELECT id, basket_id, name, month, day, amount FROM basket_items ORDER BY month, day, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer irows.Close()
-	for irows.Next() {
-		var it BasketItem
-		if err := irows.Scan(&it.ID, &it.BasketID, &it.Name, &it.Month, &it.Day, &it.Amount); err != nil {
-			return nil, err
-		}
+	for _, it := range items {
 		if i, ok := byID[it.BasketID]; ok {
 			out[i].Items = append(out[i].Items, it)
 		}
 	}
-	return out, irows.Err()
+	return out, nil
+}
+
+func (s *Store) basketRows() ([]Basket, error) {
+	rows, err := s.query(`SELECT ` + basketCols + ` FROM baskets b LEFT JOIN payment_methods p ON p.id = b.payment_method_id
+ORDER BY b.active DESC, b.sort_order, b.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Basket{}
+	for rows.Next() {
+		var b Basket
+		var pm sql.NullInt64
+		var auto, active int
+		if err := rows.Scan(&b.ID, &b.Name, &b.Kind, &pm, &b.Cap, &b.Monthly, &auto, &b.FillDay, &b.FillSince,
+			&b.SortOrder, &active, &b.Memo, &b.PaymentMethodName); err != nil {
+			return nil, err
+		}
+		b.PaymentMethodID = scanNullableID(pm)
+		b.AutoFill, b.Active = auto == 1, active == 1
+		b.Items = []BasketItem{}
+		b.CategoryIDs = []int64{}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) basketItemRows() ([]BasketItem, error) {
+	rows, err := s.query(`SELECT id, basket_id, name, month, day, amount FROM basket_items ORDER BY month, day, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BasketItem
+	for rows.Next() {
+		var it BasketItem
+		if err := rows.Scan(&it.ID, &it.BasketID, &it.Name, &it.Month, &it.Day, &it.Amount); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) getBasket(id int64) (Basket, error) {
@@ -710,41 +729,47 @@ ON CONFLICT (basket_id, ym) WHERE auto = 1 DO NOTHING`,
 }
 
 // BasketBook 은 바구니 전체의 화면 자료.
+// 바구니·달력·기록·예정 지출을 동시에 읽고, 예비비 바구니의 권장 금액도 바구니마다 동시에 구한다.
 func (s *Store) BasketBook(today time.Time) ([]BasketStatus, error) {
 	out := []BasketStatus{}
-	baskets, err := s.ListBaskets()
+	var (
+		baskets    []Basket
+		cal        *holiday.Calendar
+		entries    []BasketEntry
+		plannedAll []PlannedExpense
+	)
+	err := parallel(
+		func() (err error) { baskets, err = s.ListBaskets(); return },
+		func() (err error) { cal, err = s.Calendar(); return },
+		func() (err error) { entries, err = s.BasketEntries(0); return },
+		func() (err error) { plannedAll, err = s.ListPlannedExpenses(today, 0); return },
+	)
 	if err != nil || len(baskets) == 0 {
-		return out, err
-	}
-	cal, err := s.Calendar()
-	if err != nil {
-		return out, err
-	}
-	entries, err := s.BasketEntries(0)
-	if err != nil {
 		return out, err
 	}
 	by := map[int64][]BasketEntry{}
 	for _, e := range entries {
 		by[e.BasketID] = append(by[e.BasketID], e)
 	}
-	plannedAll, err := s.ListPlannedExpenses(today, 0)
-	if err != nil {
-		return out, err
-	}
 	planned := basketPlanned(plannedAll)
-	for _, b := range baskets {
+	out = make([]BasketStatus, len(baskets))
+	var suggest []func() error
+	for i, b := range baskets {
 		st := BuildBasketStatus(b, by[b.ID], today, cal)
 		for _, p := range planned[b.ID] {
 			st.Planned = append(st.Planned, p)
 			st.PlannedTotal += p.Amount
 		}
+		out[i] = st
 		if b.Kind == BasketReserve && len(b.CategoryIDs) > 0 {
-			if st.SuggestMonthly, st.SuggestCount, err = s.SuggestBasketMonthly(b.CategoryIDs, today); err != nil {
-				return out, err
-			}
+			suggest = append(suggest, func() (err error) {
+				out[i].SuggestMonthly, out[i].SuggestCount, err = s.SuggestBasketMonthly(b.CategoryIDs, today)
+				return
+			})
 		}
-		out = append(out, st)
+	}
+	if err := parallel(suggest...); err != nil {
+		return []BasketStatus{}, err
 	}
 	return out, nil
 }

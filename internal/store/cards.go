@@ -40,28 +40,37 @@ func (s *Store) CardStatuses(today time.Time) ([]CardStatus, error) {
 			continue
 		}
 		start, end := perfPeriod(today, pm.CycleStartDay)
-		st := CardStatus{
+		out = append(out, CardStatus{
 			Card:        pm,
 			PeriodStart: start.Format("2006-01-02"),
 			PeriodEnd:   end.Format("2006-01-02"),
-		}
-		// 실적 제외 표시된 결제(세금·공과금 등)는 Spent 에서 빼고 Excluded 로 따로 알려준다.
-		err := s.queryRow(`
+		})
+	}
+	// 카드마다 실적 합계 — 동시에 조회한다(각자 out 의 자기 칸에만 쓴다)
+	fns := make([]func() error, len(out))
+	for i := range out {
+		fns[i] = func() error {
+			st := &out[i]
+			// 실적 제외 표시된 결제(세금·공과금 등)는 Spent 에서 빼고 Excluded 로 따로 알려준다.
+			if err := s.queryRow(`
 SELECT COALESCE(SUM(amount) FILTER (WHERE exclude_perf = 0), 0),
        COALESCE(SUM(amount) FILTER (WHERE exclude_perf = 1), 0)
 FROM transactions
 WHERE payment_method_id=? AND direction='expense' AND date >= ? AND date <= ?`,
-			pm.ID, st.PeriodStart, st.PeriodEnd).Scan(&st.Spent, &st.Excluded)
-		if err != nil {
-			return nil, err
-		}
-		if pm.PerfTarget > 0 {
-			st.Achieved = st.Spent >= pm.PerfTarget
-			if !st.Achieved {
-				st.Remaining = pm.PerfTarget - st.Spent
+				st.Card.ID, st.PeriodStart, st.PeriodEnd).Scan(&st.Spent, &st.Excluded); err != nil {
+				return err
 			}
+			if st.Card.PerfTarget > 0 {
+				st.Achieved = st.Spent >= st.Card.PerfTarget
+				if !st.Achieved {
+					st.Remaining = st.Card.PerfTarget - st.Spent
+				}
+			}
+			return nil
 		}
-		out = append(out, st)
+	}
+	if err := parallel(fns...); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
