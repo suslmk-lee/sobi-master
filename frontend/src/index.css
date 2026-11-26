@@ -272,7 +272,7 @@ body {
 
   /* 탭 카드 */
   .tab-card {
-    @apply relative flex min-w-[118px] flex-1 flex-col items-start gap-3 overflow-hidden px-3.5 pb-3.5 pt-3 text-left transition-all duration-300;
+    @apply relative flex min-w-[96px] flex-1 flex-col items-start gap-3 overflow-hidden px-3.5 pb-3.5 pt-3 text-left transition-all duration-300;
     border-radius: var(--tab-radius);
     border: var(--tab-border-w) solid var(--tab-border);
     background: var(--tab-bg);
