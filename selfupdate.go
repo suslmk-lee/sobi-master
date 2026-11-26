@@ -100,8 +100,12 @@ func bundleFromExecutable(exe string) (string, error) {
 
 // installTarget 은 새 버전으로 바꿔 놓을 지금 앱 번들 경로. 이 컴퓨터에서 자동 설치를 못 하면 오류.
 func installTarget() (string, error) {
-	if goruntime.GOOS != "darwin" {
-		return "", fmt.Errorf("자동 설치는 macOS 에서만 됩니다")
+	switch goruntime.GOOS {
+	case "darwin":
+	case "windows":
+		return installTargetWindows()
+	default:
+		return "", fmt.Errorf("자동 설치는 macOS 와 Windows 에서만 됩니다")
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -290,6 +294,12 @@ func (a *App) startUpdateHousekeeping() {
 		if b, err := installTarget(); err == nil {
 			bundleDir = filepath.Dir(b)
 		}
+		if goruntime.GOOS == "windows" {
+			// 앱이 켜져 있다는 건 옛 앱이 끝났다는 뜻(--wait-pid 로 기다렸다) — 비켜 둔 옛 exe 를 바로 치운다
+			if exe, err := os.Executable(); err == nil {
+				removeOldExecutables(exe)
+			}
+		}
 		cache, _ := updateCacheDir()
 		cleanupUpdateLeftovers(bundleDir, cache, time.Now())
 	}()
@@ -322,6 +332,9 @@ func (a *App) InstallUpdate() error {
 }
 
 func (a *App) installUpdate(dmg, version string) error {
+	if goruntime.GOOS == "windows" {
+		return a.installUpdateWindows(dmg, version)
+	}
 	target, err := installTarget()
 	if err != nil {
 		return err
@@ -335,6 +348,12 @@ func (a *App) installUpdate(dmg, version string) error {
 		os.RemoveAll(stage)
 		return err
 	}
+	a.finishInstall(version)
+	return nil
+}
+
+// finishInstall 은 설치 준비를 마친 뒤 표시 파일을 남기고, 잠시 후 앱을 종료한다 (macOS·Windows 공통).
+func (a *App) finishInstall(version string) {
 	if p, err := markerPath(); err == nil {
 		b, _ := json.Marshal(updateMarkerData{From: appVersion, To: version, At: time.Now().Format(time.RFC3339)})
 		logIf("업데이트 표시 남기기", os.WriteFile(p, b, 0o644))
@@ -347,5 +366,4 @@ func (a *App) installUpdate(dmg, version string) error {
 			wruntime.Quit(a.ctx)
 		}
 	}()
-	return nil
 }

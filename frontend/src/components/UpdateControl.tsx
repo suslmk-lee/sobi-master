@@ -16,7 +16,7 @@ import IconTile from "./ui/IconTile";
 // 헤더의 버전 표시와 새 버전 알림.
 // - 평소: 지금 버전(v1.0.0). 누르면 바로 업데이트를 확인한다.
 // - 새 버전이 있으면: '새 버전 받기' 버튼. 누르면 바뀌는 점을 먼저 보여 주고 업데이트를 고를 수 있다.
-//   macOS 에서는 [설치하고 다시 시작] 한 번으로 내려받기·설치·재시작까지 앱이 한다(selfupdate.go).
+//   macOS·Windows 에서는 [설치하고 다시 시작] 한 번으로 내려받기·설치·재시작까지 앱이 한다(selfupdate.go, winupdate.go).
 //   자동 설치를 못 하는 경우(또는 지난 자동 설치가 실패했으면) 설치 파일을 열어 직접 옮기게 안내한다.
 // - 업데이트 뒤 처음 켜지면 버전 칩에 결과를 잠깐 보여 준다.
 // 앱이 켜지고 몇 초 뒤, 그리고 6시간마다 조용히 확인한다(실패해도 알리지 않는다).
@@ -252,8 +252,16 @@ function UpdateModal({ info, manual, onClose }: { info: main.UpdateInfo; manual:
               <p>
                 {auto ? "받은 설치 파일" : "다운로드 폴더에 받았습니다"}: <span className="text-white">{fileName}</span>
               </p>
-              <p className="text-zinc-400">1. [설치 파일 열기]를 누르면 열리는 창에서 sobi.app 을 Applications 로 끌어다 놓고 '대치'를 고릅니다.</p>
-              <p className="text-zinc-400">2. 이 앱을 종료하고 다시 열면 새 버전으로 바뀝니다.</p>
+              <p className="text-zinc-400">
+                {info.os === "windows"
+                  ? "1. [설치 파일 열기]로 압축을 풀고 sobi-master.exe 를 지금 쓰는 파일 자리에 덮어쓸 준비를 합니다."
+                  : "1. [설치 파일 열기]를 누르면 열리는 창에서 sobi.app 을 Applications 로 끌어다 놓고 '대치'를 고릅니다."}
+              </p>
+              <p className="text-zinc-400">
+                {info.os === "windows"
+                  ? "2. 이 앱을 종료한 뒤 꺼낸 sobi-master.exe 로 지금 파일을 덮어쓰고 다시 열면 새 버전으로 바뀝니다."
+                  : "2. 이 앱을 종료하고 다시 열면 새 버전으로 바뀝니다."}
+              </p>
             </div>
           )}
 

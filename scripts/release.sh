@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 새 버전 배포 준비: 버전 올리기 → DMG 빌드 → 변경 사항 초안.
+# 새 버전 배포 준비: 버전 올리기 → DMG 빌드 → Windows zip 빌드 → 변경 사항 초안.
 #
 #   scripts/release.sh 1.1.0            # 유니버설 DMG
 #   scripts/release.sh 1.1.0 arm64      # Apple Silicon 전용 DMG
@@ -7,12 +7,13 @@
 # 하는 일
 #   1. wails.json 의 info.productVersion 을 새 버전으로 바꾼다 (앱 화면에 보이는 버전)
 #   2. scripts/build-dmg.sh 로 DMG 를 만든다
-#   3. 지난 태그 이후 커밋 제목으로 변경 사항 초안을 만든다 (feat → 새 기능, fix → 고친 점, perf → 빨라진 점)
+#   3. scripts/build-windows.sh 로 Windows zip(sobi-<버전>-windows-amd64.zip)을 만든다 (맥에서 크로스 컴파일)
+#   4. 지난 태그 이후 커밋 제목으로 변경 사항 초안을 만든다 (feat → 새 기능, fix → 고친 점, perf → 빨라진 점)
 #
 # 하지 않는 일 (끝에 안내한다)
 #   커밋·태그·푸시와 GitHub 릴리스 만들기. 공개 저장소에 올리는 일이라 직접 확인하고 한다.
 #   앱은 GitHub Releases 의 v<버전> 릴리스를 보고 '새 버전 받기'를 띄우고, 릴리스 설명을 '바뀌는 점'으로,
-#   첨부한 DMG 를 내려받을 파일로 쓴다.
+#   첨부한 DMG(맥)·zip(Windows)을 내려받을 파일로 쓴다.
 set -euo pipefail
 
 VERSION="${1:-}"
@@ -43,6 +44,9 @@ fs.writeFileSync("wails.json", JSON.stringify(j, null, 2) + "\n");
 scripts/build-dmg.sh "$ARCH"
 DMG="build/bin/sobi-${VERSION}-macOS-${ARCH}.dmg"
 
+scripts/build-windows.sh amd64 "$VERSION"
+WINZIP="build/bin/sobi-${VERSION}-windows-amd64.zip"
+
 echo "▶ 변경 사항 초안"
 PREV="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
 RANGE="HEAD"
@@ -65,6 +69,7 @@ section() { # $1=제목 $2=커밋 접두어
 cat <<EOF
 
 ✔ 준비 끝: $DMG
+          $WINZIP
   변경 사항 초안: $NOTES  (${PREV:-처음}부터 지금까지의 커밋 — 다듬어서 쓰세요)
 
 남은 일
@@ -74,6 +79,6 @@ cat <<EOF
        https://github.com/suslmk-lee/sobi-master/releases/new?tag=$TAG
        - 제목: $TAG
        - 설명: 위 초안을 붙여 넣고 다듬기 (앱의 '바뀌는 점'에 그대로 보입니다)
-       - 파일: $DMG 를 끌어다 첨부
+       - 파일: $DMG 와 $WINZIP 두 개를 끌어다 첨부
      '릴리스 게시'를 누르면, 이전 버전 앱에서 '새 버전 받기'가 나타납니다.
 EOF

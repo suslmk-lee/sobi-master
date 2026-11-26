@@ -2,7 +2,14 @@
 
 package main
 
-import "os/exec"
+import (
+	"os/exec"
+	"syscall"
 
-// detachProcess 는 Windows 에서는 하는 일이 없다 (자동 설치는 macOS 에서만 한다).
-func detachProcess(cmd *exec.Cmd) {}
+	"golang.org/x/sys/windows"
+)
+
+// detachProcess 는 자식 프로세스를 앱과 떨어진 새 프로세스 그룹·콘솔 없이 띄워, 앱이 끝나도 같이 끝나지 않게 한다.
+func detachProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP}
+}

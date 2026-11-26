@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +14,12 @@ import (
 var assets embed.FS
 
 func main() {
+	// 자동 업데이트로 다시 열린 경우(--wait-pid N): 옛 앱이 종료 전 백업까지 끝내길 기다린 뒤 시작한다.
+	// DB 를 두 프로세스가 동시에 열지 않게 하기 위해서다.
+	if pid, ok := parseWaitPID(os.Args[1:]); ok {
+		waitForProcessExit(pid, waitPIDLimit)
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 
