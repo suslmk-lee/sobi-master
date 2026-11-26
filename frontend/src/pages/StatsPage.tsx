@@ -47,6 +47,7 @@ import CompareChart from "../CompareChart";
 import SpendCalendar from "../SpendCalendar";
 import WeekdayPanel from "../WeekdayPanel";
 import {
+  AmountShareChart,
   Heatmap,
   LineChart,
   LineSeries,
@@ -338,11 +339,20 @@ export default function StatsPage({
   }));
   const memberLabels = (memberTrend?.months ?? []).map(monthLabel);
 
-  // 카테고리 상세: 월별 추이 단일 시리즈
-  const detailTrend: LineSeries[] = detail
-    ? [{ name: detail.category, color: theme.accent, values: detail.trend }]
-    : [];
+  // 카테고리 상세: 월별 추이(금액 막대 + 전체 지출 중 비율 선)와 비율 요약
   const detailLabels = (detail?.months ?? []).map(monthLabel);
+  const shareSummary = (() => {
+    if (!detail) return "";
+    // 전체 지출이 있는 달만 본다(기록 전 달은 비율이 없다)
+    const pts = detail.months
+      .map((ym, i) => ({ ym, share: detail.shareTrend?.[i] ?? 0, total: detail.totalTrend?.[i] ?? 0 }))
+      .filter((p) => p.total > 0);
+    if (pts.length === 0) return "";
+    const avg = pts.reduce((a, p) => a + p.share, 0) / pts.length;
+    const hi = pts.reduce((a, p) => (p.share > a.share ? p : a));
+    const lo = pts.reduce((a, p) => (p.share < a.share ? p : a));
+    return `${pts.length}개월 평균 ${avg.toFixed(1)}% · 가장 높은 달 ${monthLabel(hi.ym)} ${hi.share}% · 가장 낮은 달 ${monthLabel(lo.ym)} ${lo.share}%`;
+  })();
   // 월 × 항목 표에 실제로 그릴 줄 (총액순으로 이미 정렬돼 온다)
   const catMonthlyRows = catAll
     ? catMonthly?.series ?? []
@@ -728,8 +738,16 @@ export default function StatsPage({
                 <Bars title="어느 카드로 (결제수단별)" rows={detail.byPayment} onPick={(k) => openDetailDrill("payment", k)} />
                 <Bars title="어디서 (TOP 가맹점)" rows={detail.topMerchants} onPick={(k) => openDetailDrill("merchant", k)} />
                 <div className="surface h-full p-5 sm:p-6">
-                  <SectionHead icon={TrendingUp} title="월별 추이" />
-                  <LineChart series={detailTrend} xLabels={detailLabels} height={180} showLegend={false} />
+                  <SectionHead icon={TrendingUp} title="월별 추이 — 금액과 비율" />
+                  {shareSummary && <p className="num -mt-1 mb-3 text-xs text-zinc-400">{shareSummary}</p>}
+                  <AmountShareChart
+                    labels={detailLabels}
+                    amounts={detail.trend}
+                    shares={detail.shareTrend ?? []}
+                    totals={detail.totalTrend ?? []}
+                    color={theme.accent}
+                    height={200}
+                  />
                 </div>
               </div>
 
