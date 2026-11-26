@@ -451,6 +451,108 @@ export function LineChart({
   );
 }
 
+// 금액 막대 + 비율 선. 막대는 그 달 지출(왼쪽 축), 선은 그 달 전체 지출 중 비율(오른쪽 축, %).
+// 금액만 보면 전체 씀씀이가 늘어서 같이 는 것인지 구분이 안 된다 — 비율을 함께 그려 보이게 한다.
+export function AmountShareChart({
+  labels,
+  amounts,
+  shares,
+  totals,
+  color,
+  height = 200,
+}: {
+  labels: string[];
+  amounts: number[];
+  shares: number[];
+  totals: number[];
+  color: string;
+  height?: number;
+}) {
+  const tc = useThemeColors();
+  const tick = useAxisTick();
+  const lineColor = tc.palette[1] ?? tc.axis;
+  const n = labels.length;
+  const interval = n <= 12 ? 0 : 1;
+  if (!amounts.some((v) => v > 0)) return <ChartEmpty />;
+  const data = labels.map((_, i) => ({ i, amt: amounts[i] ?? 0, share: shares[i] ?? 0 }));
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: tc.muted }}>
+        <span className="inline-flex items-center gap-1.5">
+          <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: color, opacity: 0.6 }} /> 지출 (왼쪽)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <LegendDot color={lineColor} /> 전체 지출 중 비율 (오른쪽)
+        </span>
+      </div>
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 14, right: 4, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={tc.grid} strokeOpacity={0.4} vertical={false} />
+            <XAxis
+              dataKey="i"
+              tick={tick}
+              interval={interval}
+              tickFormatter={(i: number) => labels[i] ?? ""}
+              axisLine={{ stroke: tc.grid }}
+              tickLine={false}
+            />
+            <YAxis
+              yAxisId="amt"
+              tick={tick}
+              width={50}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={compact}
+              tickCount={5}
+              domain={[0, (max: number) => niceMax(Math.max(1, max))]}
+            />
+            <YAxis
+              yAxisId="pct"
+              orientation="right"
+              tick={tick}
+              width={40}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v: number) => `${v}%`}
+              tickCount={5}
+              domain={[0, (max: number) => Math.min(100, niceMax(Math.max(1, max)))]}
+            />
+            <Tooltip
+              cursor={{ fill: tc.grid, fillOpacity: 0.25 }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const i = (payload[0].payload as { i: number }).i;
+                return (
+                  <ChartTip
+                    head={labels[i]}
+                    rows={[
+                      { color, value: won(amounts[i] ?? 0), name: "지출" },
+                      { color: lineColor, value: `${shares[i] ?? 0}%`, name: "전체 지출 중" },
+                      { value: won(totals[i] ?? 0), name: "그 달 전체 지출", sub: true },
+                    ]}
+                  />
+                );
+              }}
+            />
+            <Bar yAxisId="amt" dataKey="amt" fill={color} fillOpacity={0.6} radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false} />
+            <Line
+              yAxisId="pct"
+              type="monotone"
+              dataKey="share"
+              stroke={lineColor}
+              strokeWidth={2}
+              isAnimationActive={false}
+              dot={{ r: 2.5, fill: lineColor, strokeWidth: 0 }}
+              activeDot={{ r: 4 }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 const OTHER = "기타";
 
 // 그룹별 구성 적층 막대(카테고리별 귀속자, 귀속자별 카테고리, 카드별 카테고리).

@@ -120,4 +120,29 @@ func TestCategoryDetailTx(t *testing.T) {
 	if txs, _ := st.CategoryDetailTx(2026, 11, food, "recent30", today, BreakMember, "엄마"); len(txs) != 3 {
 		t.Errorf("엄마 최근 30일 %d건, want 3", len(txs))
 	}
+
+	// 월별 비율: 11월 식비 24,500 / 전체 74,500(통신비 포함) = 32.9%, 10월은 식비뿐이라 100%
+	d, err := st.CategoryDetail(2026, 11, food, "month", today, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := len(d.Months) - 1
+	if d.Months[last] != "2026-11" || d.Trend[last] != 24500 || d.TotalTrend[last] != 74500 || d.ShareTrend[last] != 32.9 {
+		t.Errorf("11월 추이: %s %d / %d = %v%%", d.Months[last], d.Trend[last], d.TotalTrend[last], d.ShareTrend[last])
+	}
+	if d.ShareTrend[last-1] != 100 || d.ShareTrend[0] != 0 {
+		t.Errorf("10월·빈 달 비율: %v", d.ShareTrend)
+	}
+}
+
+func TestSharePct(t *testing.T) {
+	cases := []struct {
+		part, whole int64
+		want        float64
+	}{{0, 0, 0}, {5, 0, 0}, {1, 3, 33.3}, {2, 3, 66.7}, {24500, 74500, 32.9}, {10, 10, 100}}
+	for _, c := range cases {
+		if got := sharePct(c.part, c.whole); got != c.want {
+			t.Errorf("sharePct(%d, %d) = %v, want %v", c.part, c.whole, got, c.want)
+		}
+	}
 }

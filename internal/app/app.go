@@ -986,7 +986,7 @@ func (a *App) GetCategoryDetail(year, month int, categoryID int64, period string
 	if err := a.ensure(); err != nil {
 		return store.CategoryDetail{}, err
 	}
-	return a.st.CategoryDetail(year, month, categoryID, period, time.Now(), 6)
+	return a.st.CategoryDetail(year, month, categoryID, period, time.Now(), 12)
 }
 
 // GetCategoryMonthly 는 카테고리 한 개를 "월 × 항목"으로 쪼갠 표.
