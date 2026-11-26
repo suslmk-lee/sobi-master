@@ -53,6 +53,30 @@ func TestPickAsset(t *testing.T) {
 	if a, ok := pickAsset(assets, "windows", "amd64"); !ok || a.Name != "sobi-1.1.0-windows.zip" {
 		t.Errorf("윈도우: %+v", a)
 	}
+	win := []ghAsset{
+		{Name: "sobi-1.2.0-windows-arm64.zip"},
+		{Name: "sobi-1.2.0-windows.exe"},
+		{Name: "sobi-1.2.0-windows-amd64.zip"},
+		{Name: "sobi-1.2.0-macOS-universal.dmg"},
+	}
+	if a, ok := pickAsset(win, "windows", "amd64"); !ok || a.Name != "sobi-1.2.0-windows-amd64.zip" {
+		t.Errorf("윈도우 amd64 zip 우선: %+v", a)
+	}
+	if a, ok := pickAsset(win, "windows", "arm64"); !ok || a.Name != "sobi-1.2.0-windows-arm64.zip" {
+		t.Errorf("윈도우 arm64 zip: %+v", a)
+	}
+	if a, ok := pickAsset(win[:2], "windows", "amd64"); !ok || a.Name != "sobi-1.2.0-windows.exe" {
+		t.Errorf("다른 아키텍처 zip 은 건너뛰고 exe: %+v", a)
+	}
+	if a, ok := pickAsset([]ghAsset{{Name: "sobi-1.2.0-win-x64.zip"}, {Name: "sobi-1.2.0-win.zip"}}, "windows", "amd64"); !ok || a.Name != "sobi-1.2.0-win-x64.zip" {
+		t.Errorf("x64 표기: %+v", a)
+	}
+	if a, ok := pickAsset([]ghAsset{{Name: "sobi-1.2.0-win.exe"}, {Name: "sobi-1.2.0-windows.zip"}}, "windows", "amd64"); !ok || a.Name != "sobi-1.2.0-windows.zip" {
+		t.Errorf("아키텍처 표기 없는 zip 이 exe 보다 우선: %+v", a)
+	}
+	if _, ok := pickAsset(win[3:], "windows", "amd64"); ok {
+		t.Error("윈도우용이 없는데 골랐음")
+	}
 	if _, ok := pickAsset(nil, "darwin", "arm64"); ok {
 		t.Error("파일이 없는데 골랐음")
 	}

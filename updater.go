@@ -7,6 +7,7 @@ package main
 // 지금 버전보다 새 것이 있으면 알리고, 사용자가 원하면 받아서 설치하고 다시 시작한다(selfupdate.go).
 // 자동 설치를 못 하는 경우에는 다운로드 폴더로 받아 설치 파일을 연다.
 // 앱이 직접 받은 파일에는 macOS 격리 표시(quarantine)가 붙지 않아 Gatekeeper 경고가 다시 뜨지 않는다.
+// Windows 는 릴리스에 올린 sobi-<버전>-windows-amd64.zip 안의 exe 로 같은 방식의 자동 설치를 한다(winupdate.go).
 
 import (
 	"context"
@@ -45,9 +46,18 @@ var appVersion = func() string {
 }()
 
 const (
-	releasesAPI = "https://api.github.com/repos/suslmk-lee/sobi-master/releases?per_page=30"
-	releasesWeb = "https://github.com/suslmk-lee/sobi-master/releases"
+	defaultReleasesAPI = "https://api.github.com/repos/suslmk-lee/sobi-master/releases?per_page=30"
+	releasesWeb        = "https://github.com/suslmk-lee/sobi-master/releases"
 )
+
+// releasesAPI 는 릴리스 목록을 읽을 주소. 환경변수 SOBI_UPDATE_API 로 바꿀 수 있다 — 가짜 릴리스 서버로
+// 업데이트 흐름을 시험하기 위한 용도이며, 비어 있으면 기본(GitHub) 주소를 쓴다. 시작할 때 한 번만 읽는다.
+var releasesAPI = func() string {
+	if u := strings.TrimSpace(os.Getenv("SOBI_UPDATE_API")); u != "" {
+		return u
+	}
+	return defaultReleasesAPI
+}()
 
 // ReleaseNote 는 지금 버전보다 새 릴리스 하나의 변경 사항.
 type ReleaseNote struct {
@@ -67,8 +77,10 @@ type UpdateInfo struct {
 	AssetSize int64         `json:"assetSize"`
 	PageURL   string        `json:"pageUrl"` // 최신 릴리스 페이지 (설치 파일이 없을 때 안내용)
 	// AutoInstall 은 앱이 받은 설치 파일로 직접 설치하고 다시 시작할 수 있는지 (selfupdate.go).
-	// 못 하면(macOS 가 아님, 쓸 수 없는 폴더에서 실행 중 등) 설치 파일을 열어 직접 옮기게 안내한다.
+	// 못 하면(macOS·Windows 가 아님, 쓸 수 없는 폴더에서 실행 중 등) 설치 파일을 열어 직접 옮기게 안내한다.
 	AutoInstall bool `json:"autoInstall"`
+	// OS 는 이 앱이 돌고 있는 운영체제("darwin", "windows"…) — 직접 설치 안내 문구를 고르는 데 쓴다.
+	OS string `json:"os"`
 }
 
 type updateState struct {
@@ -141,7 +153,8 @@ func compareVersions(a, b string) int {
 }
 
 // pickAsset 은 이 컴퓨터에 맞는 설치 파일을 고른다.
-// macOS: 유니버설 DMG → 같은 아키텍처 DMG → 아무 DMG. Windows: windows 가 들어간 .exe/.zip.
+// macOS: 유니버설 DMG → 같은 아키텍처 DMG → 아무 DMG.
+// Windows: 같은 아키텍처 .zip → 아무 .zip → .exe (모두 이름에 win 이 들어간 것. 다른 아키텍처라고 적힌 것은 제외).
 func pickAsset(assets []ghAsset, goos, goarch string) (ghAsset, bool) {
 	lower := func(a ghAsset) string { return strings.ToLower(a.Name) }
 	find := func(ok func(string) bool) (ghAsset, bool) {
@@ -175,9 +188,33 @@ func pickAsset(assets []ghAsset, goos, goarch string) (ghAsset, bool) {
 			}
 		}
 	case "windows":
-		return find(func(n string) bool {
-			return (strings.HasSuffix(n, ".exe") || strings.HasSuffix(n, ".zip")) && strings.Contains(n, "win")
-		})
+		archs := map[string][]string{"amd64": {"amd64", "x64", "x86_64"}, "arm64": {"arm64"}}
+		has := func(n string, names []string) bool {
+			for _, an := range names {
+				if strings.Contains(n, an) {
+					return true
+				}
+			}
+			return false
+		}
+		mine := archs[goarch]
+		var others []string
+		for g, names := range archs {
+			if g != goarch {
+				others = append(others, names...)
+			}
+		}
+		winExt := func(n, ext string) bool { return strings.HasSuffix(n, ext) && strings.Contains(n, "win") }
+		for _, ok := range []func(string) bool{
+			func(n string) bool { return winExt(n, ".zip") && has(n, mine) },
+			func(n string) bool { return winExt(n, ".zip") && !has(n, others) },
+			func(n string) bool { return winExt(n, ".exe") && has(n, mine) },
+			func(n string) bool { return winExt(n, ".exe") && !has(n, others) },
+		} {
+			if a, found := find(ok); found {
+				return a, true
+			}
+		}
 	}
 	return ghAsset{}, false
 }
@@ -185,7 +222,7 @@ func pickAsset(assets []ghAsset, goos, goarch string) (ghAsset, bool) {
 // buildUpdateInfo 는 릴리스 목록에서 지금 버전보다 새 것을 모으고 최신 릴리스의 설치 파일을 고른다.
 // 초안·사전 배포(prerelease)·버전으로 읽을 수 없는 태그는 건너뛴다.
 func buildUpdateInfo(current string, rels []ghRelease, goos, goarch string) (UpdateInfo, string) {
-	info := UpdateInfo{Current: current, Latest: current, Notes: []ReleaseNote{}, PageURL: releasesWeb}
+	info := UpdateInfo{Current: current, Latest: current, Notes: []ReleaseNote{}, PageURL: releasesWeb, OS: goos}
 	var newer []ghRelease
 	for _, r := range rels {
 		if r.Draft || r.Prerelease {
@@ -254,7 +291,7 @@ func (a *App) CheckForUpdate() (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("릴리스 정보를 읽지 못했습니다: %w", err)
 	}
 	info, assetURL := buildUpdateInfo(appVersion, rels, goruntime.GOOS, goruntime.GOARCH)
-	if assetURL != "" && strings.HasSuffix(strings.ToLower(info.AssetName), ".dmg") {
+	if assetURL != "" && autoInstallable(goruntime.GOOS, info.AssetName) {
 		_, err := installTarget()
 		info.AutoInstall = err == nil
 	}
@@ -308,6 +345,18 @@ func downloadDir(auto bool) (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, "Downloads"), nil
+}
+
+// autoInstallable 은 이 운영체제에서 앱이 직접 설치할 수 있는 종류의 파일인지 (macOS: DMG, Windows: zip·exe).
+func autoInstallable(goos, assetName string) bool {
+	n := strings.ToLower(assetName)
+	switch goos {
+	case "darwin":
+		return strings.HasSuffix(n, ".dmg")
+	case "windows":
+		return strings.HasSuffix(n, ".zip") || strings.HasSuffix(n, ".exe")
+	}
+	return false
 }
 
 // OpenDownloadedUpdate 는 내려받은 설치 파일을 연다(macOS 는 DMG 가 마운트되며 Finder 창이 열린다).

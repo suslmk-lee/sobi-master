@@ -12,6 +12,9 @@ import (
 )
 
 func TestBundleFromExecutable(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("macOS 경로(/ 구분자) 전용 시험")
+	}
 	ok := map[string]string{
 		"/Applications/sobi.app/Contents/MacOS/sobi":         "/Applications/sobi.app",
 		"/Users/me/Applications/sobi.app/Contents/MacOS/sobi": "/Users/me/Applications/sobi.app",
