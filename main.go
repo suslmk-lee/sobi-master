@@ -28,6 +28,8 @@ func main() {
 		Title:  "소비마스터 — 우리집 가계부",
 		Width:  1180,
 		Height: 1360, // 800 × 1.7
+		// 메뉴 9칸(최소 96px)이 한 줄에 다 보이는 폭. 이보다 좁으면 화면 배치가 무너진다.
+		MinWidth: 1024,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
