@@ -1,13 +1,27 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Pencil, X } from "lucide-react";
-import { RenameCategory, SetCategoryDefaultMember, SetCategoryFixed } from "../wailsjs/go/main/App";
+import {
+  RenameCategory,
+  SetCategoryDefaultMember,
+  SetCategoryFixed,
+  SetCategorySpendClass,
+} from "../wailsjs/go/main/App";
 import { store } from "../wailsjs/go/models";
 import Portal from "./components/ui/Portal";
 import IconTile from "./components/ui/IconTile";
 
 const KIND_LABEL: Record<string, string> = { income: "수입", expense: "지출", transfer: "이체" };
 
-// 카테고리 수정 팝업 — 이름·기본 귀속자·고정비 표시를 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
+// 지출 성격 — 낭비율(낭비 + 선택 카테고리의 예산 초과분 ÷ 총지출)이 이 값으로 거래를 나눈다.
+const SPEND_CLASSES: { key: string; label: string; hint: string }[] = [
+  { key: "", label: "미지정", hint: "" },
+  { key: "essential", label: "필수", hint: "통신비·대출·의료비처럼 줄이기 어려운 돈. 낭비율에 넣지 않습니다." },
+  { key: "discretionary", label: "선택", hint: "쓸지 말지 고를 수 있는 돈. 예산을 넘은 만큼만 낭비로 봅니다." },
+  { key: "waste", label: "낭비", hint: "안 써도 됐던 돈. 전액을 낭비로 봅니다." },
+];
+export const SPEND_CLASS_LABEL: Record<string, string> = { essential: "필수", discretionary: "선택", waste: "낭비" };
+
+// 카테고리 수정 팝업 — 이름·기본 귀속자·고정비 표시·지출 성격을 바꾼다. 거래·규칙·예산은 카테고리 id 로 이어져 있어 그대로 따라온다.
 // 고정비로 표시하면 구성원 분석이 이 카테고리(주면 그 부까지)를 '생활 소비'에서 빼고 따로 보여 준다.
 // 상위(주) 이동은 목록의 선택 상자에서, 순서는 끌어서 바꾼다.
 export default function CategoryEditModal({
@@ -25,6 +39,7 @@ export default function CategoryEditModal({
 }) {
   const [name, setName] = useState(cat.name);
   const [fixed, setFixed] = useState(cat.fixedCost);
+  const [spendClass, setSpendClass] = useState(cat.spendClass);
   const initialMember = cat.defaultMemberId ? String(cat.defaultMemberId) : "";
   const [defMember, setDefMember] = useState(initialMember);
   const [busy, setBusy] = useState(false);
@@ -42,7 +57,8 @@ export default function CategoryEditModal({
   const renamed = trimmed !== cat.name;
   const fixedChanged = fixed !== cat.fixedCost;
   const memberChanged = defMember !== initialMember;
-  const changed = trimmed !== "" && (renamed || fixedChanged || memberChanged);
+  const classChanged = spendClass !== cat.spendClass;
+  const changed = trimmed !== "" && (renamed || fixedChanged || memberChanged || classChanged);
   const parentMemberName = cat.parentDefaultMemberId
     ? members.find((m) => m.id === cat.parentDefaultMemberId)?.name
     : undefined;
@@ -56,6 +72,7 @@ export default function CategoryEditModal({
       if (renamed) await RenameCategory(cat.id, trimmed);
       if (fixedChanged) await SetCategoryFixed(cat.id, fixed);
       if (memberChanged) await SetCategoryDefaultMember(cat.id, defMember ? Number(defMember) : 0);
+      if (classChanged) await SetCategorySpendClass(cat.id, spendClass);
       onDone();
     } catch (ex) {
       setErr(String(ex));
@@ -139,6 +156,34 @@ export default function CategoryEditModal({
                 </span>
               </span>
             </label>
+          )}
+          {cat.kind === "expense" && (
+            <div>
+              <span className="field-label">지출 성격</span>
+              <div className="glass-pill inline-flex gap-1 p-1" role="group" aria-label="지출 성격">
+                {SPEND_CLASSES.map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    aria-pressed={spendClass === o.key}
+                    className={`pill-item ${spendClass === o.key ? "pill-item-active" : ""}`}
+                    onClick={() => setSpendClass(o.key)}
+                  >
+                    {o.key === "" && cat.parentSpendClass ? `상위 따름 (${SPEND_CLASS_LABEL[cat.parentSpendClass]})` : o.label}
+                  </button>
+                ))}
+              </div>
+              <span className="mt-1 block text-xs text-zinc-500">
+                {spendClass
+                  ? SPEND_CLASSES.find((o) => o.key === spendClass)?.hint
+                  : cat.parentSpendClass
+                    ? `상위 '${cat.parent}'의 성격(${SPEND_CLASS_LABEL[cat.parentSpendClass]})을 따릅니다.`
+                    : fixed || cat.parentFixed
+                      ? "정하지 않으면 고정비라서 필수로 봅니다."
+                      : "정하지 않으면 정기결제로 낸 것만 필수로 보고, 나머지는 '미지정'으로 따로 셉니다."}
+                {subCount > 0 && " 부 카테고리도 따로 정하지 않으면 이 값을 따릅니다."}
+              </span>
+            </div>
           )}
           {/* 자금 계획은 이름이 "급여"인 카테고리로 월급을 찾는다(cashplan.go) */}
           {cat.name === "급여" && renamed && trimmed !== "" && (

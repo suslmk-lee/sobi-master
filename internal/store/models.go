@@ -23,6 +23,10 @@ type Category struct {
 	// 부는 자기 표시가 없어도 주가 고정비면 고정비로 본다.
 	FixedCost   bool `json:"fixedCost"`
 	ParentFixed bool `json:"parentFixed"`
+	// SpendClass 는 지출 성격: "" 미지정 | essential 필수 | discretionary 선택 | waste 낭비.
+	// ParentSpendClass 는 상위 주의 값 — 부는 자기 값이 ""이면 이 값을 쓴다. 낭비율 계산(spending_health.go)이 쓴다.
+	SpendClass       string `json:"spendClass"`
+	ParentSpendClass string `json:"parentSpendClass"`
 	// DefaultMemberID 는 카테고리 기본 귀속자(없으면 nil). ParentDefaultMemberID 는 상위 주의 기본 귀속자 —
 	// 부는 자기 값이 없으면 이 값을 쓴다. 화면은 카테고리를 고를 때 귀속자 칸을 이 값으로 채운다.
 	DefaultMemberID       *int64 `json:"defaultMemberId"`

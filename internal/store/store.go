@@ -360,6 +360,16 @@ UPDATE categories SET fixed_cost = 1
 WHERE parent_id IS NULL AND name IN ('보험료', '통신비', '구독/렌탈', '대출상환')
   AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'seed.fixed_cost');
 INSERT INTO app_settings(key, value) VALUES ('seed.fixed_cost', '1') ON CONFLICT (key) DO NOTHING;
+-- 지출 성격: '' 미지정 | essential 필수 | discretionary 선택 | waste 낭비. 부는 자기 값이 없으면 주의 값을 따른다.
+-- 낭비율(dash.spending_health_monthly)이 이 값으로 거래를 나눈다. 컬럼이 이미 있으면 제약까지 통째로 건너뛴다.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS spend_class TEXT NOT NULL DEFAULT ''
+  CHECK (spend_class IN ('', 'essential', 'discretionary', 'waste'));
+-- 처음 한 번만 흔한 주 카테고리에 기본 분류를 채운다. 그 뒤로는 설정에서 바꾼 값을 그대로 둔다.
+-- (새 DB 는 카테고리가 이보다 늦게 생기므로 seedDefaults 에서 같은 일을 한다)
+UPDATE categories SET spend_class = CASE WHEN name = '문화/여가' THEN 'discretionary' ELSE 'essential' END
+WHERE parent_id IS NULL AND spend_class = '' AND name IN ('통신비', '대출상환', '의료비', '교육비', '문화/여가')
+  AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'seed.spend_class');
+INSERT INTO app_settings(key, value) VALUES ('seed.spend_class', '1') ON CONFLICT (key) DO NOTHING;
 -- 카테고리 기본 귀속자: 이 카테고리를 고르면 귀속자 칸을 이 사람으로 채운다(예: 부모요양비 → 부모님).
 -- 부는 자기 값이 없으면 주의 값을 따른다. 귀속자를 지우면 기본값도 비운다.
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS default_member_id BIGINT REFERENCES members(id) ON DELETE SET NULL;
@@ -367,7 +377,8 @@ ALTER TABLE categories ADD COLUMN IF NOT EXISTS default_member_id BIGINT REFEREN
 
 // fullSchema 는 시작 시 적용하는 스키마 SQL 전체(모두 IF NOT EXISTS 라 여러 번 돌려도 같다).
 func fullSchema() string {
-	return baseSchema + prepaidSchema + duesSchema + fxSchema + transitSchema + basketSchema + basketLinkSchema + plannedSchema
+	return baseSchema + prepaidSchema + duesSchema + fxSchema + transitSchema + basketSchema + basketLinkSchema + plannedSchema +
+		dashSchema // 뷰는 모든 표·컬럼 다음에 만든다
 }
 
 // schemaStamp 는 스키마 SQL 의 지문. DB 의 app_settings 에 남겨, 같으면 다음 시작 때 스키마 적용을 건너뛴다.
@@ -431,6 +442,11 @@ WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL)
 	// 새 DB 는 스키마의 1회 고정비 표시보다 카테고리가 늦게 생기므로 여기서 기본 고정비를 켠다.
 	if _, err := s.exec(`UPDATE categories SET fixed_cost = 1
 WHERE parent_id IS NULL AND name IN ('통신비', '대출상환')`); err != nil {
+		return err
+	}
+	// 지출 성격 기본값도 같은 이유로 여기서 채운다 (스키마의 1회 채우기와 같은 이름표).
+	if _, err := s.exec(`UPDATE categories SET spend_class = CASE WHEN name = '문화/여가' THEN 'discretionary' ELSE 'essential' END
+WHERE parent_id IS NULL AND spend_class = '' AND name IN ('통신비', '대출상환', '의료비', '교육비', '문화/여가')`); err != nil {
 		return err
 	}
 	return nil
