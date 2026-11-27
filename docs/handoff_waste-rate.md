@@ -203,14 +203,14 @@ SELECT has_schema_privilege('dashboard_ro', 'dash', 'USAGE')               AS da
 
 ## 3. 완료 기준
 
-- [ ] `go test ./...` 통과 (DB 테스트는 테스트 DB 로)
-- [ ] 카테고리 편집에서 분류를 바꾸면 저장되고, 앱을 다시 켜도 유지된다
-- [ ] 백업 파일(SQLite)에 분류가 들어간다
-- [ ] 새 DB(테스트 DB)에서도 기본 분류가 채워진다
-- [ ] 스키마를 두 번 적용해도(뷰 다시 만들기) 앱이 정상 시작한다
-- [ ] 같은 달의 `GetSpendingHealth().totalExpense` 와 대시보드 탭의 총지출이 같다
-- [ ] `dashboard_ro` 로 `dash.*` 는 읽히고 `public.*` 는 permission denied
-- [ ] 이전 버전 앱(v1.11.x)으로 같은 DB 를 열어도 문제없다 (컬럼·뷰 추가만 하므로)
+- [x] `go test ./...` 통과 (DB 테스트는 테스트 DB 로) — `-race` 포함
+- [ ] 카테고리 편집에서 분류를 바꾸면 저장되고, 앱을 다시 켜도 유지된다 — 저장은 DB 테스트로 확인, 실제 앱 재시작은 아직
+- [x] 백업 파일(SQLite)에 분류가 들어간다 — `TestBackupKeepsSpendClass`
+- [x] 새 DB(테스트 DB)에서도 기본 분류가 채워진다 — `TestSpendClassDefaultsAndValidation`
+- [x] 스키마를 두 번 적용해도(뷰 다시 만들기) 앱이 정상 시작한다 — `TestDashSchemaReapply`
+- [x] 같은 달의 `GetSpendingHealth().totalExpense` 와 대시보드 탭의 총지출이 같다 — `TestDashViewsMatchApp`
+- [x] `dashboard_ro` 로 `dash.*` 는 읽히고 `public.*` 는 permission denied — 2026-11-27 운영 DB 에서 그 역할로 직접 접속해 확인 (뷰 4개 읽힘, `public.transactions` 42501, public 표 읽기 0/26). SQL Editor 대신 앱 연결(`postgres`)로 `docs/dashboard_ro.sql` 과 같은 내용을 실행했고, 비밀번호는 SCRAM 해시로만 보냈다. 연결 문자열은 키체인 `my-dashboard` / `sobi.db_url`
+- [x] 이전 버전 앱(v1.11.x)으로 같은 DB 를 열어도 문제없다 (컬럼·뷰 추가만 하므로) — v1.11.1 스키마 적용을 새 스키마 위에 다시 돌려 확인
 
 ## 4. 범위 밖
 
