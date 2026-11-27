@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
-import { GetCashPlan, GetCategoryCompare, GetDashboard } from "../../wailsjs/go/main/App";
+import { GetCashPlan, GetCategoryCompare, GetDashboard, GetSpendingHealth } from "../../wailsjs/go/main/App";
 import { app, store } from "../../wailsjs/go/models";
 import {
   BarChart3,
@@ -23,6 +23,7 @@ import Bars from "../Bars";
 import { DailyChart, DeltaBars, Donut, TrendChart } from "../charts";
 import { autoColor } from "../PmChip";
 import { DashboardSkeleton, Sk } from "../Skeleton";
+import WasteCard from "../WasteCard";
 
 // 카테고리별 전월 대비에서 기본으로 보여 줄 줄 수(나머지는 접는다)
 const CMP_ROWS = 8;
@@ -139,6 +140,9 @@ export default function Dashboard({
   const [cmpLevel, setCmpLevel] = useState<"main" | "sub">("main");
   const [cmpAll, setCmpAll] = useState(false);
 
+  // 낭비율 — GetDashboard 응답 모양은 모바일도 쓰므로 따로 부른다. 실패하면 카드만 숨긴다.
+  const [health, setHealth] = useState<store.SpendingHealth | null>(null);
+
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
@@ -172,6 +176,19 @@ export default function Dashboard({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const [y, m] = month.split("-").map(Number);
+    const key = `health:${month}`;
+    let live = true; // 달을 빨리 넘길 때 늦게 온 이전 달 응답이 덮어쓰지 않게
+    setHealth(cached<store.SpendingHealth>(key) ?? null);
+    refresh(key, () => GetSpendingHealth(y, m))
+      .then((h) => live && setHealth(h))
+      .catch(() => live && setHealth(null));
+    return () => {
+      live = false;
+    };
+  }, [month]);
 
   useEffect(() => {
     const [y, m] = month.split("-").map(Number);
@@ -261,6 +278,8 @@ export default function Dashboard({
           </div>
         </div>
       </div>
+
+      {health && <WasteCard h={health} />}
 
       {/* 총액이 왜 늘었는지는 카테고리를 쪼개야 보인다 */}
       <div className="surface p-5 sm:p-6">
