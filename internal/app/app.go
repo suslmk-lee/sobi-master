@@ -382,6 +382,28 @@ func (a *App) SetCategoryFixed(id int64, fixed bool) error {
 	return err
 }
 
+// SetCategorySpendClass 는 카테고리의 지출 성격을 정한다: "" 미지정(부는 주를 따름) | essential | discretionary | waste.
+// 낭비율(GetSpendingHealth)이 이 값으로 거래를 나눈다.
+func (a *App) SetCategorySpendClass(id int64, v string) error {
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	err := a.st.SetCategorySpendClass(id, v)
+	logIf("SetCategorySpendClass", err)
+	return err
+}
+
+// GetSpendingHealth 는 그달의 낭비율과 구성, 최근 6개월 추이, 낭비 상위 목록. 계산은 DB 의 dash 뷰에 있어
+// 개인 대시보드가 읽는 숫자와 같다. GetDashboard 응답 모양은 모바일도 쓰므로 거기에 합치지 않는다.
+func (a *App) GetSpendingHealth(year, month int) (store.SpendingHealth, error) {
+	if err := a.ensure(); err != nil {
+		return store.SpendingHealth{}, err
+	}
+	h, err := a.st.SpendingHealth(year, month)
+	logIf("GetSpendingHealth", err)
+	return h, err
+}
+
 // SetCategoryDefaultMember 는 카테고리 기본 귀속자를 정한다(0 이면 비움).
 func (a *App) SetCategoryDefaultMember(id, memberID int64) error {
 	if err := a.ensure(); err != nil {

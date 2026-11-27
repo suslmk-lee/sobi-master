@@ -26,7 +26,7 @@ import {
   SetPaymentMethodClosed,
 } from "../../wailsjs/go/main/App";
 import CloseCardModal from "../CloseCardModal";
-import CategoryEditModal from "../CategoryEditModal";
+import CategoryEditModal, { SPEND_CLASS_LABEL } from "../CategoryEditModal";
 import { Archive, CornerDownRight, GripVertical, Palette, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
 import IconTile from "../components/ui/IconTile";
 import { app, store } from "../../wailsjs/go/models";
@@ -45,6 +45,13 @@ import {
 import { useConfirm } from "../ConfirmModal";
 import HolidaySection from "../HolidaySection";
 import MonthPicker from "../MonthPicker";
+
+// 지출 성격 배지 색 (필수 · 선택 · 낭비)
+const CLASS_BADGE: Record<string, string> = {
+  essential: "bg-emerald-500/10 text-emerald-300",
+  discretionary: "bg-amber-500/10 text-amber-300",
+  waste: "bg-rose-500/10 text-rose-300",
+};
 
 const KIND_LABEL: Record<string, string> = {
   income: "수입",
@@ -502,6 +509,13 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
 
   const allMains = mainCategories(refs.categories);
   // 카테고리 기본 귀속자 표시 (자기 값만 — 부가 주를 따르는 경우는 주에만 표시)
+  // 지출 성격 배지 (자기 값이 있을 때만 — 부가 주를 따르는 경우는 주에만 보인다)
+  const classBadge = (v: string, ml: string) =>
+    v ? (
+      <span className={`badge ${ml} !text-[10px] ${CLASS_BADGE[v] ?? ""}`} title="지출 성격 (낭비율 계산에 씀)">
+        {SPEND_CLASS_LABEL[v]}
+      </span>
+    ) : null;
   const memberBadge = (id?: number) => {
     const name = id ? refs.members.find((m) => m.id === id)?.name : undefined;
     return name ? (
@@ -561,6 +575,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
                       {main.name}
                       {main.fixedCost && <span className="badge ml-2 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
+                      {classBadge(main.spendClass, "ml-2")}
                       {memberBadge(main.defaultMemberId)}
                     </span>
                     {subs.length > 0 && (
@@ -620,6 +635,7 @@ function CategorySection({ refs, reload }: { refs: Refs; reload: () => void }) {
                         <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                         {s.name}
                         {s.fixedCost && <span className="badge ml-1 bg-sky-500/10 !text-[10px] text-sky-300">고정비</span>}
+                        {classBadge(s.spendClass, "ml-1")}
                         {memberBadge(s.defaultMemberId)}
                       </span>
                       <select
